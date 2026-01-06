@@ -1,0 +1,7 @@
+# Track misc/ images via Git LFS
+misc/*.png filter=lfs diff=lfs merge=lfs -text
+misc/*.gif filter=lfs diff=lfs merge=lfs -text
+misc/*.jpg filter=lfs diff=lfs merge=lfs -text
+misc/*.jpeg filter=lfs diff=lfs merge=lfs -text
+misc/*.webp filter=lfs diff=lfs merge=lfs -text
+
