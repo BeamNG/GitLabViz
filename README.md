@@ -1,10 +1,8 @@
 # GitLab Viz
 
-**Turn your GitLab issues into actionable insights.**
+Handy Graph display of your gitlab issues.
 
-This is a user application with no installation or server requirement other than a running gitlab instance.
-
-GitLab Viz transforms your project's issue tracker into an interactive, force-directed graph. By visualizing dependencies and relationships, you can instantly identify blockers, spot bottlenecks, and understand the structure of your work at a glance.
+- single page application, no installation needed, no server needed
 
 ![Main View](misc/usage.gif)
 
