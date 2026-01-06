@@ -1026,6 +1026,7 @@ function render() {
   if (!canvas.value) return
   const c = colors.value
   const ctx = canvas.value.getContext('2d', { alpha: false }) // Optimize: opaque canvas
+  if (!ctx) return
   const width = canvas.value.width
   const height = canvas.value.height
   const dpr = window.devicePixelRatio || 1
