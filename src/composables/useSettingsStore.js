@@ -5,6 +5,54 @@ import { defaultSettings } from '../defaultSettings'
 let _store
 const hasDisk = () => !!(window.electronAPI?.settingsGet && window.electronAPI?.settingsSet)
 
+const TOKEN_PREFIX = 'glv-xor1:'
+const TOKEN_KEY = 'gitlab-viz-token-xor-v1'
+
+const toBytes = (s) => new TextEncoder().encode(String(s || ''))
+const fromBytes = (b) => new TextDecoder().decode(b)
+
+const bytesToBase64 = (bytes) => {
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  return btoa(bin)
+}
+
+const base64ToBytes = (b64) => {
+  const bin = atob(String(b64 || ''))
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 0xff
+  return bytes
+}
+
+const xorBytes = (bytes, keyBytes) => {
+  if (!keyBytes || !keyBytes.length) return bytes
+  const out = new Uint8Array(bytes.length)
+  for (let i = 0; i < bytes.length; i++) out[i] = bytes[i] ^ keyBytes[i % keyBytes.length]
+  return out
+}
+
+export const encodeGitLabTokenForStorage = (token) => {
+  const raw = String(token || '')
+  if (!raw) return ''
+  if (raw.startsWith(TOKEN_PREFIX)) return raw
+  const x = xorBytes(toBytes(raw), toBytes(TOKEN_KEY))
+  return `${TOKEN_PREFIX}${bytesToBase64(x)}`
+}
+
+export const decodeGitLabTokenFromStorage = (maybeEncoded) => {
+  const raw = String(maybeEncoded || '')
+  if (!raw.startsWith(TOKEN_PREFIX)) return raw
+  try {
+    const b64 = raw.slice(TOKEN_PREFIX.length)
+    const x = base64ToBytes(b64)
+    const plainBytes = xorBytes(x, toBytes(TOKEN_KEY))
+    return fromBytes(plainBytes)
+  } catch {
+    // Backward/forward compatible: if decode fails, keep as-is.
+    return raw
+  }
+}
+
 export function useSettingsStore() {
   if (_store) return _store
 
@@ -13,7 +61,11 @@ export function useSettingsStore() {
   
   // 2. Define Save Logic
   const save = () => {
-    hasDisk() ? window.electronAPI.settingsSet(toRaw(settings)) : localforage.setItem('settings', toRaw(settings))
+    const raw = toRaw(settings)
+    if (raw && raw.config && typeof raw.config.token === 'string') {
+      raw.config.token = encodeGitLabTokenForStorage(raw.config.token)
+    }
+    hasDisk() ? window.electronAPI.settingsSet(raw) : localforage.setItem('settings', raw)
   }
 
   // 3. One-time Init
@@ -55,6 +107,11 @@ export function useSettingsStore() {
         const { dateFilters, ...rest } = f
         Object.assign(settings.uiState.filters, rest)
         if (dateFilters) Object.assign(settings.uiState.filters.dateFilters, dateFilters)
+      }
+
+      // Obfuscation-at-rest: token is stored encoded but used in-memory as plain text.
+      if (typeof savedData?.config?.token === 'string') {
+        settings.config.token = decodeGitLabTokenFromStorage(savedData.config.token)
       }
     }
 

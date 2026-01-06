@@ -119,7 +119,13 @@ Organize the chaos.
 
 ## Getting Started
 
-Download the html from the releases and open it :)
+Download the html from above and open it :)
+
+## Prerequisites / Compatibility
+
+- **GitLab**: Works with **GitLab.com (cloud)** and **self-managed/hosted GitLab** as long as the **REST API v4** is available (the app uses `/api/v4/...` endpoints like issues + issue links). Practically, that means **GitLab 11.0+** (API v3 was removed in 11.0, leaving v4 as the supported REST API).
+- **Token**: A **Personal Access Token** is required for loading data. Recommended scopes: **`read_api`** (and **`read_user`** for the “By me / Assigned to me” presets).
+- **Network access**: Your machine must be able to reach your GitLab API URL (company VPN / firewall rules apply).
 
 ## Privacy / Data Handling
 
@@ -131,6 +137,7 @@ Download the html from the releases and open it :)
 ## Security Notes
 
 - Treat your **GitLab token** like a password.
+- **Token-at-rest obfuscation**: The GitLab token is stored **obfuscated** using **XOR + base64** with a fixed app key. This is **not encryption** and only helps against casual inspection of backups/local storage.
 - On shared machines, prefer using the browser build in a separate profile and clear site data when done.
 
 ## Development
