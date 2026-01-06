@@ -6,6 +6,10 @@ Handy Graph display of your gitlab issues.
 
 ![Main View](misc/usage.gif)
 
+## Live Application
+
+https://beamng.github.io/GitLabViz/
+
 ## Key Features
 
 ### 🕸️ Interactive Graph Visualization
