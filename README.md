@@ -10,15 +10,22 @@ Graph display of your gitlab issues.
 
 # GitLabViz 🚀
 
-- [**View Live App**](https://beamng.github.io/GitLabViz/): https://beamng.github.io/GitLabViz/
-- [**Download Desktop App**](https://github.com/BeamNG/GitLabViz/releases/latest/download/GitLabViz.html) (and open it in your browser)
+- **View Live**
+  
+  https://beamng.github.io/GitLabViz/
+
+- **Download**
+  
+  https://github.com/BeamNG/GitLabViz/releases/latest/download/GitLabViz.html
+  
+  (and open the html file it in your browser)
 
 ## Key Features
 
 ### 🕸️ Interactive Graph Visualization
 Move beyond list views. See how your issues connect with a physics-based force-directed layout.
 
-- **Zoom**: zoom in and see all the issue details or zoom out and see the general overview
+- **Zoom**: see the issue in all details or zoom out and see the general overview
 
   <img src="misc/issue2.png" width="45%" />
 
@@ -34,11 +41,11 @@ Move beyond list views. See how your issues connect with a physics-based force-d
 
 - **Color Legend**
 
-  <img src="misc/color-legend.gif" width="85%" />
+  <img src="misc/color-legend.gif" />
 
   Hover legend items to highlight matching issues and sort items
   
-  <img src="misc/color-gradient.png" width="85%" />
+  <img src="misc/color-gradient.png" />
 
   Gradient coloring for some data fields
 
@@ -50,7 +57,7 @@ Slice and dice your data to find exactly what you need.
 
 - **Deep Search**: Instantly find issues by ID, title, or content.
 
-  <img src="misc/search.gif" width="55%" />
+  <img src="misc/search.gif" width="100%" />
 
 - **Date Filters**: Filter by Created / Updated / Due Date with `after`, `before`, `between`, and `last X days`.
 
@@ -60,7 +67,7 @@ Slice and dice your data to find exactly what you need.
 Organize the chaos.
 - **Smart Grouping**: Cluster nodes by Status, Assignee, Author, Milestone, or any scoped label (e.g., `Priority::*`, `Type::*`).
 
-  <img src="misc/grouping.gif" width="55%" />
+  <img src="misc/grouping.gif" />
 
 - **Customizable Physics**: Tweak gravity, repulsion, link strength/distance, friction, and optional grid magnet in real-time.
 
@@ -99,7 +106,7 @@ Organize the chaos.
 
 - **Local caching**: Local caching ensures your graph loads instantly on reloads/F5.
 
-  <img src="misc/cache.png" width="45%" />
+  <img src="misc/cache.png" />
 
 - **Backup / restore**: Export/import cached graph data as a `.json` file for backups or moving between machines.
 
