@@ -2,7 +2,9 @@
 
 Handy Graph display of your gitlab issues.
 
-- single page application, no installation needed, no server needed
+- single page application
+- no installation needed, no server needed
+- runs completely in your browser only
 
 ![Main View](misc/usage.gif)
 
