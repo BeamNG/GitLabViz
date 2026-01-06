@@ -8,9 +8,10 @@ Handy Graph display of your gitlab issues.
 
 ![Main View](misc/usage.gif)
 
-## Live Application
+# GitLabViz 🚀
 
-https://beamng.github.io/GitLabViz/
+- [**View Live App**](https://beamng.github.io/GitLabViz/): https://beamng.github.io/GitLabViz/
+- [**Download Desktop App**](https://github.com/BeamNG/GitLabViz/releases/latest/download/GitLabViz.html) (and open it in your browser)
 
 ## Key Features
 
