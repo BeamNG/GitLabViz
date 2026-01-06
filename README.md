@@ -22,6 +22,8 @@ Move beyond list views. See how your issues connect with a physics-based force-d
 
   <img src="misc/issue2.png" width="45%" />
 
+  Double-clicking the issue will open them in a new tab.
+
 - **Dependency Tracking**: Visual arrows clearly show `blocks`, `is_blocked_by`, and `related_to` relationships.
 
   <img src="misc/arrows.png" width="45%" />
