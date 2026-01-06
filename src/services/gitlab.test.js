@@ -1,4 +1,3 @@
-import { describe, it, expect, vi } from 'vitest';
 import axios from 'axios';
 import { createGitLabClient, fetchProjectIssues, fetchIssueLinks } from './gitlab';
 
@@ -18,6 +17,7 @@ describe('gitlab service', () => {
 
     expect(mockCreate).toHaveBeenCalledWith({
       baseURL: mockBaseUrl,
+      timeout: 30000,
       headers: {
         'PRIVATE-TOKEN': mockToken,
       },
@@ -32,6 +32,7 @@ describe('gitlab service', () => {
 
     expect(mockCreate).toHaveBeenCalledWith({
       baseURL: undefined,
+      timeout: 30000,
       headers: {
         'PRIVATE-TOKEN': mockToken,
       },
@@ -99,7 +100,7 @@ describe('gitlab service', () => {
     const encodedProjectId = encodeURIComponent('group/project');
     const result = await fetchIssueLinks(mockClient, 'group/project', mockIssueId);
 
-    expect(mockClient.get).toHaveBeenCalledWith(`/projects/${encodedProjectId}/issues/${mockIssueId}/links`);
+    expect(mockClient.get).toHaveBeenCalledWith(`/projects/${encodedProjectId}/issues/${mockIssueId}/links`, {});
     expect(result).toEqual([{ id: 2 }]);
   });
 
@@ -107,11 +108,26 @@ describe('gitlab service', () => {
     const mockClient = {
       get: vi.fn().mockRejectedValue(new Error('Link Error')),
     };
-    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const result = await fetchIssueLinks(mockClient, mockProjectId, mockIssueId);
 
     expect(result).toEqual([]);
+    expect(consoleSpy).toHaveBeenCalled();
+  });
+
+  it('fetchProjectIssues retries on 429 and succeeds', async () => {
+    const mockClient = {
+      get: vi.fn()
+        .mockRejectedValueOnce({ response: { status: 429, headers: { 'retry-after': '0' } } })
+        .mockResolvedValueOnce({ data: [{ id: 1 }], headers: { 'x-total-pages': '1' } }),
+    };
+
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const result = await fetchProjectIssues(mockClient, mockProjectId, null, { retry: { maxRetries: 2, retryBaseDelayMs: 0 } });
+
+    expect(result).toEqual([{ id: 1 }]);
+    expect(mockClient.get).toHaveBeenCalledTimes(2);
     expect(consoleSpy).toHaveBeenCalled();
   });
 });

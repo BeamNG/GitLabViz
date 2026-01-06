@@ -3,6 +3,10 @@ import axios from 'axios';
 // Set to -1 to fetch all pages, or a positive integer (e.g. 3) for debugging/limit
 export const PAGE_LIMIT = -1;
 const PER_PAGE = 100
+const DEFAULT_TIMEOUT_MS = 30_000
+const DEFAULT_MAX_RETRIES = 3
+const DEFAULT_RETRY_BASE_DELAY_MS = 500
+const DEFAULT_RETRY_MAX_DELAY_MS = 5_000
 
 export const normalizeGitLabApiBaseUrl = (gitlabUrl) => {
   let u = String(gitlabUrl || '').trim().replace(/\/+$/, '')
@@ -11,9 +15,69 @@ export const normalizeGitLabApiBaseUrl = (gitlabUrl) => {
   return u
 }
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms))
+
+const getRetryAfterMs = (headers) => {
+  const ra = headers && (headers['retry-after'] || headers['Retry-After'])
+  if (!ra) return 0
+  const raw = String(ra).trim()
+  if (!raw) return 0
+
+  // either seconds or HTTP date
+  const seconds = Number(raw)
+  if (Number.isFinite(seconds) && seconds > 0) return Math.min(seconds * 1000, 60_000)
+
+  const t = Date.parse(raw)
+  if (Number.isFinite(t)) return Math.max(0, Math.min(t - Date.now(), 60_000))
+  return 0
+}
+
+const isRetryableGitLabError = (error) => {
+  const status = error?.response?.status
+  // Network / timeout / no response
+  if (!status) {
+    // Only treat axios-style request failures as retryable.
+    // Plain errors (e.g. thrown by our own code) should not be retried.
+    if (error?.isAxiosError) return true
+    if (error?.code) return true
+    if (error?.request) return true
+    return false
+  }
+  // Rate limit + transient server errors
+  return status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504
+}
+
+const gitlabGet = async (client, url, config = {}, retryOptions = {}) => {
+  const {
+    maxRetries = DEFAULT_MAX_RETRIES,
+    retryBaseDelayMs = DEFAULT_RETRY_BASE_DELAY_MS,
+    retryMaxDelayMs = DEFAULT_RETRY_MAX_DELAY_MS,
+  } = retryOptions
+
+  let attempt = 0
+  // total tries = 1 + maxRetries
+  while (true) {
+    try {
+      return await client.get(url, config)
+    } catch (error) {
+      if (attempt >= maxRetries || !isRetryableGitLabError(error)) throw error
+
+      const headers = error?.response?.headers || {}
+      const retryAfterMs = getRetryAfterMs(headers)
+      const backoffMs = Math.min(retryMaxDelayMs, retryBaseDelayMs * (2 ** attempt))
+      const waitMs = Math.max(retryAfterMs, backoffMs)
+
+      attempt++
+      console.warn(`[GitLab] Request failed (${error?.response?.status || 'network'}). Retrying in ${waitMs}ms...`, url)
+      await sleep(waitMs)
+    }
+  }
+}
+
 export const createGitLabClient = (baseUrl, token) => {
   return axios.create({
     baseURL: baseUrl,
+    timeout: DEFAULT_TIMEOUT_MS,
     headers: {
       'PRIVATE-TOKEN': token,
     },
@@ -27,6 +91,7 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
     let page = 1;
     let hasMore = true;
     let totalPages = 0;
+    let safetyCounter = 0
 
     const baseParams = {
       per_page: PER_PAGE,
@@ -35,6 +100,10 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
     };
 
     while (hasMore) {
+      safetyCounter++
+      // absolute safety valve against any weird pagination loops
+      if (safetyCounter > 10_000) throw new Error('Aborting: too many GitLab pagination requests (possible loop).')
+
       if (onProgress) {
         const stateLabel = baseParams.state === 'opened' ? '' : ` (${baseParams.state})`;
         if (totalPages > 0) {
@@ -45,12 +114,17 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
         }
       }
       
-      const response = await client.get(`/projects/${encodedProjectId}/issues`, {
-        params: {
-          ...baseParams,
-          page: page
-        }
-      });
+      const response = await gitlabGet(
+        client,
+        `/projects/${encodedProjectId}/issues`,
+        {
+          params: {
+            ...baseParams,
+            page: page
+          }
+        },
+        options.retry
+      )
 
       if (!Array.isArray(response.data)) {
         const ct = String(response?.headers?.['content-type'] || '')
@@ -86,7 +160,12 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
 export const fetchIssueLinks = async (client, projectId, issueIid) => {
    try {
     const encodedProjectId = encodeURIComponent(projectId);
-    const response = await client.get(`/projects/${encodedProjectId}/issues/${issueIid}/links`);
+    const response = await gitlabGet(
+      client,
+      `/projects/${encodedProjectId}/issues/${issueIid}/links`,
+      {},
+      { maxRetries: 1 }
+    )
     return response.data;
   } catch (error) {
      console.warn(`Warning: Failed to fetch links for issue ${issueIid}: ${error.message}`);
