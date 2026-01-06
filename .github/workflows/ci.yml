@@ -7,6 +7,18 @@ on:
   pull_request:
     branches: [ main ]
 
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
 jobs:
   build-spa:
     runs-on: ubuntu-latest
@@ -39,8 +51,6 @@ jobs:
     needs: build-spa
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - name: Download dist artifact
         uses: actions/download-artifact@v4
@@ -50,7 +60,6 @@ jobs:
 
       - name: Prepare Assets
         run: |
-          # Rename the html file for clarity in the release assets list
           cp release-files/index.html ./GitLabViz.html
 
       - name: Create Release
@@ -61,3 +70,23 @@ jobs:
           generate_release_notes: true
           draft: false
           prerelease: false
+
+  pages:
+    needs: build-spa
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './dist'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
