@@ -17,6 +17,11 @@ Handy Graph display of your gitlab issues.
 
 ### 🕸️ Interactive Graph Visualization
 Move beyond list views. See how your issues connect with a physics-based force-directed layout.
+
+- **Zoom**: zoom in and see all the issue details or zoom out and see the general overview
+
+  <img src="misc/issue2.png" width="45%" />
+
 - **Dependency Tracking**: Visual arrows clearly show `blocks`, `is_blocked_by`, and `related_to` relationships.
 
   <img src="misc/arrows.png" width="45%" />
