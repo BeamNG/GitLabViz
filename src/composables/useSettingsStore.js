@@ -1,57 +1,10 @@
 import { reactive, watch, toRaw } from 'vue'
 import localforage from 'localforage'
 import { defaultSettings } from '../defaultSettings'
+import { encodeGitLabTokenForStorage, decodeGitLabTokenFromStorage } from '../utils/tokenObfuscation'
 
 let _store
 const hasDisk = () => !!(window.electronAPI?.settingsGet && window.electronAPI?.settingsSet)
-
-const TOKEN_PREFIX = 'glv-xor1:'
-const TOKEN_KEY = 'gitlab-viz-token-xor-v1'
-
-const toBytes = (s) => new TextEncoder().encode(String(s || ''))
-const fromBytes = (b) => new TextDecoder().decode(b)
-
-const bytesToBase64 = (bytes) => {
-  let bin = ''
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
-  return btoa(bin)
-}
-
-const base64ToBytes = (b64) => {
-  const bin = atob(String(b64 || ''))
-  const bytes = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i) & 0xff
-  return bytes
-}
-
-const xorBytes = (bytes, keyBytes) => {
-  if (!keyBytes || !keyBytes.length) return bytes
-  const out = new Uint8Array(bytes.length)
-  for (let i = 0; i < bytes.length; i++) out[i] = bytes[i] ^ keyBytes[i % keyBytes.length]
-  return out
-}
-
-export const encodeGitLabTokenForStorage = (token) => {
-  const raw = String(token || '')
-  if (!raw) return ''
-  if (raw.startsWith(TOKEN_PREFIX)) return raw
-  const x = xorBytes(toBytes(raw), toBytes(TOKEN_KEY))
-  return `${TOKEN_PREFIX}${bytesToBase64(x)}`
-}
-
-export const decodeGitLabTokenFromStorage = (maybeEncoded) => {
-  const raw = String(maybeEncoded || '')
-  if (!raw.startsWith(TOKEN_PREFIX)) return raw
-  try {
-    const b64 = raw.slice(TOKEN_PREFIX.length)
-    const x = base64ToBytes(b64)
-    const plainBytes = xorBytes(x, toBytes(TOKEN_KEY))
-    return fromBytes(plainBytes)
-  } catch {
-    // Backward/forward compatible: if decode fails, keep as-is.
-    return raw
-  }
-}
 
 export function useSettingsStore() {
   if (_store) return _store
@@ -61,11 +14,22 @@ export function useSettingsStore() {
   
   // 2. Define Save Logic
   const save = () => {
-    const raw = toRaw(settings)
-    if (raw && raw.config && typeof raw.config.token === 'string') {
-      raw.config.token = encodeGitLabTokenForStorage(raw.config.token)
+    // IMPORTANT: do not mutate the in-memory reactive settings when encoding for storage.
+    // toRaw(settings) returns the underlying object; changing it would change live state.
+    const src = toRaw(settings)
+    let snapshot
+    try {
+      snapshot = structuredClone(src)
+    } catch {
+      snapshot = JSON.parse(JSON.stringify(src))
     }
-    hasDisk() ? window.electronAPI.settingsSet(raw) : localforage.setItem('settings', raw)
+
+    if (snapshot && snapshot.config && typeof snapshot.config.token === 'string') {
+      // Store token obfuscated under a dedicated key; do not keep plain token on disk.
+      snapshot.config.tokenObfuscated = encodeGitLabTokenForStorage(snapshot.config.token)
+      delete snapshot.config.token
+    }
+    hasDisk() ? window.electronAPI.settingsSet(snapshot) : localforage.setItem('settings', snapshot)
   }
 
   // 3. One-time Init
@@ -110,9 +74,10 @@ export function useSettingsStore() {
       }
 
       // Obfuscation-at-rest: token is stored encoded but used in-memory as plain text.
-      if (typeof savedData?.config?.token === 'string') {
-        settings.config.token = decodeGitLabTokenFromStorage(savedData.config.token)
-      }
+      const storedToken = (savedData?.config && typeof savedData.config.tokenObfuscated === 'string')
+        ? savedData.config.tokenObfuscated
+        : (savedData?.config && typeof savedData.config.token === 'string' ? savedData.config.token : '')
+      if (storedToken) settings.config.token = decodeGitLabTokenFromStorage(storedToken)
     }
 
     // 4. ONLY start watching after load is complete.

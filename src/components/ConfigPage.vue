@@ -146,8 +146,8 @@
             <v-switch v-model="settings.config.enableGitLab" color="success" hide-details inset label="Enable GitLab" />
           </div>
 
-          <v-row dense class="mb-3">
-            <v-col cols="12" sm="9">
+          <v-row dense class="mb-4">
+            <v-col cols="12">
               <v-text-field
                 v-model="settings.config.gitlabApiBaseUrl"
                 label="GitLab URL"
@@ -162,33 +162,25 @@
                 </template>
               </v-text-field>
             </v-col>
-            <v-col cols="12" sm="3" class="d-flex">
-              <v-btn
-                variant="tonal"
-                class="text-none align-self-start mt-1"
-                block
-                style="height: 56px;"
-                :loading="gitlabTestLoading"
-                :disabled="gitlabTestLoading || !settings.config.enableGitLab || !settings.config.gitlabApiBaseUrl"
-                @click="testGitLabConnection"
-              >
-                Test connection
-              </v-btn>
-            </v-col>
           </v-row>
 
-          <v-alert
-            v-if="gitlabTestResult"
-            :type="gitlabTestResult.type || (gitlabTestResult.ok ? 'success' : 'error')"
-            variant="tonal"
-            density="compact"
-            class="mb-3"
+          <v-text-field
+            v-model="settings.config.projectId"
+            label="Project ID / Path"
+            variant="outlined"
+            :disabled="!settings.config.enableGitLab"
+            hint="e.g. 'group/project' or numeric ID"
+            persistent-hint
+            bg-color="surface"
+            class="mb-4"
           >
-            {{ gitlabTestResult.message }}
-          </v-alert>
+            <template #prepend-inner>
+              <v-icon icon="mdi-identifier" size="small" class="text-medium-emphasis" />
+            </template>
+          </v-text-field>
 
-          <v-row dense class="mb-3">
-            <v-col cols="12" sm="9">
+          <v-row dense class="mb-4">
+            <v-col cols="12">
               <v-text-field
                 v-model="settings.config.token"
                 label="Personal Access Token"
@@ -204,36 +196,7 @@
                 </template>
               </v-text-field>
             </v-col>
-            <v-col cols="12" sm="3" class="d-flex">
-              <v-btn
-                color="primary"
-                variant="elevated"
-                class="text-none font-weight-bold align-self-start mt-1"
-                block
-                style="height: 56px;"
-                :loading="gitlabTestLoading"
-                :disabled="gitlabTestLoading || !settings.config.enableGitLab"
-                @click="saveAndReloadGitLab"
-              >
-                <v-icon start>mdi-refresh</v-icon>
-                Save & Reload
-              </v-btn>
-            </v-col>
           </v-row>
-
-          <v-text-field
-            v-model="settings.config.projectId"
-            label="Project ID / Path"
-            variant="outlined"
-            :disabled="!settings.config.enableGitLab"
-            hint="e.g. 'group/project' or numeric ID"
-            persistent-hint
-            bg-color="surface"
-          >
-            <template #prepend-inner>
-              <v-icon icon="mdi-identifier" size="small" class="text-medium-emphasis" />
-            </template>
-          </v-text-field>
 
           <v-select
             v-model="settings.config.gitlabClosedDays"
@@ -248,7 +211,7 @@
             label="Include closed issues"
             variant="outlined"
             density="comfortable"
-            class="mt-3"
+            class="mb-4"
             :disabled="!settings.config.enableGitLab"
             bg-color="surface"
             hint="Fetch issues closed within the last X days"
@@ -258,6 +221,45 @@
               <v-icon icon="mdi-archive-check-outline" size="small" class="text-medium-emphasis" />
             </template>
           </v-select>
+
+          <v-alert
+            v-if="gitlabTestResult"
+            :type="gitlabTestResult.type || (gitlabTestResult.ok ? 'success' : 'error')"
+            variant="tonal"
+            density="compact"
+            class="mb-3"
+          >
+            {{ gitlabTestResult.message }}
+          </v-alert>
+
+          <v-row dense class="mt-2" justify="end">
+            <v-col cols="auto">
+              <v-btn
+                variant="tonal"
+                class="text-none"
+                style="height: 56px;"
+                :loading="gitlabTestLoading"
+                :disabled="gitlabTestLoading || !settings.config.enableGitLab || !settings.config.gitlabApiBaseUrl"
+                @click="testGitLabConnection"
+              >
+                Test connection
+              </v-btn>
+            </v-col>
+            <v-col cols="auto">
+              <v-btn
+                color="primary"
+                variant="elevated"
+                class="text-none font-weight-bold"
+                style="height: 56px;"
+                :loading="gitlabTestLoading"
+                :disabled="gitlabTestLoading || !settings.config.enableGitLab"
+                @click="saveAndReloadGitLab"
+              >
+                <v-icon start>mdi-refresh</v-icon>
+                Save & Reload
+              </v-btn>
+            </v-col>
+          </v-row>
 
           <v-alert
             v-if="settings.config.enableGitLab"
@@ -284,7 +286,7 @@
               <li class="mb-1">Give it a name (e.g. <code>GitLab Viz</code>) and optionally set an expiry date.</li>
               <li class="mb-1">Tick these scopes: <code>read_api</code> and <code>read_user</code>.</li>
               <li class="mb-1">Click <strong>Create personal access token</strong>.</li>
-              <li>Copy the token immediately (GitLab usually only shows it once), then paste it into <strong>Personal Access Token</strong> above.</li>
+              <li>Copy the token immediately (GitLab usually only shows it once), then paste it into <strong>Personal Access Token</strong> below.</li>
             </ol>
           </v-alert>
         </v-container>
