@@ -676,6 +676,22 @@
                 <div><strong>Runtime</strong>: {{ runtimeLabel }}</div>
                 <div><strong>Mode</strong>: {{ buildMode }}</div>
                 <div><strong>Build</strong>: {{ isDev ? 'development' : 'production' }}</div>
+                <div v-if="buildTime"><strong>Built</strong>: {{ new Date(buildTime).toLocaleString() }}</div>
+                <div v-if="gitCommit"><strong>Commit</strong>: {{ gitCommit }}<span v-if="gitDirty"> (dirty)</span></div>
+                <div v-if="gitBranch"><strong>Branch</strong>: {{ gitBranch }}</div>
+                <div v-if="gitRepo"><strong>Repo</strong>: <span style="word-break: break-word;">{{ gitRepo }}</span></div>
+                <div v-if="ciProvider === 'github'">
+                  <strong>CI</strong>:
+                  <a
+                    v-if="githubRunUrl"
+                    :href="githubRunUrl"
+                    target="_blank"
+                    rel="noreferrer"
+                    class="text-decoration-none font-weight-bold"
+                  >GitHub Actions</a>
+                  <span v-else>GitHub Actions</span>
+                  <span v-if="githubRunLabel"> — {{ githubRunLabel }}</span>
+                </div>
               </div>
             </v-card-text>
           </v-card>
@@ -687,7 +703,6 @@
                 <div><strong>Platform</strong>: {{ platform }}</div>
                 <div><strong>User Agent</strong>: <span style="word-break: break-word;">{{ userAgent }}</span></div>
                 <div><strong>Settings storage</strong>: {{ settingsStorage }}</div>
-                <div><strong>Configured project</strong>: {{ settings.config.projectId || '(none)' }}</div>
               </div>
             </v-card-text>
           </v-card>
@@ -703,9 +718,15 @@
                 <li>Steps to reproduce</li>
                 <li>Screenshot/video if it’s UI-related</li>
               </ul>
-              <div class="text-caption text-medium-emphasis mt-3">
-                Tip: If you’re using the reuse-tab option for issues, set <strong>Config → Display → Open GitLab issues</strong>.
+              <div class="text-body-2 mt-2">
+                <a
+                  :href="issuesUrl"
+                  target="_blank"
+                  rel="noreferrer"
+                  class="text-decoration-none font-weight-bold"
+                >Open GitHub Issues</a>
               </div>
+
             </v-card-text>
           </v-card>
 
@@ -911,6 +932,84 @@ const gitlabTokenHelpUrl = computed(() => {
 const appVersion = computed(() => {
   const v = pkg && pkg.version ? String(pkg.version) : ''
   return v || '0.0.0'
+})
+
+const buildTime = computed(() => {
+  try {
+    return __BUILD_TIME__ || ''
+  } catch {
+    return ''
+  }
+})
+const gitCommit = computed(() => {
+  try {
+    return __GIT_COMMIT__ || ''
+  } catch {
+    return ''
+  }
+})
+const gitBranch = computed(() => {
+  try {
+    return __GIT_BRANCH__ || ''
+  } catch {
+    return ''
+  }
+})
+const gitRepo = computed(() => {
+  try {
+    return __GIT_REPO__ || ''
+  } catch {
+    return ''
+  }
+})
+const gitDirty = computed(() => {
+  try {
+    return !!__GIT_DIRTY__
+  } catch {
+    return false
+  }
+})
+
+const issuesUrl = computed(() => {
+  return pkg && pkg.bugs && pkg.bugs.url ? String(pkg.bugs.url) : ''
+})
+
+const ciProvider = computed(() => {
+  try {
+    return __CI_PROVIDER__ || ''
+  } catch {
+    return ''
+  }
+})
+const githubRunUrl = computed(() => {
+  try {
+    if (__CI_PROVIDER__ !== 'github') return ''
+    const server = __GITHUB_SERVER_URL__ || ''
+    const repo = __GITHUB_REPOSITORY__ || ''
+    const runId = __GITHUB_RUN_ID__ || ''
+    if (!server || !repo || !runId) return ''
+    return `${server}/${repo}/actions/runs/${runId}`
+  } catch {
+    return ''
+  }
+})
+const githubRunLabel = computed(() => {
+  try {
+    if (__CI_PROVIDER__ !== 'github') return ''
+    const n = __GITHUB_RUN_NUMBER__ || ''
+    const a = __GITHUB_RUN_ATTEMPT__ || ''
+    const wf = __GITHUB_WORKFLOW__ || ''
+    const ref = __GITHUB_REF_NAME__ || ''
+    const sha = (__GITHUB_SHA__ || '').slice(0, 7)
+    const parts = []
+    if (wf) parts.push(wf)
+    if (n) parts.push(`#${n}${a ? `.${a}` : ''}`)
+    if (ref) parts.push(ref)
+    if (sha) parts.push(sha)
+    return parts.join(' · ')
+  } catch {
+    return ''
+  }
 })
 
 const runtimeLabel = computed(() => (isElectron.value ? 'Electron' : 'Web'))
