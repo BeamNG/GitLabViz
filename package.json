@@ -11,7 +11,7 @@
     "electron",
     "spa"
   ],
-  "author": "Thoms Fischer <tfischer@beamng.gmbh>",
+  "author": "Thomas Fischer <tfischer@beamng.gmbh>",
   "private": true,
   "version": "0.3.9",
   "license": "MIT",
