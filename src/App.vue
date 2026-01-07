@@ -1267,7 +1267,9 @@ const groupStatsText = computed(() => {
 
 const dataAge = computed(() => {
   if (!lastUpdated.value) return null
-  const diff = nowTick.value - lastUpdated.value
+  // If the saved timestamp is slightly in the future (clock skew / timezone / restore),
+  // clamp to 0 to avoid negative "age" labels like "-1m ago".
+  const diff = Math.max(0, nowTick.value - lastUpdated.value)
   const minutes = Math.floor(diff / 60000)
   if (minutes < 60) return `${minutes}m ago`
   const hours = Math.floor(minutes / 60)
@@ -1282,7 +1284,7 @@ const lastUpdatedDate = computed(() => {
 
 const isDataStale = computed(() => {
   if (!lastUpdated.value) return false
-  const hours = (nowTick.value - lastUpdated.value) / (1000 * 60 * 60)
+  const hours = Math.max(0, (nowTick.value - lastUpdated.value) / (1000 * 60 * 60))
   return hours > 6
 })
 
@@ -1599,6 +1601,7 @@ function createMockIssuesGraph () {
 
 const handleConfigSave = () => {
     activePage.value = 'main'
+    if (loading.value) return
     loadData()
 }
 
@@ -1699,6 +1702,9 @@ const handleClearSource = async (payload) => {
 }
 
 const loadData = async (opts = {}) => {
+  // Do not start another fetch while one is already running (no queueing).
+  if (loading.value) return
+
   const only = opts.only || 'both' // 'gitlab' | 'svn' | 'mattermost' | 'both'
   const doGitLab = (only === 'both' || only === 'gitlab') && settings.config.enableGitLab
   const doSvn = isElectron.value && (only === 'both' || only === 'svn') && settings.config.enableSvn

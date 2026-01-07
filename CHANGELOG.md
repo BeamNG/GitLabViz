@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.8] - 2026-01-07
+- Prevent duplicate GitLab fetches: ignore “Save & Close/Reload” triggers while an update is already running.
+
 ## [0.3.7] - 2026-01-07
 - Fix token-at-rest obfuscation: store token under `config.tokenObfuscated` (not `config.token`), keep runtime token plain, and keep `glv-xor1:` format.
 
