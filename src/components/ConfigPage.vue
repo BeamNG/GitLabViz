@@ -673,6 +673,7 @@
             <v-card-text>
               <div class="d-flex flex-column gap-1">
                 <div><strong>App</strong>: GitLab Viz v{{ appVersion }}</div>
+                <div><strong>Homepage</strong>: <a :href="homepageUrl" target="_blank" rel="noreferrer" class="text-decoration-none font-weight-bold">{{ homepageUrl }}</a></div>
                 <div><strong>Runtime</strong>: {{ runtimeLabel }}</div>
                 <div><strong>Mode</strong>: {{ buildMode }}</div>
                 <div><strong>Build</strong>: {{ isDev ? 'development' : 'production' }}</div>
@@ -808,7 +809,7 @@ const props = defineProps({
   }
 })
 
-const emit = defineEmits(['close', 'save', 'clear-data', 'update-source', 'clear-source'])
+const emit = defineEmits(['close', 'save', 'clear-data', 'update-source', 'clear-source', 'tab-change'])
 
 // Use shared settings directly (saves on any change)
 const { settings } = useSettingsStore()
@@ -974,6 +975,10 @@ const issuesUrl = computed(() => {
   return pkg && pkg.bugs && pkg.bugs.url ? String(pkg.bugs.url) : ''
 })
 
+const homepageUrl = computed(() => {
+  return pkg && pkg.homepage ? String(pkg.homepage) : ''
+})
+
 const ciProvider = computed(() => {
   try {
     return __CI_PROVIDER__ || ''
@@ -1124,6 +1129,15 @@ const tab = ref(props.initialTab || 'gitlab')
 
 // In SPA/web, default to GitLab tab if no specific tab requested, but allow overrides (like changelog)
 if (!window.electronAPI && !props.initialTab) tab.value = 'gitlab'
+
+watch(() => props.initialTab, (v) => {
+  const next = String(v || '').trim()
+  if (next && tab.value !== next) tab.value = next
+})
+
+watch(tab, (v) => {
+  emit('tab-change', v)
+})
 const cachePath = ref('')
 const mmEmail = ref('')
 const mmPassword = ref('')

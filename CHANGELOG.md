@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.9] - 2026-01-07
+- Improved navigation state persistence in the URL
+- Improved About page
+
 ## [0.3.8] - 2026-01-07
 - Prevent duplicate GitLab fetches: ignore “Save & Close/Reload” triggers while an update is already running.
 
