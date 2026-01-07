@@ -8,6 +8,10 @@ Graph display of your gitlab issues.
 - no installation needed, no server needed
 - runs completely in your browser only
 
+<img src="misc/who.png" />
+
+Great to figure out who is working on what
+
 # GitLabViz 🚀
 
 - **View Live**
@@ -23,7 +27,6 @@ Graph display of your gitlab issues.
 ## Key Features
 
 ### 🏙️ Interactive Graph Visualization
-
 
 - **Zoom**: see the issue in all details or zoom out and see the general overview
 
