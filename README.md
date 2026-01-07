@@ -34,6 +34,11 @@ Great to figure out who is working on what
 
   Double-clicking the issue will open them in a new tab.
 
+  <img src="misc/zoom2.png"/>
+
+  <img src="misc/zoom3.png"/>
+
+
 - **Dependency Tracking**: Visual arrows clearly show `blocks`, `is_blocked_by`, and `related_to` relationships.
 
   <img src="misc/arrows.png" width="45%" />
