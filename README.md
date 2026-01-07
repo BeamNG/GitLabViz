@@ -129,7 +129,7 @@ Download the html from above and open it :)
 
 ## Privacy / Data Handling
 
-- **No backend**: GitLab Viz runs entirely in your browser. There is no GitLab Viz server.
+- **No backend**: GitLab Viz runs entirely in your browser. There is no GitLab Viz server. All data lives in your browser cache and is never sent anywhere.
 - **Network requests**: **GitLab**: When enabled, the app calls your configured GitLab API URL directly from your machine and renders the data locally.
 - **Local storage**: Settings and cached graph data are stored in your browser storage (IndexedDB via `localforage`) under keys like `settings`, `gitlab_nodes`, `gitlab_edges`, `gitlab_meta`.
 
