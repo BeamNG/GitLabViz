@@ -22,8 +22,8 @@ Graph display of your gitlab issues.
 
 ## Key Features
 
-### 🕸️ Interactive Graph Visualization
-Move beyond list views. See how your issues connect with a physics-based force-directed layout.
+### 🏙️ Interactive Graph Visualization
+
 
 - **Zoom**: see the issue in all details or zoom out and see the general overview
 
@@ -35,7 +35,7 @@ Move beyond list views. See how your issues connect with a physics-based force-d
 
   <img src="misc/arrows.png" width="45%" />
 
-- **Status Coloring**: Nodes are color-coded by status (To Do, In Progress, Done) or customized based on your view settings.
+- **Coloring**: Nodes are color-coded by status (To Do, In Progress, Done) or customized based on your view settings.
 
   <img src="misc/color-modes.gif" width="25%" />
 
