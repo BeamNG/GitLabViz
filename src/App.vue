@@ -106,7 +106,7 @@
                 >
                   <v-icon icon="mdi-fit-to-screen" size="small"></v-icon>
                 </v-btn>
-                 <v-btn 
+                <v-btn 
                   icon 
                   variant="text" 
                   size="x-small" 
@@ -116,16 +116,6 @@
                   class="mr-1"
                 >
                   <v-icon icon="mdi-refresh" size="small"></v-icon>
-                </v-btn>
-                <v-btn 
-                  icon 
-                  variant="text" 
-                  size="x-small" 
-                  color="medium-emphasis"
-                  @click="resetFilters"
-                  title="Reset All Filters"
-                >
-                  <v-icon icon="mdi-filter-off" size="small"></v-icon>
                 </v-btn>
             </div>
           </div>
@@ -207,6 +197,7 @@
               :grouping-mode-options="groupingModeOptions"
               :view-mode-options="viewModeOptions"
               :link-mode-options="linkModeOptions"
+              @reset-filters="resetFilters"
             />
             <div class="d-flex align-center justify-space-between mb-2 cursor-pointer user-select-none" @click="settings.uiState.ui.showAdvancedSim = !settings.uiState.ui.showAdvancedSim">
               <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis">Simulation</div>
@@ -385,6 +376,12 @@
          <v-tooltip text="Recenter Graph" location="right">
            <template v-slot:activator="{ props }">
              <v-btn icon="mdi-crosshairs-gps" variant="text" size="small" v-bind="props" @click.stop="refocusGraph"></v-btn>
+           </template>
+         </v-tooltip>
+
+         <v-tooltip text="Fit Graph to Screen" location="right">
+           <template v-slot:activator="{ props }">
+             <v-btn icon="mdi-fit-to-screen" variant="text" size="small" v-bind="props" @click.stop="fitGraph"></v-btn>
            </template>
          </v-tooltip>
 
@@ -1090,27 +1087,34 @@ const filteredNodes = computed(() => {
     // 6. Search Filter
     let searchMatch = true
     if (settings.uiState.filters.searchQuery) {
-        const query = settings.uiState.filters.searchQuery.toLowerCase()
+        const query = String(settings.uiState.filters.searchQuery || '').trim().toLowerCase()
         const raw = node._raw || {}
-        
-        // Extract JIRA ID if present in title
-        const jiraMatch = raw.title ? raw.title.match(/^\[([A-Z]+-\d+)\]/) : null
-        const jiraId = jiraMatch ? jiraMatch[1] : ''
 
-        const searchableText = [
-            raw.title,
-            raw.description,
-            String(node.id),
-            `#${node.id}`,
-            jiraId,
-            raw.author?.name,
-            raw.assignee?.name,
-            ...(raw.assignees || []).map(a => a.name),
-            raw.milestone?.title,
-            ...(raw.labels || [])
-        ].filter(Boolean).join(' ').toLowerCase()
-        
-        searchMatch = searchableText.includes(query)
+        // Exact issue-id shortcut:
+        // - "#123" or "123" matches ONLY that issue iid (prevents accidental matches on references in descriptions).
+        const m = query.match(/^#?(\d+)$/)
+        if (m && m[1]) {
+          searchMatch = String(node.id) === String(m[1])
+        } else {
+          // Extract JIRA ID if present in title
+          const jiraMatch = raw.title ? raw.title.match(/^\[([A-Z]+-\d+)\]/) : null
+          const jiraId = jiraMatch ? jiraMatch[1] : ''
+
+          const searchableText = [
+              raw.title,
+              raw.description,
+              String(node.id),
+              `#${node.id}`,
+              jiraId,
+              raw.author?.name,
+              raw.assignee?.name,
+              ...(raw.assignees || []).map(a => a.name),
+              raw.milestone?.title,
+              ...(raw.labels || [])
+          ].filter(Boolean).join(' ').toLowerCase()
+
+          searchMatch = searchableText.includes(query)
+        }
     }
 
     // 7. Date Filters

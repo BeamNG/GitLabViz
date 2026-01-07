@@ -2,7 +2,21 @@
   <!-- Filters Section -->
   <div class="d-flex align-center justify-space-between mb-2 cursor-pointer user-select-none" @click="state.ui.showFilters = !state.ui.showFilters">
     <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis">Filters</div>
-    <v-icon :icon="state.ui.showFilters ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="small" color="medium-emphasis"></v-icon>
+    <div class="d-flex align-center gap-1">
+      <v-tooltip text="Clear filters" location="right">
+        <template v-slot:activator="{ props }">
+          <v-btn
+            icon="mdi-filter-off"
+            variant="text"
+            size="x-small"
+            color="medium-emphasis"
+            v-bind="props"
+            @click.stop="emit('reset-filters')"
+          />
+        </template>
+      </v-tooltip>
+      <v-icon :icon="state.ui.showFilters ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="small" color="medium-emphasis"></v-icon>
+    </div>
   </div>
 
   <v-expand-transition><div v-show="state.ui.showFilters" class="px-1">
@@ -414,6 +428,7 @@
 </template>
 
 <script setup>
+const emit = defineEmits(['reset-filters'])
 const props = defineProps({
   // single dict for filters/view/ui (from useUiState)
   state: { type: Object, required: true },

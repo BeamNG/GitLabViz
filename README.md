@@ -107,6 +107,11 @@ Organize the chaos.
     <img src="misc/light_mode.png" width="45%" />
   </div>
 
+- **Context Menu**: rich context menu for issues
+
+  <img src="misc/context-menu.png" width="45%" />
+
+
 - **Local caching**: Local caching ensures your graph loads instantly on reloads/F5.
 
   <img src="misc/cache.png" />

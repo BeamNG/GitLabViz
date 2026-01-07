@@ -3,6 +3,164 @@
     <div ref="container" class="graph-container">
       <canvas ref="canvas"></canvas>
     </div>
+    <div
+      v-if="contextMenu.visible"
+      ref="contextMenuEl"
+      class="issue-context-menu"
+      :style="{ left: `${contextMenu.x}px`, top: `${contextMenu.y}px` }"
+      @contextmenu.prevent
+    >
+      <div class="issue-context-menu__header" :style="contextHeaderStyle">
+        <div class="issue-context-menu__header-top">
+          <div class="issue-context-menu__header-key">
+            {{ contextHeaderKey }}
+          </div>
+          <div v-if="contextHeaderState" class="issue-context-menu__header-state">
+            {{ contextHeaderState }}
+          </div>
+        </div>
+        <div class="issue-context-menu__header-title">
+          {{ contextHeaderTitle }}
+        </div>
+      </div>
+      <div class="issue-context-menu__section">
+        <button type="button" class="issue-context-menu__item" @click="onOpenTicket">
+          <span class="issue-context-menu__item-content">
+            <v-icon icon="mdi-open-in-new" size="x-small" class="issue-context-menu__icon" />
+            <span>Open ticket</span>
+          </span>
+        </button>
+        <div class="issue-context-menu__row">
+          <div class="issue-context-menu__row-label">
+            <v-icon icon="mdi-content-copy" size="x-small" class="issue-context-menu__icon" />
+            <span>Copy</span>
+          </div>
+          <div class="issue-context-menu__row-actions">
+            <button type="button" class="issue-context-menu__pill" title="Copy shorthand" aria-label="Copy shorthand" @click="onCopyShorthand">
+              <v-icon icon="mdi-pound" size="x-small" class="issue-context-menu__pill-icon" />
+            </button>
+            <button type="button" class="issue-context-menu__pill" title="Copy URL" aria-label="Copy URL" @click="onCopyUrl">
+              <v-icon icon="mdi-link-variant" size="x-small" class="issue-context-menu__pill-icon" />
+            </button>
+            <button type="button" class="issue-context-menu__pill" title="Copy markdown link" aria-label="Copy markdown link" @click="onCopyMarkdown">
+              <v-icon icon="mdi-language-markdown" size="x-small" class="issue-context-menu__pill-icon" />
+            </button>
+            <button type="button" class="issue-context-menu__pill" title="Copy summary" aria-label="Copy summary" @click="onCopySummary">
+              <v-icon icon="mdi-text-box-outline" size="x-small" class="issue-context-menu__pill-icon" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="issue-context-menu__divider"></div>
+
+      <div class="issue-context-menu__section">
+        <div class="issue-context-menu__title">
+          <v-icon icon="mdi-filter-outline" size="x-small" class="issue-context-menu__icon" />
+          <span>Filter by</span>
+        </div>
+        <div class="issue-context-menu__grid">
+          <button
+            v-if="contextIssueAuthor"
+            type="button"
+            class="issue-context-menu__item"
+            @click="onFilterAuthor"
+          >
+            <span class="issue-context-menu__item-content">
+              <v-icon icon="mdi-account-edit" size="x-small" class="issue-context-menu__icon" />
+              <span>author = {{ contextIssueAuthor }}</span>
+            </span>
+          </button>
+          <button
+            v-if="contextIssueAssignee"
+            type="button"
+            class="issue-context-menu__item"
+            @click="onFilterAssignee"
+          >
+            <span class="issue-context-menu__item-content">
+              <v-icon icon="mdi-account" size="x-small" class="issue-context-menu__icon" />
+              <span>assignee = {{ contextIssueAssignee }}</span>
+            </span>
+          </button>
+          <button
+            v-if="contextIssueMilestone"
+            type="button"
+            class="issue-context-menu__item"
+            @click="onFilterMilestone"
+          >
+            <span class="issue-context-menu__item-content">
+              <v-icon icon="mdi-flag" size="x-small" class="issue-context-menu__icon" />
+              <span>milestone = {{ contextIssueMilestone }}</span>
+            </span>
+          </button>
+          <button
+            v-if="contextIssueStatus"
+            type="button"
+            class="issue-context-menu__item"
+            @click="onFilterStatus"
+          >
+            <span class="issue-context-menu__item-content">
+              <v-icon icon="mdi-list-status" size="x-small" class="issue-context-menu__icon" />
+              <span>status = {{ contextIssueStatus }}</span>
+            </span>
+          </button>
+          <button
+            v-if="contextIssuePriority"
+            type="button"
+            class="issue-context-menu__item"
+            @click="onFilterPriority"
+          >
+            <span class="issue-context-menu__item-content">
+              <v-icon icon="mdi-alert-circle" size="x-small" class="issue-context-menu__icon" />
+              <span>priority = {{ contextIssuePriority }}</span>
+            </span>
+          </button>
+          <button
+            v-if="contextIssueType"
+            type="button"
+            class="issue-context-menu__item"
+            @click="onFilterType"
+          >
+            <span class="issue-context-menu__item-content">
+              <v-icon icon="mdi-shape" size="x-small" class="issue-context-menu__icon" />
+              <span>type = {{ contextIssueType }}</span>
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <template v-if="contextIssueLabels.length">
+        <div class="issue-context-menu__divider"></div>
+        <div class="issue-context-menu__section">
+          <div class="issue-context-menu__title issue-context-menu__title--row">
+            <span class="issue-context-menu__title-left">
+              <v-icon icon="mdi-tag-multiple" size="x-small" class="issue-context-menu__icon" />
+              <span>Filter by label</span>
+            </span>
+            <button
+              type="button"
+              class="issue-context-menu__title-action"
+              title="Same label combination"
+              @click="onFilterSameLabelCombo"
+            >
+              Same combo
+            </button>
+          </div>
+          <div class="issue-context-menu__chips">
+            <button
+              v-for="lab in contextIssueLabels"
+              :key="lab"
+              type="button"
+              class="issue-context-menu__chip"
+              :title="`Filter by label: ${lab}`"
+              @click="onFilterLabel(lab)"
+            >
+              {{ lab }}
+            </button>
+          </div>
+        </div>
+      </template>
+    </div>
     <div v-if="(showLegend && (legendItems.length || legendGradient)) || showLinkLegend" class="legend">
       <div class="legend-title">
         <span>Legend</span>
@@ -49,7 +207,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch, toRaw } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, toRaw, nextTick } from 'vue'
 import * as d3 from 'd3'
 import { useSettingsStore } from '../composables/useSettingsStore'
 
@@ -72,8 +230,298 @@ const props = defineProps({
 
 const container = ref(null)
 const canvas = ref(null)
+const contextMenuEl = ref(null)
 
 const { settings } = useSettingsStore()
+
+const contextMenu = ref({ visible: false, x: 0, y: 0, node: null, selectedNodeId: null })
+
+const contextIssueRaw = computed(() => contextMenu.value.node?._raw || null)
+const contextNodeColor = computed(() => contextMenu.value.node?.color || '')
+const contextHeaderKey = computed(() => {
+  const n = contextMenu.value.node
+  const short = getIssueShorthand(n)
+  if (short) return short
+  const id = n && n.id != null ? String(n.id) : ''
+  return id ? `#${id}` : ''
+})
+const contextHeaderTitle = computed(() => {
+  const n = contextMenu.value.node
+  const raw = n?._raw || {}
+  const title = String(raw.title || '').trim()
+  if (title) return title
+  return String(n?.name || '').trim()
+})
+const contextHeaderState = computed(() => {
+  const s = String(contextIssueRaw.value?.state || '').trim()
+  return s ? s.toUpperCase() : ''
+})
+const contextHeaderStyle = computed(() => {
+  const c = d3.color(contextNodeColor.value || '')
+  const accent = c ? c.formatHex() : ''
+  const bg = c ? (() => { const x = c.copy({ opacity: 0.14 }); return x.toString() })() : ''
+  return {
+    borderLeftColor: accent || undefined,
+    background: bg || undefined
+  }
+})
+const contextIssueAuthor = computed(() => contextIssueRaw.value?.author?.name || '')
+const contextIssueAssignee = computed(() => contextIssueRaw.value?.assignee?.name || '')
+const contextIssueMilestone = computed(() => contextIssueRaw.value?.milestone?.title || '')
+const contextIssueStatus = computed(() => {
+  const labels = contextIssueRaw.value?.labels || []
+  const s = Array.isArray(labels)
+    ? labels
+      .filter(l => typeof l === 'string' && l.startsWith('Status::'))
+      .map(l => l.substring('Status::'.length))
+      .filter(Boolean)
+    : []
+  return s.length ? s[s.length - 1] : ''
+})
+const contextIssuePriority = computed(() => {
+  const labels = contextIssueRaw.value?.labels || []
+  const s = Array.isArray(labels)
+    ? labels
+      .filter(l => typeof l === 'string' && l.startsWith('Priority::'))
+      .map(l => l.substring('Priority::'.length))
+      .filter(Boolean)
+    : []
+  return s.length ? s[s.length - 1] : ''
+})
+const contextIssueType = computed(() => {
+  const labels = contextIssueRaw.value?.labels || []
+  const s = Array.isArray(labels)
+    ? labels
+      .filter(l => typeof l === 'string' && l.startsWith('Type::'))
+      .map(l => l.substring('Type::'.length))
+      .filter(Boolean)
+    : []
+  return s.length ? s[s.length - 1] : ''
+})
+const contextIssueLabels = computed(() => {
+  const labels = contextIssueRaw.value?.labels || []
+  if (!Array.isArray(labels)) return []
+  return labels
+    .filter(l => typeof l === 'string' && l.trim())
+    .slice(0, 18)
+})
+const contextIssueLabelsAll = computed(() => {
+  const labels = contextIssueRaw.value?.labels || []
+  if (!Array.isArray(labels)) return []
+  return labels
+    .filter(l => typeof l === 'string' && l.trim())
+    .slice(0, 60)
+})
+
+const clamp = (n, a, b) => Math.max(a, Math.min(b, n))
+
+function closeContextMenu () {
+  if (!contextMenu.value.visible) return
+  contextMenu.value.visible = false
+  contextMenu.value.node = null
+  contextMenu.value.selectedNodeId = null
+  scheduleRender()
+}
+
+function getNodeAtPointer (event) {
+  const [clickX, clickY] = d3.pointer(event)
+  const x = (clickX - transform.x) / transform.k
+  const y = (clickY - transform.y) / transform.k
+  const w = CAPSULE_WIDTH
+  const h = CAPSULE_HEIGHT
+  for (let i = nodesData.length - 1; i >= 0; i--) {
+    const node = nodesData[i]
+    const nx = node.x - w / 2
+    const ny = node.y - h / 2
+    if (x >= nx && x <= nx + w && y >= ny && y <= ny + h) return node
+  }
+  return null
+}
+
+function openContextMenu (event, node) {
+  if (!container.value) return
+  const rect = container.value.getBoundingClientRect()
+  const MENU_W = 260
+  const MENU_H = 460
+  const px = event.clientX - rect.left
+  const py = event.clientY - rect.top
+  contextMenu.value.node = node
+  contextMenu.value.selectedNodeId = node && node.id != null ? String(node.id) : null
+  contextMenu.value.x = clamp(px, 8, Math.max(8, rect.width - MENU_W - 8))
+  contextMenu.value.y = clamp(py, 8, Math.max(8, rect.height - MENU_H - 8))
+  contextMenu.value.visible = true
+  nextTick(() => {})
+  scheduleRender()
+}
+
+async function copyText (text) {
+  const s = String(text || '')
+  if (!s) return false
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(s)
+      return true
+    }
+  } catch {
+    // ignore, fallback below
+  }
+  try {
+    const el = document.createElement('textarea')
+    el.value = s
+    el.setAttribute('readonly', '')
+    el.style.position = 'fixed'
+    el.style.left = '-9999px'
+    el.style.top = '0'
+    document.body.appendChild(el)
+    el.select()
+    document.execCommand('copy')
+    document.body.removeChild(el)
+    return true
+  } catch (e) {
+    console.warn('Copy failed:', e)
+    return false
+  }
+}
+
+function getIssueUrl (node) {
+  const raw = node?._raw || {}
+  return raw.web_url || raw.webUrl || node.webUrl || node._raw?.web_url || ''
+}
+
+function getIssueShorthand (node) {
+  const raw = node?._raw || {}
+  const full = raw.references && typeof raw.references.full === 'string' ? raw.references.full : ''
+  if (full) return full
+  const rel = raw.references && typeof raw.references.relative === 'string' ? raw.references.relative : ''
+  if (rel) {
+    const pid = String(settings?.config?.projectId || '').trim()
+    if (!pid) return rel
+    // If relative already contains a path (rare), keep it; otherwise prefix with config project id.
+    if (rel.includes('/')) return rel
+    if (rel.startsWith('#')) return `${pid}${rel}`
+    return `${pid}#${rel.replace(/^#/, '')}`
+  }
+  const pid = String(settings?.config?.projectId || '').trim()
+  const id = node && node.id != null ? String(node.id) : ''
+  return (pid && id) ? `${pid}#${id}` : ''
+}
+
+function getIssueSummary (node) {
+  const raw = node?._raw || {}
+  const title = String(raw.title || '').trim()
+  const state = String(raw.state || '').trim()
+  const assignee = raw.assignee && raw.assignee.name ? String(raw.assignee.name).trim() : ''
+  const short = getIssueShorthand(node)
+  const bits = []
+  if (short) bits.push(short)
+  if (title) bits.push(title)
+  if (state) bits.push(`[${state}]`)
+  if (assignee) bits.push(`(assignee: ${assignee})`)
+  return bits.join(' ')
+}
+
+async function onCopyShorthand () {
+  await copyText(getIssueShorthand(contextMenu.value.node))
+  closeContextMenu()
+}
+async function onCopyUrl () {
+  await copyText(getIssueUrl(contextMenu.value.node))
+  closeContextMenu()
+}
+async function onCopyMarkdown () {
+  const n = contextMenu.value.node
+  const short = getIssueShorthand(n)
+  const url = getIssueUrl(n)
+  const title = String(n?._raw?.title || '').trim()
+  const base = (short && url) ? `[${short}](${url})` : (short || url)
+  const text = title ? `${base} - ${title}` : base
+  await copyText(text)
+  closeContextMenu()
+}
+async function onCopySummary () {
+  await copyText(getIssueSummary(contextMenu.value.node))
+  closeContextMenu()
+}
+
+function onOpenTicket () {
+  const n = contextMenu.value.node
+  const url = getIssueUrl(n)
+  if (!url) return
+  try {
+    settings.graph.lastOpenedNodeId = n && n.id != null ? String(n.id) : null
+  } catch {
+    // ignore
+  }
+  const rawTarget = settings?.uiState?.view?.issueOpenTarget
+  const target = (rawTarget === '_blank' || rawTarget === '_self' || rawTarget === 'GitlabVizIssueTab')
+    ? rawTarget
+    : '_blank'
+  closeContextMenu()
+  window.open(url, target)
+}
+
+function onFilterAuthor () {
+  const name = contextIssueAuthor.value
+  if (!name) return
+  settings.uiState.filters.selectedAuthors = [name]
+  closeContextMenu()
+}
+
+function onFilterAssignee () {
+  const name = contextIssueAssignee.value
+  if (!name) return
+  settings.uiState.filters.selectedAssignees = [name]
+  closeContextMenu()
+}
+
+function onFilterMilestone () {
+  const title = contextIssueMilestone.value
+  if (!title) return
+  settings.uiState.filters.selectedMilestones = [title]
+  closeContextMenu()
+}
+
+function onFilterStatus () {
+  const status = contextIssueStatus.value
+  if (!status) return
+  settings.uiState.filters.selectedStatuses = [status]
+  closeContextMenu()
+}
+
+function onFilterPriority () {
+  const p = contextIssuePriority.value
+  if (!p) return
+  settings.uiState.filters.selectedPriorities = [p]
+  closeContextMenu()
+}
+
+function onFilterType () {
+  const t = contextIssueType.value
+  if (!t) return
+  settings.uiState.filters.selectedTypes = [t]
+  closeContextMenu()
+}
+
+function onFilterLabel (lab) {
+  const label = String(lab || '').trim()
+  if (!label) return
+  settings.uiState.filters.selectedLabels = [label]
+  if (Array.isArray(settings.uiState.filters.excludedLabels)) {
+    settings.uiState.filters.excludedLabels = settings.uiState.filters.excludedLabels.filter(x => x !== label)
+  }
+  closeContextMenu()
+}
+
+function onFilterSameLabelCombo () {
+  const labels = contextIssueLabelsAll.value
+  if (!labels.length) return
+  settings.uiState.filters.selectedLabels = labels.slice()
+  if (Array.isArray(settings.uiState.filters.excludedLabels) && settings.uiState.filters.excludedLabels.length) {
+    const set = new Set(labels)
+    settings.uiState.filters.excludedLabels = settings.uiState.filters.excludedLabels.filter(x => !set.has(x))
+  }
+  closeContextMenu()
+}
 
 const legendItems = ref([])
 const timelineLegend = ref(null) // { css, minLabel, maxLabel } | null
@@ -181,6 +629,17 @@ const sortLegendItems = (items) => {
 }
 
 const onWindowBlur = () => { legendHoverKey.value = null }
+const onWindowKeyDown = (e) => {
+  if (!contextMenu.value.visible) return
+  if (e && e.key === 'Escape') closeContextMenu()
+}
+
+const onGlobalMouseDown = (e) => {
+  if (!contextMenu.value.visible) return
+  const el = contextMenuEl.value
+  if (el && e && e.target && el.contains(e.target)) return
+  closeContextMenu()
+}
 
 const themeName = ref(document.documentElement.dataset.theme || 'light')
 const lightColors = {
@@ -285,6 +744,8 @@ onMounted(() => {
   }
   window.addEventListener('resize', onWindowResize)
   window.addEventListener('blur', onWindowBlur)
+  window.addEventListener('keydown', onWindowKeyDown)
+  window.addEventListener('mousedown', onGlobalMouseDown, true)
 
   // Canvas needs to resize when the sidebar toggles (container size changes without window resize)
   if (typeof ResizeObserver !== 'undefined') {
@@ -300,6 +761,8 @@ onUnmounted(() => {
   window.removeEventListener('app-theme-changed', onThemeChanged)
   window.removeEventListener('resize', onWindowResize)
   window.removeEventListener('blur', onWindowBlur)
+  window.removeEventListener('keydown', onWindowKeyDown)
+  window.removeEventListener('mousedown', onGlobalMouseDown, true)
   if (containerResizeObserver) {
     containerResizeObserver.disconnect()
     containerResizeObserver = null
@@ -339,6 +802,7 @@ function initGraph() {
   // Click handler
   d3.select(canvas.value)
     .on('mousemove', (event) => {
+        if (contextMenu.value.visible) return
         // Account for zoom transform
         const [mouseX, mouseY] = d3.pointer(event)
         const x = (mouseX - transform.x) / transform.k
@@ -363,6 +827,42 @@ function initGraph() {
             canvas.value.style.cursor = found ? 'pointer' : 'grab'
             scheduleRender() // Re-render for hover effect
         }
+    })
+    .on('contextmenu', (event) => {
+      if (event && event.preventDefault) event.preventDefault()
+      if (event && event.stopPropagation) event.stopPropagation()
+      const node = getNodeAtPointer(event)
+      if (!node) {
+        closeContextMenu()
+        return
+      }
+      openContextMenu(event, node)
+    })
+    .on('auxclick', (event) => {
+      // Middle click should open in a new tab (even if "reuse tab" is enabled).
+      // Use auxclick so it works consistently across browsers.
+      if (!event || event.button !== 1) return
+      if (event.preventDefault) event.preventDefault()
+
+      const [clickX, clickY] = d3.pointer(event)
+      const x = (clickX - transform.x) / transform.k
+      const y = (clickY - transform.y) / transform.k
+
+      const w = CAPSULE_WIDTH
+      const h = CAPSULE_HEIGHT
+      for (let i = nodesData.length - 1; i >= 0; i--) {
+        const node = nodesData[i]
+        const nx = node.x - w/2
+        const ny = node.y - h/2
+        if (x >= nx && x <= nx + w && y >= ny && y <= ny + h) {
+          if (node._raw && node._raw.web_url) {
+            settings.graph.lastOpenedNodeId = node.id
+            scheduleRender()
+            window.open(node._raw.web_url, '_blank')
+          }
+          return
+        }
+      }
     })
     .on('dblclick', (event) => {
     // Prevent D3 zoom from also handling the double click (which causes "creeping zoom")
@@ -1439,6 +1939,8 @@ function render() {
     const isLegendHover = legendHoverKey.value && node._legendKey === legendHoverKey.value
     const lastOpened = settings?.graph?.lastOpenedNodeId
     const isLastOpened = lastOpened != null && String(node.id) === String(lastOpened)
+    const selectedId = contextMenu.value.selectedNodeId
+    const isContextSelected = selectedId != null && String(node.id) === String(selectedId)
 
     // Shadow (Static) - only if not hovered (hover has its own dynamic shadow)
     if (hoveredNodeId !== node.id) {
@@ -1525,6 +2027,25 @@ function render() {
     }
     
     ctx.stroke()
+
+    // Right-click selection highlight (independent from hover + last-opened)
+    if (isContextSelected) {
+        const scale = Math.max(0.0001, transform.k * dpr)
+        const pad = 3 / scale
+        const lw = 5 / scale
+        ctx.save()
+        ctx.strokeStyle = 'rgba(255, 64, 129, 0.95)'
+        ctx.lineWidth = lw
+        ctx.setLineDash([10 / scale, 7 / scale])
+        ctx.shadowColor = 'rgba(255, 64, 129, 0.35)'
+        ctx.shadowBlur = 16 / scale
+        ctx.shadowOffsetX = 0
+        ctx.shadowOffsetY = 0
+        ctx.beginPath()
+        ctx.roundRect(x - pad, y - pad, w + pad * 2, h + pad * 2, r + pad)
+        ctx.stroke()
+        ctx.restore()
+    }
     
     // Reset shadow for text
     ctx.shadowColor = 'transparent'
@@ -1945,6 +2466,308 @@ canvas {
   display: block;
   /* Ensure canvas doesn't blur on CSS scaling, though we set width/height attributes correctly */
   touch-action: none;
+}
+
+.issue-context-menu {
+  position: absolute;
+  z-index: 20;
+  min-width: 260px;
+  max-width: 320px;
+  max-height: 70vh;
+  overflow: auto;
+  padding: 6px;
+  border-radius: 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  background: rgba(255, 255, 255, 0.98);
+  color: rgba(0, 0, 0, 0.9);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  cursor: default;
+}
+
+.issue-context-menu__header {
+  /* Full-bleed title bar (no inset card look) */
+  margin: -6px -6px 6px -6px;
+  padding: 10px 12px 8px 12px;
+  border-radius: 10px 10px 0 0;
+  border: 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.10);
+  border-left: 6px solid rgba(0, 0, 0, 0.18);
+}
+
+html[data-theme="dark"] .issue-context-menu__header {
+  border-left-color: rgba(255, 255, 255, 0.18);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.issue-context-menu__header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.issue-context-menu__header-key {
+  font-weight: 700;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issue-context-menu__header-state {
+  font-size: 10px;
+  opacity: 0.8;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  padding: 2px 6px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+html[data-theme="dark"] .issue-context-menu__header-state {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.issue-context-menu__header-title {
+  margin-top: 2px;
+  font-size: 12px;
+  opacity: 0.95;
+  display: -webkit-box;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.issue-context-menu__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 6px;
+}
+
+.issue-context-menu__grid .issue-context-menu__item {
+  padding: 5px 8px;
+}
+
+html[data-theme="dark"] .issue-context-menu {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(20, 22, 26, 0.98);
+  color: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+}
+
+.issue-context-menu__section {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.issue-context-menu__divider {
+  height: 1px;
+  margin: 5px 4px;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+html[data-theme="dark"] .issue-context-menu__divider {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.issue-context-menu__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  opacity: 0.75;
+  padding: 2px 6px 2px 6px;
+}
+
+.issue-context-menu__title--row {
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.issue-context-menu__title-left {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.issue-context-menu__title-action {
+  appearance: none;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  background: rgba(0, 0, 0, 0.02);
+  color: inherit;
+  cursor: pointer;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 11px;
+  line-height: 1.1;
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  white-space: nowrap;
+}
+
+.issue-context-menu__title-action:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme="dark"] .issue-context-menu__title-action {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+html[data-theme="dark"] .issue-context-menu__title-action:hover {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.issue-context-menu__item-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.issue-context-menu__icon {
+  opacity: 0.85;
+}
+
+.issue-context-menu__item {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.2;
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+}
+
+.issue-context-menu__item:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme="dark"] .issue-context-menu__item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.issue-context-menu__item--small {
+  font-size: 11px;
+  padding: 6px 8px;
+}
+
+.issue-context-menu__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 7px 8px;
+  border-radius: 8px;
+}
+
+.issue-context-menu__row:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+html[data-theme="dark"] .issue-context-menu__row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.issue-context-menu__row-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.issue-context-menu__row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.issue-context-menu__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  appearance: none;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  background: rgba(0, 0, 0, 0.02);
+  color: inherit;
+  cursor: pointer;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 11px;
+  line-height: 1.1;
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+}
+
+.issue-context-menu__pill-icon {
+  opacity: 0.9;
+}
+
+.issue-context-menu__pill:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme="dark"] .issue-context-menu__pill {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+html[data-theme="dark"] .issue-context-menu__pill:hover {
+  background: rgba(255, 255, 255, 0.10);
+}
+
+.issue-context-menu__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 6px 2px 6px;
+}
+
+.issue-context-menu__chip {
+  appearance: none;
+  border: 1px solid rgba(0, 0, 0, 0.14);
+  background: rgba(0, 0, 0, 0.02);
+  color: inherit;
+  cursor: pointer;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  line-height: 1.1;
+  user-select: none;
+  -webkit-user-select: none;
+  -ms-user-select: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.issue-context-menu__chip:hover {
+  background: rgba(0, 0, 0, 0.06);
+}
+
+html[data-theme="dark"] .issue-context-menu__chip {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+html[data-theme="dark"] .issue-context-menu__chip:hover {
+  background: rgba(255, 255, 255, 0.10);
 }
 
 .legend {

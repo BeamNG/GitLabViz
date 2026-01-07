@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.10] - 2026-01-07
+- added context menu for issues
+- sidebar: move “Clear filters” next to Filters header; remove duplicate reset button.
+- Collapsed sidebar mini toolbar: add “Fit to screen”.
+
 ## [0.3.9] - 2026-01-07
 - Improved navigation state persistence in the URL
 - Improved About page
