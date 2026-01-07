@@ -8,6 +8,12 @@ import { execSync } from 'node:child_process'
 import pkg from './package.json'
 
 export default defineConfig(({ mode }) => {
+  const isVitest =
+    mode === 'test' ||
+    String(process.env.NODE_ENV || '').toLowerCase() === 'test' ||
+    String(process.env.VITEST || '').toLowerCase() === 'true' ||
+    String(process.env.npm_lifecycle_event || '').toLowerCase() === 'test' ||
+    process.argv.some(a => String(a || '').toLowerCase().includes('vitest'))
   const env = loadEnv(mode, process.cwd(), '')
   const gitlabTarget = String(env.VITE_GITLAB_PROXY_TARGET || '').trim()
   const svnTarget = String(env.VITE_SVN_PROXY_TARGET || '').trim()
@@ -58,7 +64,9 @@ export default defineConfig(({ mode }) => {
     base: './',
     plugins: [
       vue(),
-      vuetify({ autoImport: true }),
+      // Tests run in Node; Vuetify auto-import injects component imports that pull in CSS (e.g. VIcon.css),
+      // which Node can't load. For unit tests we don't need Vuetify, so skip the plugin.
+      ...(isVitest ? [] : [vuetify({ autoImport: true })]),
       viteSingleFile()
     ],
     define: {
