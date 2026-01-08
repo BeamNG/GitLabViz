@@ -60,6 +60,31 @@ export default defineConfig(({ mode }) => {
   const ghRefName = String(process.env.GITHUB_REF_NAME || '').trim()
   const ghSha = String(process.env.GITHUB_SHA || '').trim()
 
+  const buildTime = new Date().toISOString()
+  const versionInfo = {
+    version: pkg.version,
+    buildTime,
+    gitCommit: gitCommit || '',
+    gitBranch: gitBranch || '',
+    gitDirty
+  }
+
+  const currentVersionPlugin = () => ({
+    name: 'gitlabviz-current-version',
+    transformIndexHtml(html) {
+      return html
+        .replaceAll('%APP_VERSION%', String(versionInfo.version || ''))
+        .replaceAll('%BUILD_TIME%', String(versionInfo.buildTime || ''))
+    },
+    generateBundle() {
+      this.emitFile({
+        type: 'asset',
+        fileName: 'current_version.json',
+        source: JSON.stringify(versionInfo, null, 2) + '\n'
+      })
+    }
+  })
+
   return {
     base: './',
     plugins: [
@@ -67,11 +92,12 @@ export default defineConfig(({ mode }) => {
       // Tests run in Node; Vuetify auto-import injects component imports that pull in CSS (e.g. VIcon.css),
       // which Node can't load. For unit tests we don't need Vuetify, so skip the plugin.
       ...(isVitest ? [] : [vuetify({ autoImport: true })]),
-      viteSingleFile()
+      viteSingleFile(),
+      currentVersionPlugin()
     ],
     define: {
       '__APP_VERSION__': JSON.stringify(pkg.version),
-      '__BUILD_TIME__': JSON.stringify(new Date().toISOString()),
+      '__BUILD_TIME__': JSON.stringify(buildTime),
       '__GIT_COMMIT__': JSON.stringify(gitCommit || ''),
       '__GIT_BRANCH__': JSON.stringify(gitBranch || ''),
       '__GIT_REPO__': JSON.stringify(gitRepo || ''),

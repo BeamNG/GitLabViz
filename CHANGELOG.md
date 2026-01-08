@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.14] - 2026-01-08
+- auto-update system to prevent browser caching
+
 ## [0.3.13] - 2026-01-08
 - Improved border radius on context menus - tiny UX fix
 
