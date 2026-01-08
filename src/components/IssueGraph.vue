@@ -262,6 +262,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, toRaw, nextTick } from 'vue'
 import * as d3 from 'd3'
 import { useSettingsStore } from '../composables/useSettingsStore'
+import { getScopedLabelValue } from '../utils/scopedLabels'
 
 const emit = defineEmits(['issue-state-change', 'issue-assignee-change'])
 
@@ -1112,26 +1113,16 @@ function updateGraph() {
     
     // Extract metadata
     const labels = node._raw.labels || []
-    
-    // Helper for scoped labels
-    const getScoped = (prefix) => {
-        const found = labels.find(l => l.startsWith(prefix + '::'))
-        return found ? found.substring(prefix.length + 2) : null
-    }
 
     node.tag = labels.length > 0 ? labels[0] : '_no_tag_'
     node.authorName = node._raw.author ? node._raw.author.name : 'Unknown'
     node.assigneeName = node._raw.assignee ? node._raw.assignee.name : 'Unassigned'
     node.milestoneTitle = node._raw.milestone ? node._raw.milestone.title : 'No Milestone'
     node.state = node._raw.state
-    // Status is a scoped label (Status::...). If multiple exist, prefer the last one.
-    const statusMatches = labels
-      .filter(l => typeof l === 'string' && l.startsWith('Status::'))
-      .map(l => l.substring('Status::'.length))
-      .filter(Boolean)
-    node.statusLabel = statusMatches.length ? statusMatches[statusMatches.length - 1] : null
-    node.priority = getScoped('Priority') || 'No Priority'
-    node.type = getScoped('Type') || 'No Type'
+    // Status is a scoped label (Status::... / Status:...). If multiple exist, prefer the last one.
+    node.statusLabel = getScopedLabelValue(labels, 'Status')
+    node.priority = getScopedLabelValue(labels, 'Priority') || 'No Priority'
+    node.type = getScopedLabelValue(labels, 'Type') || 'No Type'
     node.weight = node._raw.weight != null ? String(node._raw.weight) : 'No Weight'
     node.epic = node._raw.epic ? node._raw.epic.title : 'No Epic'
     node.iteration = node._raw.iteration ? node._raw.iteration.title : 'No Iteration'
@@ -1391,7 +1382,11 @@ function updateGraph() {
     nodesData.forEach(d => {
         if (props.groupBy === 'tag') d._groupKey = d.tag
         else if (props.groupBy === 'author') d._groupKey = d.authorName
-        else if (props.groupBy === 'state') d._groupKey = d.state
+        else if (props.groupBy === 'state') {
+          // "Status" grouping: prefer Status scoped label, fallback to a simple state bucket.
+          const s = typeof d.statusLabel === 'string' ? d.statusLabel.trim() : ''
+          d._groupKey = s || (d.state === 'closed' ? 'Done' : 'To do')
+        }
         else if (props.groupBy === 'assignee') d._groupKey = d.assigneeName
         else if (props.groupBy === 'milestone') d._groupKey = d.milestoneTitle
         else if (props.groupBy === 'priority') d._groupKey = d.priority
@@ -1401,12 +1396,8 @@ function updateGraph() {
         else if (props.groupBy === 'iteration') d._groupKey = d.iteration
         else if (props.groupBy && props.groupBy.startsWith('scoped:')) {
             const prefix = props.groupBy.substring('scoped:'.length)
-            const labels = d._raw?.labels || []
-            const matches = labels
-              .filter(l => typeof l === 'string' && l.startsWith(prefix + '::'))
-              .map(l => l.substring(prefix.length + 2))
-              .filter(Boolean)
-            d._groupKey = matches.length ? matches[matches.length - 1] : `No ${prefix}`
+            const value = getScopedLabelValue(d._raw?.labels || [], prefix)
+            d._groupKey = value || `No ${prefix}`
         }
         else if (props.groupBy === 'stale') {
             if (d.daysSinceUpdate > 90) d._groupKey = '> 90 Days Stale'

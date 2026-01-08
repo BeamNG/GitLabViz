@@ -64,10 +64,7 @@ export default defineConfig(({ mode }) => {
   const buildTime = new Date().toISOString()
   const versionInfo = {
     version: pkg.version,
-    buildTime,
-    gitCommit: gitCommit || '',
-    gitBranch: gitBranch || '',
-    gitDirty
+    buildTime
   }
 
   const currentVersionPlugin = () => ({
