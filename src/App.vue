@@ -463,6 +463,8 @@
           :center-gravity="settings.uiState.simulation.centerGravity"
           :grid-strength="settings.uiState.simulation.gridStrength"
           :grid-spacing="settings.uiState.simulation.gridSpacing"
+          @issue-state-change="onIssueStateChange"
+          @issue-assignee-change="onIssueAssigneeChange"
         />
         
         <div v-else-if="!loading" class="d-flex flex-column align-center justify-center w-100 h-100 text-medium-emphasis pa-8">
@@ -512,7 +514,7 @@ import ConfigPage from './components/ConfigPage.vue'
 import ChatToolsPage from './components/ChatToolsPage.vue'
 import SvnLogDialog from './components/SvnLogDialog.vue'
 import SidebarFilterControls from './components/SidebarFilterControls.vue'
-import { createGitLabClient, fetchProjectIssues, fetchIssueLinks, normalizeGitLabApiBaseUrl } from './services/gitlab'
+import { createGitLabClient, fetchProjectIssues, fetchIssueLinks, fetchTokenScopes, normalizeGitLabApiBaseUrl, updateIssue } from './services/gitlab'
 import { createSvnClient, fetchSvnLog } from './services/svn'
 import { svnCacheGetMeta, svnCacheClear, normalizeRepoUrl } from './services/cache'
 import { useSettingsStore } from './composables/useSettingsStore'
@@ -1789,6 +1791,23 @@ const handleClearSource = async (payload) => {
   }
 }
 
+const resolveGitLabApiBaseUrl = () => {
+  const raw = String(settings.config.gitlabApiBaseUrl || '').trim()
+  if (!raw) return ''
+
+  const direct = normalizeGitLabApiBaseUrl(raw)
+  if (!direct) return ''
+
+  // In dev (web), use Vite proxy if configured and the URL matches that proxy target.
+  if (!window.electronAPI && import.meta.env.DEV) {
+    const proxyTarget = String(import.meta.env.VITE_GITLAB_PROXY_TARGET || '').trim().replace(/\/+$/, '')
+    const host = String(raw || '').trim().replace(/\/+$/, '')
+    if (proxyTarget && host.startsWith(proxyTarget)) return '/gitlab/api/v4'
+  }
+
+  return direct
+}
+
 const loadData = async (opts = {}) => {
   // Do not start another fetch while one is already running (no queueing).
   if (loading.value) return
@@ -1798,22 +1817,7 @@ const loadData = async (opts = {}) => {
   const doSvn = isElectron.value && (only === 'both' || only === 'svn') && settings.config.enableSvn
   const doMattermost = isElectron.value && (only === 'both' || only === 'mattermost') && !!settings.config.mattermostUrl && !!settings.config.mattermostToken
 
-  const gitlabApiBaseUrl = (() => {
-    const raw = String(settings.config.gitlabApiBaseUrl || '').trim()
-    if (!raw) return ''
-
-    const direct = normalizeGitLabApiBaseUrl(raw)
-    if (!direct) return ''
-
-    // In dev (web), use Vite proxy if configured and the URL matches that proxy target.
-    if (!window.electronAPI && import.meta.env.DEV) {
-      const proxyTarget = String(import.meta.env.VITE_GITLAB_PROXY_TARGET || '').trim().replace(/\/+$/, '')
-      const host = String(raw || '').trim().replace(/\/+$/, '')
-      if (proxyTarget && host.startsWith(proxyTarget)) return '/gitlab/api/v4'
-    }
-
-    return direct
-  })()
+  const gitlabApiBaseUrl = resolveGitLabApiBaseUrl()
 
   if (doGitLab && (!settings.config.token || !settings.config.projectId || !gitlabApiBaseUrl)) {
     error.value = 'Please provide GitLab URL, Token, and Project ID'
@@ -1878,9 +1882,22 @@ const loadData = async (opts = {}) => {
             try {
                 const me = await client.get('/user')
                 settings.meta.gitlabMeName = me?.data?.name || ''
+                settings.meta.gitlabMeId = me?.data?.id || null
             } catch (e) {
                 console.warn('[GitLab] Failed to fetch /user for presets:', e)
                 settings.meta.gitlabMeName = ''
+                settings.meta.gitlabMeId = null
+            }
+
+            // Best-effort: detect scopes to enable/disable write features in UI.
+            try {
+              const scopes = await fetchTokenScopes(client)
+              settings.meta.gitlabTokenScopes = scopes
+              settings.meta.gitlabCanWrite = Array.isArray(scopes) ? scopes.includes('api') : false
+            } catch (e) {
+              console.warn('[GitLab] Failed to detect token scopes:', e)
+              settings.meta.gitlabTokenScopes = null
+              settings.meta.gitlabCanWrite = false
             }
 
             // Fetch opened issues
@@ -2167,6 +2184,73 @@ const loadData = async (opts = {}) => {
   // If user is currently in SVN mode, rebuild SVN graph now that we have commits.
   if (vizMode.value === 'svn') {
     buildSvnVizGraph()
+  }
+}
+
+const onIssueStateChange = async ({ iid, state_event } = {}) => {
+  const issueIid = String(iid || '').trim()
+  const ev = String(state_event || '').trim()
+  if (!issueIid || (ev !== 'close' && ev !== 'reopen')) return
+
+  if (!settings.meta.gitlabCanWrite) {
+    alert('Write is disabled for this token (needs api scope).')
+    return
+  }
+  if (!settings.config.enableGitLab) return
+
+  const baseUrl = resolveGitLabApiBaseUrl()
+  if (!baseUrl || !settings.config.projectId || !settings.config.token) {
+    alert('Missing GitLab URL / Project / Token.')
+    return
+  }
+
+  try {
+    const client = createGitLabClient(baseUrl, settings.config.token)
+    const updated = await updateIssue(client, settings.config.projectId, issueIid, { state_event: ev })
+    if (nodes[issueIid]) nodes[issueIid]._raw = updated
+    snackbarText.value = ev === 'close' ? `Closed #${issueIid}` : `Reopened #${issueIid}`
+    snackbar.value = true
+  } catch (e) {
+    const status = e?.response?.status
+    const msg = status ? `GitLab error ${status}: ${e?.message || String(e)}` : (e?.message || String(e))
+    alert(msg)
+  }
+}
+
+const onIssueAssigneeChange = async ({ iid, assignee_ids } = {}) => {
+  const issueIid = String(iid || '').trim()
+  const list = Array.isArray(assignee_ids) ? assignee_ids : null
+  if (!issueIid || !list) return
+
+  if (!settings.meta.gitlabCanWrite) {
+    alert('Write is disabled for this token (needs api scope).')
+    return
+  }
+  if (!settings.config.enableGitLab) return
+
+  const baseUrl = resolveGitLabApiBaseUrl()
+  if (!baseUrl || !settings.config.projectId || !settings.config.token) {
+    alert('Missing GitLab URL / Project / Token.')
+    return
+  }
+
+  try {
+    const client = createGitLabClient(baseUrl, settings.config.token)
+    const updated = await updateIssue(client, settings.config.projectId, issueIid, { assignee_ids: list })
+
+    // Keep the rest of the app consistent (some parts use _raw.assignee directly).
+    if (updated) {
+      if (!updated.assignee && Array.isArray(updated.assignees) && updated.assignees.length) updated.assignee = updated.assignees[0]
+      if (Array.isArray(updated.assignees) && updated.assignees.length === 0) updated.assignee = null
+    }
+
+    if (nodes[issueIid]) nodes[issueIid]._raw = updated
+    snackbarText.value = list.length ? `Assigned #${issueIid}` : `Unassigned #${issueIid}`
+    snackbar.value = true
+  } catch (e) {
+    const status = e?.response?.status
+    const msg = status ? `GitLab error ${status}: ${e?.message || String(e)}` : (e?.message || String(e))
+    alert(msg)
   }
 }
 

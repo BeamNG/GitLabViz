@@ -187,7 +187,7 @@
                 type="password"
                 variant="outlined"
                 :disabled="!settings.config.enableGitLab"
-                hint="Requires read_api and read_user scopes"
+                hint="Read-only: read_api + read_user. Editing (close/reopen, etc.): api."
                 persistent-hint
                 bg-color="surface"
               >
@@ -229,7 +229,12 @@
             density="compact"
             class="mb-3"
           >
-            {{ gitlabTestResult.message }}
+            <div style="white-space: pre-line;">
+              {{ gitlabTestResult.message }}
+            </div>
+            <div v-if="gitlabTestResult.detail" class="text-caption text-medium-emphasis mt-1">
+              {{ gitlabTestResult.detail }}
+            </div>
           </v-alert>
 
           <v-row dense class="mt-2" justify="end">
@@ -284,10 +289,35 @@
               </li>
               <li class="mb-1">Click <strong>Add new token</strong>.</li>
               <li class="mb-1">Give it a name (e.g. <code>GitLab Viz</code>) and optionally set an expiry date.</li>
-              <li class="mb-1">Tick these scopes: <code>read_api</code> and <code>read_user</code>.</li>
+              <li class="mb-1">
+                For <strong>read-only</strong>, tick: <code>read_api</code> and <code>read_user</code>.
+                For <strong>editing</strong> (close/reopen, etc.), tick: <code>api</code>.
+              </li>
               <li class="mb-1">Click <strong>Create personal access token</strong>.</li>
               <li>Copy the token immediately (GitLab usually only shows it once), then paste it into <strong>Personal Access Token</strong> below.</li>
             </ol>
+          </v-alert>
+
+          <v-alert
+            v-if="settings.config.enableGitLab && settings.config.token"
+            :type="settings.meta.gitlabTokenScopes ? (settings.meta.gitlabCanWrite ? 'success' : 'warning') : 'info'"
+            variant="tonal"
+            density="compact"
+            class="mt-3"
+            icon="mdi-shield-account-outline"
+          >
+            <div v-if="settings.meta.gitlabTokenScopes">
+              Token scopes: <code>{{ settings.meta.gitlabTokenScopes.join(', ') }}</code>
+              <span v-if="settings.meta.gitlabCanWrite"> — write enabled.</span>
+              <span v-else> — <strong>read-only token</strong>.</span>
+              <div v-if="!settings.meta.gitlabCanWrite" class="text-caption mt-1">
+                <v-icon icon="mdi-alert" size="x-small" class="mr-1" />
+                Write disabled (needs <code>api</code> scope).
+              </div>
+            </div>
+            <div v-else>
+              Token scopes: <strong>unknown</strong>. Click <strong>Test connection</strong> to detect scopes.
+            </div>
           </v-alert>
         </v-container>
       </v-window-item>
@@ -783,7 +813,7 @@
 import { computed, onMounted, ref, toRaw, watch } from 'vue'
 import { cacheGetPath, cacheOpenFolder, svnCacheGetStats } from '../services/cache'
 import { mattermostLogin } from '../services/mattermost'
-import { createGitLabClient, normalizeGitLabApiBaseUrl } from '../services/gitlab'
+import { createGitLabClient, fetchTokenScopes, normalizeGitLabApiBaseUrl } from '../services/gitlab'
 import { useSettingsStore } from '../composables/useSettingsStore'
 import localforage from 'localforage'
 import pkg from '../../package.json'
@@ -865,10 +895,28 @@ async function runGitLabTest ({ requireToken = false, requireProject = false } =
       const resp = await client.get('/user')
       const u = resp && resp.data ? resp.data : null
       if (!u || (!u.username && !u.name)) throw new Error('Unexpected /user response')
+      settings.meta.gitlabMeName = u?.name || ''
+      settings.meta.gitlabMeId = u?.id || null
     } else {
       const resp = await client.get('/version')
       const v = resp && resp.data ? resp.data : null
       if (!v || !v.version) throw new Error('Unexpected /version response')
+    }
+
+    // Best-effort scope introspection (PAT: /personal_access_tokens/self; fallback: headers).
+    if (token) {
+      try {
+        const scopes = await fetchTokenScopes(client)
+        settings.meta.gitlabTokenScopes = scopes
+        settings.meta.gitlabCanWrite = Array.isArray(scopes) ? scopes.includes('api') : false
+      } catch (e) {
+        console.warn('[GitLab] Failed to detect token scopes:', e)
+        settings.meta.gitlabTokenScopes = null
+        settings.meta.gitlabCanWrite = false
+      }
+    } else {
+      settings.meta.gitlabTokenScopes = null
+      settings.meta.gitlabCanWrite = false
     }
 
     if (requireProject) {
@@ -880,7 +928,14 @@ async function runGitLabTest ({ requireToken = false, requireProject = false } =
       if (!p || (!p.id && !p.path_with_namespace)) throw new Error('Unexpected /projects response')
     }
 
-    if (token) return { ok: true, type: 'success', message: 'OK (GitLab API + token verified)' }
+    if (token) {
+      const scopes = settings.meta.gitlabTokenScopes
+      const scopeMsg = Array.isArray(scopes) && scopes.length ? `Scopes: ${scopes.join(', ')}` : 'Scopes: (unknown)'
+      if (settings.meta.gitlabCanWrite) {
+        return { ok: true, type: 'success', message: `OK (GitLab API + token verified)\n${scopeMsg}`, detail: 'Write enabled.' }
+      }
+      return { ok: true, type: 'warning', message: `OK (GitLab API + token verified)\n${scopeMsg}`, detail: 'Write disabled (needs api scope).' }
+    }
     return { ok: true, type: 'success', message: 'OK (GitLab API reachable)' }
   } catch (e) {
     const status = e?.response?.status
@@ -895,11 +950,11 @@ async function runGitLabTest ({ requireToken = false, requireProject = false } =
       return {
         ok: false,
         type: 'warning',
-        message: '401 (unauthorized). Token is missing/invalid or lacks required scopes (read_api, read_user).'
+        message: '401 (unauthorized). Token is missing/invalid or lacks required scopes (read_api + read_user for read-only, or api for write).'
       }
     }
     if (status === 403) {
-      return { ok: false, type: 'warning', message: '403 (forbidden). Token likely lacks required permissions (read_api).' }
+      return { ok: false, type: 'warning', message: '403 (forbidden). Token likely lacks required permissions (read_api/api) or project access.' }
     }
     if (status === 404 && requireProject) {
       return { ok: false, type: 'error', message: 'Project not found (404). Check Project ID / Path, or token permissions.' }

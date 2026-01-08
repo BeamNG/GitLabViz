@@ -48,7 +48,7 @@ const isRetryableGitLabError = (error) => {
   return status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504
 }
 
-const gitlabGet = async (client, url, config = {}, retryOptions = {}) => {
+const gitlabRequest = async (client, method, url, config = {}, retryOptions = {}) => {
   const {
     maxRetries = DEFAULT_MAX_RETRIES,
     retryBaseDelayMs = DEFAULT_RETRY_BASE_DELAY_MS,
@@ -59,7 +59,7 @@ const gitlabGet = async (client, url, config = {}, retryOptions = {}) => {
   // total tries = 1 + maxRetries
   while (true) {
     try {
-      return await client.get(url, config)
+      return await client.request({ method, url, ...config })
     } catch (error) {
       if (attempt >= maxRetries || !isRetryableGitLabError(error)) throw error
 
@@ -73,6 +73,10 @@ const gitlabGet = async (client, url, config = {}, retryOptions = {}) => {
       await sleep(waitMs)
     }
   }
+}
+
+const gitlabGet = (client, url, config = {}, retryOptions = {}) => {
+  return gitlabRequest(client, 'get', url, config, retryOptions)
 }
 
 export const createGitLabClient = (baseUrl, token) => {
@@ -172,4 +176,56 @@ export const fetchIssueLinks = async (client, projectId, issueIid) => {
      console.warn(`Warning: Failed to fetch links for issue ${issueIid}: ${error.message}`);
      return []; // Return empty array on error to allow partial loading
   }
+}
+
+const parseScopesHeader = (v) => {
+  const s = String(v || '').trim()
+  if (!s) return null
+  const scopes = s.split(',').map(x => x.trim()).filter(Boolean)
+  return scopes.length ? scopes : null
+}
+
+// Best-effort token scope detection:
+// - Newer GitLab: GET /personal_access_tokens/self (returns { scopes: [...] })
+// - Fallback: read X-OAuth-Scopes header if present (typically OAuth tokens; some setups may include it)
+export const fetchTokenScopes = async (client) => {
+  if (!client) return null
+
+  // 1) Prefer the explicit introspection endpoint if available.
+  try {
+    const resp = await gitlabGet(client, '/personal_access_tokens/self', {}, { maxRetries: 1 })
+    const scopes = Array.isArray(resp?.data?.scopes) ? resp.data.scopes.filter(Boolean) : null
+    if (scopes && scopes.length) return scopes
+  } catch (e) {
+    const status = e?.response?.status
+    // If unsupported/forbidden, we'll fall back below.
+    if (!(status === 404 || status === 401 || status === 403)) throw e
+  }
+
+  // 2) Fallback: probe a cheap endpoint and inspect headers if available.
+  try {
+    const resp = await gitlabGet(client, '/user', {}, { maxRetries: 1 })
+    const h = resp?.headers || {}
+    return (
+      parseScopesHeader(h['x-oauth-scopes']) ||
+      parseScopesHeader(h['X-OAuth-Scopes']) ||
+      null
+    )
+  } catch (e) {
+    const status = e?.response?.status
+    if (status === 401) return null
+    throw e
+  }
+}
+
+export const updateIssue = async (client, projectId, issueIid, payload) => {
+  const encodedProjectId = encodeURIComponent(projectId)
+  const resp = await gitlabRequest(
+    client,
+    'put',
+    `/projects/${encodedProjectId}/issues/${issueIid}`,
+    { data: payload || {} },
+    { maxRetries: 1 }
+  )
+  return resp.data
 }

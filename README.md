@@ -116,6 +116,10 @@ Organize the chaos.
 
   <img src="misc/context-menu.png" width="45%" />
 
+- **Editing support**: You can open/close, assign yourself or unassign yourself right now:
+
+  <img src="misc/write.png" width="55%" />
+
 
 - **Local caching**: Local caching ensures your graph loads instantly on reloads/F5.
 
@@ -137,7 +141,9 @@ Download the html from above and open it :)
 ## Prerequisites / Compatibility
 
 - **GitLab**: Works with **GitLab.com (cloud)** and **self-managed/hosted GitLab** as long as the **REST API v4** is available (the app uses `/api/v4/...` endpoints like issues + issue links). Practically, that means **GitLab 11.0+** (API v3 was removed in 11.0, leaving v4 as the supported REST API).
-- **Token**: A **Personal Access Token** is required for loading data. Recommended scopes: **`read_api`** (and **`read_user`** for the “By me / Assigned to me” presets).
+- **Token**: A **Personal Access Token** is required. Recommended scopes:
+  - **Read-only** (viewing): **`read_api`** (+ **`read_user`** for the “By me / Assigned to me” presets)
+  - **Editing** (close/reopen, assign/unassign from context menu): **`api`**
 - **Network access**: Your machine must be able to reach your GitLab API URL (company VPN / firewall rules apply).
 
 ## Privacy / Data Handling

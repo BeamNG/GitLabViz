@@ -24,12 +24,64 @@
         </div>
       </div>
       <div class="issue-context-menu__section">
-        <button type="button" class="issue-context-menu__item" @click="onOpenTicket">
-          <span class="issue-context-menu__item-content">
-            <v-icon icon="mdi-open-in-new" size="x-small" class="issue-context-menu__icon" />
-            <span>Open ticket</span>
-          </span>
-        </button>
+        <div class="issue-context-menu__grid issue-context-menu__grid--actions">
+          <button type="button" class="issue-context-menu__item" @click="onOpenTicket">
+            <span class="issue-context-menu__item-content">
+              <v-icon icon="mdi-open-in-new" size="x-small" class="issue-context-menu__icon" />
+              <span>Open issue URL</span>
+            </span>
+          </button>
+
+          <template v-if="canWrite">
+            <button type="button" class="issue-context-menu__item" @click="onToggleIssueClosed">
+              <span class="issue-context-menu__item-content">
+                <v-icon :icon="stateActionIcon" size="x-small" class="issue-context-menu__icon" />
+                <span>{{ stateActionLabel }}</span>
+              </span>
+            </button>
+
+            <button
+              v-if="assigneeAction === 'assign'"
+              type="button"
+              class="issue-context-menu__item"
+              :disabled="!meId"
+              :aria-disabled="!meId"
+              :title="!meId ? assignDisabledReason : ''"
+              @click="onAssignToMe"
+            >
+              <span class="issue-context-menu__item-content">
+                <v-icon icon="mdi-account-plus" size="x-small" class="issue-context-menu__icon" />
+                <span>Assign to me</span>
+              </span>
+            </button>
+
+            <button
+              v-else
+              type="button"
+              class="issue-context-menu__item"
+              @click="onUnassign"
+            >
+              <span class="issue-context-menu__item-content">
+                <v-icon icon="mdi-account-minus" size="x-small" class="issue-context-menu__icon" />
+                <span>Unassign me</span>
+              </span>
+            </button>
+          </template>
+
+          <button
+            v-else
+            type="button"
+            class="issue-context-menu__item issue-context-menu__item--warn"
+            :title="writeDisabledReason"
+            aria-disabled="true"
+            disabled
+          >
+            <span class="issue-context-menu__item-content">
+              <v-icon icon="mdi-alert" size="x-small" class="issue-context-menu__icon" />
+              <span>Editing disabled (needs api)</span>
+            </span>
+          </button>
+        </div>
         <div class="issue-context-menu__row">
           <div class="issue-context-menu__row-label">
             <v-icon icon="mdi-content-copy" size="x-small" class="issue-context-menu__icon" />
@@ -68,7 +120,7 @@
           >
             <span class="issue-context-menu__item-content">
               <v-icon icon="mdi-account-edit" size="x-small" class="issue-context-menu__icon" />
-              <span>author = {{ contextIssueAuthor }}</span>
+              <span>Author<br/>{{ contextIssueAuthor }}</span>
             </span>
           </button>
           <button
@@ -79,7 +131,7 @@
           >
             <span class="issue-context-menu__item-content">
               <v-icon icon="mdi-account" size="x-small" class="issue-context-menu__icon" />
-              <span>assignee = {{ contextIssueAssignee }}</span>
+              <span>Assignee <br/>{{ contextIssueAssignee }}</span>
             </span>
           </button>
           <button
@@ -90,7 +142,7 @@
           >
             <span class="issue-context-menu__item-content">
               <v-icon icon="mdi-flag" size="x-small" class="issue-context-menu__icon" />
-              <span>milestone = {{ contextIssueMilestone }}</span>
+              <span>Milestone<br/>{{ contextIssueMilestone }}</span>
             </span>
           </button>
           <button
@@ -101,7 +153,7 @@
           >
             <span class="issue-context-menu__item-content">
               <v-icon icon="mdi-list-status" size="x-small" class="issue-context-menu__icon" />
-              <span>status = {{ contextIssueStatus }}</span>
+              <span>Status<br/>{{ contextIssueStatus }}</span>
             </span>
           </button>
           <button
@@ -112,7 +164,7 @@
           >
             <span class="issue-context-menu__item-content">
               <v-icon icon="mdi-alert-circle" size="x-small" class="issue-context-menu__icon" />
-              <span>priority = {{ contextIssuePriority }}</span>
+              <span>Priority<br/>{{ contextIssuePriority }}</span>
             </span>
           </button>
           <button
@@ -123,7 +175,7 @@
           >
             <span class="issue-context-menu__item-content">
               <v-icon icon="mdi-shape" size="x-small" class="issue-context-menu__icon" />
-              <span>type = {{ contextIssueType }}</span>
+              <span>Type<br/>{{ contextIssueType }}</span>
             </span>
           </button>
         </div>
@@ -211,6 +263,8 @@ import { ref, computed, onMounted, onUnmounted, watch, toRaw, nextTick } from 'v
 import * as d3 from 'd3'
 import { useSettingsStore } from '../composables/useSettingsStore'
 
+const emit = defineEmits(['issue-state-change', 'issue-assignee-change'])
+
 const props = defineProps({
   nodes: Object,
   edges: Object,
@@ -237,6 +291,28 @@ const { settings } = useSettingsStore()
 const contextMenu = ref({ visible: false, x: 0, y: 0, node: null, selectedNodeId: null })
 
 const contextIssueRaw = computed(() => contextMenu.value.node?._raw || null)
+const contextIssueIid = computed(() => {
+  const raw = contextIssueRaw.value
+  if (raw && raw.iid != null) return String(raw.iid)
+  const n = contextMenu.value.node
+  return n && n.id != null ? String(n.id) : ''
+})
+const canWrite = computed(() => !!settings?.meta?.gitlabCanWrite)
+const meId = computed(() => {
+  const v = settings?.meta?.gitlabMeId
+  const n = Number(v)
+  return Number.isFinite(n) && n > 0 ? n : null
+})
+const writeDisabledReason = computed(() => {
+  if (canWrite.value) return ''
+  const scopes = settings?.meta?.gitlabTokenScopes
+  if (Array.isArray(scopes) && scopes.length) return `Read-only token (scopes: ${scopes.join(', ')}). Create a token with api scope to enable editing.`
+  return 'Write disabled. Click "Test connection" in Configuration → GitLab to verify token scopes, and use a token with api scope to enable editing.'
+})
+const isContextIssueClosed = computed(() => String(contextIssueRaw.value?.state || '').toLowerCase() === 'closed')
+const stateActionLabel = computed(() => (isContextIssueClosed.value ? 'Reopen ticket' : 'Close ticket'))
+const stateActionIcon = computed(() => (isContextIssueClosed.value ? 'mdi-lock-open-variant' : 'mdi-lock'))
+const stateActionEvent = computed(() => (isContextIssueClosed.value ? 'reopen' : 'close'))
 const contextNodeColor = computed(() => contextMenu.value.node?.color || '')
 const contextHeaderKey = computed(() => {
   const n = contextMenu.value.node
@@ -266,7 +342,25 @@ const contextHeaderStyle = computed(() => {
   }
 })
 const contextIssueAuthor = computed(() => contextIssueRaw.value?.author?.name || '')
-const contextIssueAssignee = computed(() => contextIssueRaw.value?.assignee?.name || '')
+const contextIssueAssignee = computed(() => {
+  const raw = contextIssueRaw.value || {}
+  const a = raw.assignee || (Array.isArray(raw.assignees) && raw.assignees.length ? raw.assignees[0] : null)
+  return a?.name || ''
+})
+const contextAssigneeId = computed(() => {
+  const raw = contextIssueRaw.value || {}
+  const a = raw.assignee || (Array.isArray(raw.assignees) && raw.assignees.length ? raw.assignees[0] : null)
+  const id = a && a.id != null ? Number(a.id) : NaN
+  return Number.isFinite(id) ? id : null
+})
+const hasAssignee = computed(() => !!contextAssigneeId.value)
+const isAssignedToMe = computed(() => !!meId.value && contextAssigneeId.value === meId.value)
+const assigneeAction = computed(() => (hasAssignee.value ? 'unassign' : 'assign'))
+const assignDisabledReason = computed(() => {
+  if (!canWrite.value) return writeDisabledReason.value
+  if (!meId.value) return 'Cannot resolve current GitLab user. Click "Refresh" or "Test connection" once to fetch /user.'
+  return ''
+})
 const contextIssueMilestone = computed(() => contextIssueRaw.value?.milestone?.title || '')
 const contextIssueStatus = computed(() => {
   const labels = contextIssueRaw.value?.labels || []
@@ -440,6 +534,30 @@ async function onCopyMarkdown () {
 }
 async function onCopySummary () {
   await copyText(getIssueSummary(contextMenu.value.node))
+  closeContextMenu()
+}
+
+function onToggleIssueClosed () {
+  const iid = contextIssueIid.value
+  if (!iid) return
+  if (!canWrite.value) return
+  emit('issue-state-change', { iid, state_event: stateActionEvent.value })
+  closeContextMenu()
+}
+
+function onAssignToMe () {
+  const iid = contextIssueIid.value
+  if (!iid) return
+  if (!canWrite.value || !meId.value) return
+  emit('issue-assignee-change', { iid, assignee_ids: [meId.value] })
+  closeContextMenu()
+}
+
+function onUnassign () {
+  const iid = contextIssueIid.value
+  if (!iid) return
+  if (!canWrite.value) return
+  emit('issue-assignee-change', { iid, assignee_ids: [] })
   closeContextMenu()
 }
 
@@ -2551,6 +2669,14 @@ html[data-theme="dark"] .issue-context-menu__header-state {
   padding: 5px 8px;
 }
 
+.issue-context-menu__grid--actions {
+  margin-bottom: 2px;
+}
+
+.issue-context-menu__item--warn {
+  opacity: 0.9;
+}
+
 html[data-theme="dark"] .issue-context-menu {
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: rgba(20, 22, 26, 0.98);
@@ -2656,6 +2782,17 @@ html[data-theme="dark"] .issue-context-menu__title-action:hover {
 
 html[data-theme="dark"] .issue-context-menu__item:hover {
   background: rgba(255, 255, 255, 0.08);
+}
+
+.issue-context-menu__item:disabled,
+.issue-context-menu__item[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.issue-context-menu__item:disabled:hover,
+.issue-context-menu__item[aria-disabled="true"]:hover {
+  background: transparent;
 }
 
 .issue-context-menu__item--small {
