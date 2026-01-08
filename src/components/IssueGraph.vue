@@ -1084,16 +1084,31 @@ function resizeCanvas() {
 // Data refs needed for rendering loop
 let nodesData = []
 let edgesData = []
+let lastGroupBy = null
 
 function updateGraph() {
   if (!props.nodes) return
 
   const neutralNode = colors.value.neutralNode
   const isSvnRevisionMode = props.groupBy === 'svn_revision'
+  const layoutModeChanged = lastGroupBy !== props.groupBy
+  lastGroupBy = props.groupBy
+
+  // Preserve previous positions/physics by id so "data refresh" (ex: context menu edits)
+  // doesn't reset the graph layout.
+  const prevById = new Map(nodesData.map(n => [String(n.id), n]))
 
   // 1. Prepare Data
   nodesData = Object.values(toRaw(props.nodes)).map(n => {
     const node = { ...n }
+    const prev = layoutModeChanged ? null : prevById.get(String(node.id))
+    node._hadPrev = !!prev
+    if (prev) {
+      // Preserve current physics state
+      node.x = prev.x; node.y = prev.y
+      node.vx = prev.vx; node.vy = prev.vy
+      node.fx = prev.fx; node.fy = prev.fy
+    }
     
     // Extract metadata
     const labels = node._raw.labels || []
@@ -1313,7 +1328,7 @@ function updateGraph() {
       if (s != null) linked.add(String(s))
       if (t != null) linked.add(String(t))
     })
-    nodesData = nodesData.filter(n => linked.has(String(n.id)))
+    nodesData = nodesData.filter(n => n?._uiForceShow || linked.has(String(n.id)))
     const keep = new Set(nodesData.map(n => String(n.id)))
     edgesData = edgesData.filter(e => {
       const s = typeof e.source === 'object' ? e.source.id : e.source
@@ -1325,6 +1340,7 @@ function updateGraph() {
   // --- Initial Layout (Grid) ---
   const cols = Math.ceil(Math.sqrt(nodesData.length))
   nodesData.forEach((node, index) => {
+    if (!layoutModeChanged && node._hadPrev) return
     const col = index % cols
     const row = Math.floor(index / cols)
     node.x = (col - cols / 2) * SPACING_X
@@ -1347,6 +1363,7 @@ function updateGraph() {
     const mid = (revs.length - 1) / 2
 
     svnNodes.forEach(n => {
+      if (!layoutModeChanged && n._hadPrev) return
       const r = Number(String(n.id).replace('svn-', ''))
       const i = revIndex[r]
       if (i === undefined) return
@@ -2059,6 +2076,8 @@ function render() {
     const isLastOpened = lastOpened != null && String(node.id) === String(lastOpened)
     const selectedId = contextMenu.value.selectedNodeId
     const isContextSelected = selectedId != null && String(node.id) === String(selectedId)
+    const isForceShow = !!node._uiForceShow
+    const isForceClosed = isForceShow && String(node._raw?.state || node.state || '').toLowerCase() === 'closed'
 
     // Shadow (Static) - only if not hovered (hover has its own dynamic shadow)
     if (hoveredNodeId !== node.id) {
@@ -2070,7 +2089,12 @@ function render() {
 
     // Capsule Background
     const isZoomedOut = transform.k < 0.4
-    if (isZoomedOut && node.color) {
+    if (isForceClosed) {
+      // Force-grey closed user-updated issues so they stay visually "done",
+      // regardless of the current view / filter settings.
+      ctx.fillStyle = themeName.value === 'dark' ? '#2a2d2e' : '#eeeeee'
+      ctx.globalAlpha = 1.0
+    } else if (isZoomedOut && node.color) {
       // Lighten the color for background
       ctx.fillStyle = node.color
       ctx.globalAlpha = 0.55
@@ -2083,6 +2107,16 @@ function render() {
     ctx.roundRect(x, y, w, h, r)
     ctx.fill()
     ctx.globalAlpha = 1.0
+
+    // Force-show highlight (subtle tint) for user-updated issues
+    if (isForceShow && !isForceClosed) {
+      ctx.save()
+      ctx.fillStyle = themeName.value === 'dark' ? 'rgba(255, 152, 0, 0.18)' : 'rgba(255, 152, 0, 0.12)'
+      ctx.beginPath()
+      ctx.roundRect(x, y, w, h, r)
+      ctx.fill()
+      ctx.restore()
+    }
 
     // Legend hover: also tint the capsule body to match the legend category
     if (isLegendHover && node.color) {
@@ -2099,6 +2133,19 @@ function render() {
     ctx.strokeStyle = c.nodeBorder
     ctx.lineWidth = 2
     if (node.color) ctx.strokeStyle = node.color
+
+    if (isForceClosed) {
+      ctx.strokeStyle = c.neutralNode
+    } else if (isForceShow && !isLegendHover && !isLastOpened && !isContextSelected && hoveredNodeId !== node.id) {
+      const scale = Math.max(0.0001, transform.k * dpr)
+      const lw = 5 / scale
+      ctx.strokeStyle = 'rgba(255, 152, 0, 0.95)'
+      ctx.lineWidth = Math.max(ctx.lineWidth, lw)
+      ctx.shadowColor = themeName.value === 'dark' ? 'rgba(255, 152, 0, 0.28)' : 'rgba(255, 152, 0, 0.22)'
+      ctx.shadowBlur = 16 / scale
+      ctx.shadowOffsetX = 0
+      ctx.shadowOffsetY = 0
+    }
 
     if (isLegendHover) {
         // Make highlight thickness depend on zoom (so it's still visible zoomed out).
@@ -2185,7 +2232,7 @@ function render() {
         const headerY = y + 20
         
         // ID (Left)
-        ctx.fillStyle = c.textId
+        ctx.fillStyle = isForceClosed ? c.textDim : c.textId
         ctx.font = idFont
         ctx.textAlign = 'left'
         
@@ -2267,7 +2314,7 @@ function render() {
         }
 
         // -- Title --
-        ctx.fillStyle = c.textMain
+        ctx.fillStyle = isForceClosed ? c.textDim : c.textMain
         ctx.font = titleFont
         ctx.textAlign = 'left'
         ctx.textBaseline = 'top'
@@ -2295,7 +2342,7 @@ function render() {
 
         // -- Author (Bottom) --
         const authorName = node._raw.author ? node._raw.author.name : 'Unknown'
-        ctx.fillStyle = c.textMuted
+        ctx.fillStyle = isForceClosed ? c.textDim : c.textMuted
         ctx.font = metaFont
         ctx.textAlign = 'left'
         ctx.fillText(authorName, x + 15, y + h - 15)
@@ -2303,7 +2350,7 @@ function render() {
         // -- Tag (Bottom Right) --
         if (node.displayTag && node.displayTag !== '_no_tag_' && node.displayTag !== authorName) {
           ctx.textAlign = 'right'
-          ctx.fillStyle = node.color
+          ctx.fillStyle = isForceClosed ? c.textDim : node.color
           ctx.font = 'bold 10px "Segoe UI", sans-serif'
           ctx.fillText(node.displayTag, x + w - 15, y + h - 15)
         }

@@ -1009,6 +1009,12 @@ const filteredNodes = computed(() => {
   
   const result = {}
   Object.values(nodes).forEach(node => {
+    // Keep user-updated issues visible even if filters would exclude them.
+    if (node && node._uiForceShow) {
+      result[node.id] = node
+      return
+    }
+
     const nodeLabels = node._raw.labels || []
     const authorName = node._raw.author ? node._raw.author.name : null
     const assigneeName = node._raw.assignee ? node._raw.assignee.name : null
@@ -2216,6 +2222,7 @@ const onIssueStateChange = async ({ iid, state_event } = {}) => {
     const client = createGitLabClient(baseUrl, settings.config.token)
     const updated = await updateIssue(client, settings.config.projectId, issueIid, { state_event: ev })
     if (nodes[issueIid]) nodes[issueIid]._raw = updated
+    nodes[issueIid]._uiForceShow = true
     snackbarText.value = ev === 'close' ? `Closed #${issueIid}` : `Reopened #${issueIid}`
     snackbar.value = true
   } catch (e) {
@@ -2253,6 +2260,7 @@ const onIssueAssigneeChange = async ({ iid, assignee_ids } = {}) => {
     }
 
     if (nodes[issueIid]) nodes[issueIid]._raw = updated
+    nodes[issueIid]._uiForceShow = true
     snackbarText.value = list.length ? `Assigned #${issueIid}` : `Unassigned #${issueIid}`
     snackbar.value = true
   } catch (e) {

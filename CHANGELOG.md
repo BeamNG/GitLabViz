@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.15] - 2026-01-08
+- preserving graph view during ticket changes
+
 ## [0.3.14] - 2026-01-08
 - auto-update system to prevent browser caching
 
