@@ -69,6 +69,11 @@ const gitlabRequest = async (client, method, url, config = {}, retryOptions = {}
         if (typeof client?.get !== 'function') throw new TypeError('client.get is not a function')
         return await client.get(url, config)
       }
+      if (m === 'post') {
+        if (typeof client?.post !== 'function') throw new TypeError('client.post is not a function')
+        const { data, ...rest } = config || {}
+        return await client.post(url, data, rest)
+      }
       if (m === 'put') {
         if (typeof client?.put !== 'function') throw new TypeError('client.put is not a function')
         const { data, ...rest } = config || {}
@@ -105,73 +110,355 @@ export const createGitLabClient = (baseUrl, token) => {
   });
 };
 
+export const createGitLabGraphqlClient = (apiBaseUrl, token) => {
+  const raw = String(apiBaseUrl || '').trim()
+  const baseURL = raw
+    ? raw.replace(/\/api\/v4\/?$/, '/api/graphql').replace(/\/+$/, '')
+    : raw
+
+  return axios.create({
+    baseURL,
+    timeout: DEFAULT_TIMEOUT_MS,
+    headers: {
+      'PRIVATE-TOKEN': token,
+    },
+  })
+}
+
+const gitlabPost = (client, url, config = {}, retryOptions = {}) => {
+  return gitlabRequest(client, 'post', url, config, retryOptions)
+}
+
+/**
+ * Detect which GraphQL Issue fields exist on this GitLab instance.
+ * Cached per-client instance.
+ */
+const detectFeatures = async (client) => {
+  const key = '__glvIssueFieldCaps'
+  if (client && client[key]) return client[key]
+
+  try {
+    const query = `
+      query {
+        __type(name: "Issue") {
+          fields { name }
+        }
+      }
+    `
+
+    const resp = await gitlabPost(client, '', { data: { query } }, { maxRetries: 1 })
+    const fields = resp?.data?.data?.__type?.fields?.map(f => f?.name).filter(Boolean) || []
+    const has = (name) => fields.includes(name)
+
+    const caps = {
+      // Newer work-item status field (To do / In progress / ...)
+      hasIteration: has('iteration'),
+      hasHealthStatus: has('healthStatus'),
+      hasSeverity: has('severity'),
+      hasIssueType: has('issueType'),
+      hasStatus: has('status'),
+      hasEpic: has('epic'),
+
+      // Extra fields (vary by GitLab version/edition)
+      hasDescriptionHtml: has('descriptionHtml'),
+      hasHidden: has('hidden'),
+      hasWebPath: has('webPath'),
+      hasReference: has('reference'),
+      hasStartDate: has('startDate'),
+      hasRelativePosition: has('relativePosition'),
+      hasTypeLegacy: has('type'),
+      hasParent: has('parent'),
+      hasParticipants: has('participants'),
+      hasUserDiscussionsCount: has('userDiscussionsCount'),
+      hasSubscribed: has('subscribed'),
+      hasLinkedIssues: has('linkedIssues'),
+      hasRelatedMergeRequests: has('relatedMergeRequests'),
+      hasExternalAuthor: has('externalAuthor'),
+      hasEmails: has('emails'),
+      hasCustomerRelationsContacts: has('customerRelationsContacts'),
+      hasUserPermissions: has('userPermissions'),
+      hasDesignCollection: has('designCollection'),
+    }
+
+    if (client) client[key] = caps
+    return caps
+  } catch (e) {
+    const caps = {
+      hasIteration: false,
+      hasHealthStatus: false,
+      hasSeverity: false,
+      hasIssueType: false,
+      hasStatus: false,
+      hasEpic: false,
+      hasDescriptionHtml: false,
+      hasHidden: false,
+      hasWebPath: false,
+      hasReference: false,
+      hasStartDate: false,
+      hasRelativePosition: false,
+      hasTypeLegacy: false,
+      hasParent: false,
+      hasParticipants: false,
+      hasUserDiscussionsCount: false,
+      hasSubscribed: false,
+      hasLinkedIssues: false,
+      hasRelatedMergeRequests: false,
+      hasExternalAuthor: false,
+      hasEmails: false,
+      hasCustomerRelationsContacts: false,
+      hasUserPermissions: false,
+      hasDesignCollection: false,
+    }
+    if (client) client[key] = caps
+    return caps
+  }
+}
+
 export const fetchProjectIssues = async (client, projectId, onProgress, options = {}) => {
   try {
-    const encodedProjectId = encodeURIComponent(projectId);
-    let allIssues = [];
-    let page = 1;
-    let hasMore = true;
-    let totalPages = 0;
-    let safetyCounter = 0
+    const fullPath = String(projectId || '').trim()
+    if (!fullPath) return []
 
-    const baseParams = {
-      per_page: PER_PAGE,
-      state: options.state || 'opened',
-      ...options.params
-    };
+    const caps = await detectFeatures(client)
+    const state = options.state || 'opened' // opened | closed
+    const updatedAfter = options?.params?.updated_after || null
+
+    const iterationField = caps.hasIteration ? 'iteration { id title }' : ''
+    const healthField = caps.hasHealthStatus ? 'healthStatus' : ''
+    const severityField = caps.hasSeverity ? 'severity' : ''
+    const issueTypeField = caps.hasIssueType ? 'issueType' : ''
+    const statusField = caps.hasStatus ? 'status { name }' : ''
+    const epicField = caps.hasEpic ? 'epic { id title }' : ''
+
+    // Keep the "fetch all issues" query reasonably light:
+    // include additional scalars if available; omit huge nested collections (linkedIssues, emails, designs, etc.)
+    const descriptionHtmlField = caps.hasDescriptionHtml ? 'descriptionHtml' : ''
+    const hiddenField = caps.hasHidden ? 'hidden' : ''
+    const webPathField = caps.hasWebPath ? 'webPath' : ''
+    const referenceField = caps.hasReference ? 'reference(full: true)' : ''
+    const startDateField = caps.hasStartDate ? 'startDate' : ''
+    const relativePositionField = caps.hasRelativePosition ? 'relativePosition' : ''
+    const typeLegacyField = caps.hasTypeLegacy ? 'type' : ''
+    const participantsField = caps.hasParticipants ? 'participants { nodes { username name avatarUrl } }' : ''
+    const userDiscussionsCountField = caps.hasUserDiscussionsCount ? 'userDiscussionsCount' : ''
+    const subscribedField = caps.hasSubscribed ? 'subscribed' : ''
+    const parentField = caps.hasParent ? 'parent { id iid title }' : ''
+
+    const query = `
+      query ProjectIssues($fullPath: ID!, $first: Int!, $after: String, $state: IssueState, $updatedAfter: Time) {
+        project(fullPath: $fullPath) {
+          issues(first: $first, after: $after, state: $state, updatedAfter: $updatedAfter) {
+            nodes {
+              id
+              iid
+              title
+              description
+              ${descriptionHtmlField}
+              state
+              ${hiddenField}
+              createdAt
+              updatedAt
+              closedAt
+              dueDate
+              ${startDateField}
+              ${relativePositionField}
+              confidential
+              webUrl
+              ${webPathField}
+              ${referenceField}
+              weight
+              upvotes
+              downvotes
+              userNotesCount
+              ${userDiscussionsCountField}
+              mergeRequestsCount
+              taskCompletionStatus { count completedCount }
+              timeStats { timeEstimate totalTimeSpent }
+              labels { nodes { title } }
+              author { id name username webUrl avatarUrl }
+              assignees { nodes { id name username webUrl avatarUrl } }
+              ${participantsField}
+              milestone {
+                id iid title description state createdAt updatedAt dueDate startDate expired webUrl
+              }
+              ${parentField}
+              ${statusField}
+              ${iterationField}
+              ${epicField}
+              ${healthField}
+              ${severityField}
+              ${issueTypeField}
+              ${typeLegacyField}
+              ${subscribedField}
+            }
+            pageInfo { hasNextPage endCursor }
+          }
+        }
+      }
+    `
+
+    const first = PER_PAGE
+    let after = null
+    let hasMore = true
+    let page = 0
+    const allIssues = []
 
     while (hasMore) {
-      safetyCounter++
-      // absolute safety valve against any weird pagination loops
-      if (safetyCounter > 10_000) throw new Error('Aborting: too many GitLab pagination requests (possible loop).')
+      page++
+      if (PAGE_LIMIT !== -1 && page > PAGE_LIMIT) break
 
       if (onProgress) {
-        const stateLabel = baseParams.state === 'opened' ? '' : ` (${baseParams.state})`;
-        if (totalPages > 0) {
-          const percent = Math.round((page / totalPages) * 100);
-          onProgress(`Fetching issues${stateLabel} page ${page} of ${totalPages}, ${percent}%`);
-        } else {
-          onProgress(`Fetching issues${stateLabel} page ${page}...`);
-        }
-      }
-      
-      const response = await gitlabGet(
-        client,
-        `/projects/${encodedProjectId}/issues`,
-        {
-          params: {
-            ...baseParams,
-            page: page
-          }
-        },
-        options.retry
-      )
-
-      if (!Array.isArray(response.data)) {
-        const ct = String(response?.headers?.['content-type'] || '')
-        throw new Error(`GitLab API returned unexpected data (not an array). Check your GitLab URL + token. content-type=${ct || '(unknown)'}`)
+        const stateLabel = state === 'opened' ? '' : ` (${state})`
+        onProgress(`Fetching issues${stateLabel} page ${page}...`)
       }
 
-      allIssues = allIssues.concat(response.data);
-      
-      // Try to update total pages from header if available
-      if (response.headers['x-total-pages']) {
-        const headerTotalPages = parseInt(response.headers['x-total-pages'], 10);
-        if (totalPages === 0) {
-           totalPages = PAGE_LIMIT === -1 ? headerTotalPages : Math.min(headerTotalPages, PAGE_LIMIT);
-        }
+      const variables = { fullPath, first, after, state, updatedAfter: updatedAfter || null }
+      const resp = await gitlabPost(client, '', { data: { query, variables } }, options.retry)
+
+      const payload = resp?.data || {}
+      if (Array.isArray(payload?.errors) && payload.errors.length) {
+        const msg = payload.errors.map(e => e?.message).filter(Boolean).join('; ') || 'GraphQL error'
+        throw new Error(msg)
       }
 
-      // Determine if we should continue
-      const nextPage = String(response.headers['x-next-page'] || '').trim()
-      if (PAGE_LIMIT !== -1 && page >= PAGE_LIMIT) hasMore = false
-      else if (totalPages > 0 && page >= totalPages) hasMore = false
-      else if (nextPage) page = Number(nextPage) || (page + 1)
-      else if (response.data.length < PER_PAGE) hasMore = false
-      else page++
+      const nodes = payload?.data?.project?.issues?.nodes
+      const pageInfo = payload?.data?.project?.issues?.pageInfo
+      if (!Array.isArray(nodes)) throw new Error('GitLab GraphQL returned unexpected data (issues.nodes missing)')
+
+      nodes.forEach(n => {
+        const labels = Array.isArray(n?.labels?.nodes) ? n.labels.nodes.map(x => x?.title).filter(Boolean) : []
+        const assignees = Array.isArray(n?.assignees?.nodes) ? n.assignees.nodes : []
+        const assignee = assignees.length ? assignees[0] : null
+        const participants = Array.isArray(n?.participants?.nodes) ? n.participants.nodes : []
+        const parent = n?.parent || null
+        const tc = n?.taskCompletionStatus || null
+        const count = Number(tc?.count) || 0
+        const completed = Number(tc?.completedCount) || 0
+        const time = n?.timeStats || null
+
+        const statusName = caps.hasStatus && n?.status?.name ? String(n.status.name).trim() : ''
+        const withStatusLabel = statusName ? [`Status::${statusName}`, ...labels] : labels
+
+        allIssues.push({
+          id: n?.id || null,
+          iid: n?.iid != null ? Number(n.iid) : null,
+          project_id: null,
+          title: n?.title || '',
+          description: n?.description || '',
+          description_html: caps.hasDescriptionHtml ? (n?.descriptionHtml || null) : null,
+          state: n?.state || '',
+          hidden: caps.hasHidden ? !!n?.hidden : false,
+          created_at: n?.createdAt || null,
+          updated_at: n?.updatedAt || null,
+          closed_at: n?.closedAt || null,
+          closed_by: null,
+          start_date: caps.hasStartDate ? (n?.startDate || null) : null,
+          relative_position: caps.hasRelativePosition ? (n?.relativePosition ?? null) : null,
+          labels: withStatusLabel,
+          milestone: n?.milestone
+            ? {
+                id: n.milestone.id,
+                iid: n.milestone.iid,
+                group_id: null,
+                title: n.milestone.title,
+                description: n.milestone.description || '',
+                state: n.milestone.state,
+                created_at: n.milestone.createdAt,
+                updated_at: n.milestone.updatedAt,
+                due_date: n.milestone.dueDate,
+                start_date: n.milestone.startDate,
+                expired: n.milestone.expired,
+                web_url: n.milestone.webUrl
+              }
+            : null,
+          assignees: assignees.map(a => ({
+            id: a?.id,
+            username: a?.username,
+            public_email: null,
+            name: a?.name,
+            state: 'active',
+            locked: false,
+            avatar_url: a?.avatarUrl || null,
+            web_url: a?.webUrl || ''
+          })),
+          author: n?.author
+            ? {
+                id: n.author.id,
+                username: n.author.username,
+                public_email: null,
+                name: n.author.name,
+                state: 'active',
+                locked: false,
+                avatar_url: n.author.avatarUrl || null,
+                web_url: n.author.webUrl || ''
+              }
+            : null,
+          type: 'ISSUE',
+          assignee: assignee
+            ? {
+                id: assignee?.id,
+                username: assignee?.username,
+                public_email: null,
+                name: assignee?.name,
+                state: 'active',
+                locked: false,
+                avatar_url: assignee?.avatarUrl || null,
+                web_url: assignee?.webUrl || ''
+              }
+            : null,
+          user_notes_count: Number(n?.userNotesCount) || 0,
+          user_discussions_count: caps.hasUserDiscussionsCount ? (Number(n?.userDiscussionsCount) || 0) : 0,
+          merge_requests_count: Number(n?.mergeRequestsCount) || 0,
+          upvotes: Number(n?.upvotes) || 0,
+          downvotes: Number(n?.downvotes) || 0,
+          due_date: n?.dueDate || null,
+          confidential: !!n?.confidential,
+          subscribed: caps.hasSubscribed ? !!n?.subscribed : false,
+          web_path: caps.hasWebPath ? (n?.webPath || '') : '',
+          reference: caps.hasReference ? (n?.reference || '') : '',
+          issue_type: 'issue',
+          web_url: n?.webUrl || '',
+          health_status: caps.hasHealthStatus ? (n?.healthStatus || null) : null,
+          severity: caps.hasSeverity ? (n?.severity || 'UNKNOWN') : 'UNKNOWN',
+          issue_type_field: caps.hasIssueType ? (n?.issueType || null) : null,
+          legacy_type: caps.hasTypeLegacy ? (n?.type || null) : null,
+          time_stats: {
+            time_estimate: Number(time?.timeEstimate) || 0,
+            total_time_spent: Number(time?.totalTimeSpent) || 0,
+            human_time_estimate: null,
+            human_total_time_spent: null
+          },
+          task_completion_status: { count, completed_count: completed },
+          weight: n?.weight ?? null,
+          blocking_issues_count: 0,
+          has_tasks: true,
+          task_status: `${completed} of ${count} checklist items completed`,
+          _links: {},
+          references: {},
+          severity: 'UNKNOWN',
+          moved_to_id: null,
+          imported: false,
+          imported_from: 'none',
+          service_desk_reply_to: null,
+          epic_iid: null,
+          epic: caps.hasEpic && n?.epic ? { title: n.epic.title } : null,
+          iteration: caps.hasIteration && n?.iteration ? { title: n.iteration.title } : null,
+          parent: caps.hasParent && parent ? { id: parent.id, iid: parent.iid, title: parent.title } : null,
+          participants: caps.hasParticipants ? participants.map(p => ({
+            username: p?.username,
+            name: p?.name,
+            avatar_url: p?.avatarUrl || null
+          })) : [],
+          work_item_status: statusName || null
+        })
+      })
+
+      hasMore = !!pageInfo?.hasNextPage
+      after = pageInfo?.endCursor || null
+      if (hasMore && !after) hasMore = false
     }
-    
-    return allIssues;
+
+    return allIssues
   } catch (error) {
     console.error('Error fetching issues:', error);
     throw error;

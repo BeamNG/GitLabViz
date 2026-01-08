@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { createGitLabClient, fetchProjectIssues, fetchIssueLinks } from './gitlab';
+import { createGitLabClient, createGitLabGraphqlClient, fetchProjectIssues, fetchIssueLinks } from './gitlab';
 
 vi.mock('axios');
 
@@ -39,52 +39,115 @@ describe('gitlab service', () => {
     });
   });
 
-  it('fetchProjectIssues calls get with correct params', async () => {
+  it('createGitLabGraphqlClient converts /api/v4 to /api/graphql', () => {
+    const mockCreate = vi.fn()
+    axios.create.mockImplementation(mockCreate)
+
+    createGitLabGraphqlClient(mockBaseUrl, mockToken)
+
+    expect(mockCreate).toHaveBeenCalledWith({
+      baseURL: 'https://custom.gitlab.com/api/graphql',
+      timeout: 30000,
+      headers: {
+        'PRIVATE-TOKEN': mockToken,
+      },
+    })
+  })
+
+  it('fetchProjectIssues (GraphQL) posts with correct variables', async () => {
     const mockClient = {
-      get: vi.fn().mockResolvedValue({ 
-        data: [{ id: 1 }],
-        headers: { 'x-total-pages': '1' } 
-      }),
+      post: vi.fn()
+        // detectFeatures introspection
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              __type: {
+                fields: [{ name: 'status' }]
+              }
+            }
+          }
+        })
+        // issues query
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              project: {
+                issues: {
+                  nodes: [{ iid: '1', title: 'x', state: 'opened', labels: { nodes: [] }, assignees: { nodes: [] }, status: { name: 'To do' } }],
+                  pageInfo: { hasNextPage: false, endCursor: null }
+                }
+              }
+            }
+          }
+        }),
     };
 
-    // Test with special characters needing encoding
-    const encodedProjectId = encodeURIComponent('group/project');
     const result = await fetchProjectIssues(mockClient, 'group/project');
 
-    expect(mockClient.get).toHaveBeenCalledWith(`/projects/${encodedProjectId}/issues`, {
-      params: {
-        per_page: 100,
-        state: 'opened',
-        page: 1
-      },
-    });
-    expect(result).toEqual([{ id: 1 }]);
+    expect(mockClient.post).toHaveBeenCalledTimes(2)
+    const [url, body] = mockClient.post.mock.calls[1]
+    expect(url).toBe('')
+    expect(body).toHaveProperty('query')
+    expect(body.variables).toEqual(expect.objectContaining({
+      fullPath: 'group/project',
+      first: 100,
+      after: null,
+      state: 'opened',
+      updatedAfter: null
+    }))
+    expect(result).toEqual(expect.any(Array))
   });
 
-  it('fetchProjectIssues handles pagination', async () => {
+  it('fetchProjectIssues (GraphQL) handles pagination', async () => {
     const mockClient = {
-      get: vi.fn()
-        .mockResolvedValueOnce({ 
-          data: [{ id: 1 }], 
-          headers: { 'x-total-pages': '2', 'x-next-page': '2' } 
+      post: vi.fn()
+        // detectFeatures introspection
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              __type: {
+                fields: [{ name: 'status' }]
+              }
+            }
+          }
         })
-        .mockResolvedValueOnce({ 
-          data: [{ id: 2 }], 
-          headers: { 'x-total-pages': '2', 'x-next-page': '' } 
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              project: {
+                issues: {
+                  nodes: [{ iid: '1', title: 'a', state: 'opened', labels: { nodes: [] }, assignees: { nodes: [] }, status: { name: 'To do' } }],
+                  pageInfo: { hasNextPage: true, endCursor: 'CUR1' }
+                }
+              }
+            }
+          }
+        })
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              project: {
+                issues: {
+                  nodes: [{ iid: '2', title: 'b', state: 'opened', labels: { nodes: [] }, assignees: { nodes: [] }, status: { name: 'To do' } }],
+                  pageInfo: { hasNextPage: false, endCursor: null }
+                }
+              }
+            }
+          }
         }),
     };
 
     const result = await fetchProjectIssues(mockClient, '123');
 
-    expect(mockClient.get).toHaveBeenCalledTimes(2);
-    expect(mockClient.get).toHaveBeenNthCalledWith(1, '/projects/123/issues', expect.objectContaining({ params: { per_page: 100, state: 'opened', page: 1 } }));
-    expect(mockClient.get).toHaveBeenNthCalledWith(2, '/projects/123/issues', expect.objectContaining({ params: { per_page: 100, state: 'opened', page: 2 } }));
-    expect(result).toEqual([{ id: 1 }, { id: 2 }]);
+    expect(mockClient.post).toHaveBeenCalledTimes(3)
+    expect(mockClient.post.mock.calls[1][1].variables.after).toBe(null)
+    expect(mockClient.post.mock.calls[2][1].variables.after).toBe('CUR1')
+    expect(result.length).toBe(2)
   });
 
   it('fetchProjectIssues throws error on failure', async () => {
     const mockClient = {
-      get: vi.fn().mockRejectedValue(new Error('API Error')),
+      post: vi.fn().mockRejectedValue(new Error('API Error')),
     };
     const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
@@ -118,16 +181,37 @@ describe('gitlab service', () => {
 
   it('fetchProjectIssues retries on 429 and succeeds', async () => {
     const mockClient = {
-      get: vi.fn()
+      post: vi.fn()
         .mockRejectedValueOnce({ response: { status: 429, headers: { 'retry-after': '0' } } })
-        .mockResolvedValueOnce({ data: [{ id: 1 }], headers: { 'x-total-pages': '1' } }),
+        // detectFeatures introspection
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              __type: {
+                fields: [{ name: 'status' }]
+              }
+            }
+          }
+        })
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              project: {
+                issues: {
+                  nodes: [{ iid: '1', title: 'x', state: 'opened', labels: { nodes: [] }, assignees: { nodes: [] }, status: { name: 'To do' } }],
+                  pageInfo: { hasNextPage: false, endCursor: null }
+                }
+              }
+            }
+          }
+        }),
     };
 
     const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     const result = await fetchProjectIssues(mockClient, mockProjectId, null, { retry: { maxRetries: 2, retryBaseDelayMs: 0 } });
 
-    expect(result).toEqual([{ id: 1 }]);
-    expect(mockClient.get).toHaveBeenCalledTimes(2);
+    expect(result.length).toBe(1);
+    expect(mockClient.post).toHaveBeenCalledTimes(3);
     expect(consoleSpy).toHaveBeenCalled();
   });
 });

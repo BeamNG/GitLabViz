@@ -514,7 +514,7 @@ import ConfigPage from './components/ConfigPage.vue'
 import ChatToolsPage from './components/ChatToolsPage.vue'
 import SvnLogDialog from './components/SvnLogDialog.vue'
 import SidebarFilterControls from './components/SidebarFilterControls.vue'
-import { createGitLabClient, fetchProjectIssues, fetchIssueLinks, fetchTokenScopes, normalizeGitLabApiBaseUrl, updateIssue } from './services/gitlab'
+import { createGitLabClient, createGitLabGraphqlClient, fetchProjectIssues, fetchIssueLinks, fetchTokenScopes, normalizeGitLabApiBaseUrl, updateIssue } from './services/gitlab'
 import { createSvnClient, fetchSvnLog } from './services/svn'
 import { svnCacheGetMeta, svnCacheClear, normalizeRepoUrl } from './services/cache'
 import { useSettingsStore } from './composables/useSettingsStore'
@@ -1869,7 +1869,8 @@ const loadData = async (opts = {}) => {
     for (const key in edges) delete edges[key]
   }
 
-  const client = doGitLab ? createGitLabClient(gitlabApiBaseUrl, settings.config.token) : null
+  const restClient = doGitLab ? createGitLabClient(gitlabApiBaseUrl, settings.config.token) : null
+  const gqlClient = doGitLab ? createGitLabGraphqlClient(gitlabApiBaseUrl, settings.config.token) : null
 
   try {
     // 0. Refresh Mattermost (ChatTools) session data (lightweight)
@@ -1899,7 +1900,7 @@ const loadData = async (opts = {}) => {
         try {
             // Cache "me" for dynamic presets (By me / Assigned to me)
             try {
-                const me = await client.get('/user')
+                const me = await restClient.get('/user')
                 settings.meta.gitlabMeName = me?.data?.name || ''
                 settings.meta.gitlabMeId = me?.data?.id || null
             } catch (e) {
@@ -1910,7 +1911,7 @@ const loadData = async (opts = {}) => {
 
             // Best-effort: detect scopes to enable/disable write features in UI.
             try {
-              const scopes = await fetchTokenScopes(client)
+              const scopes = await fetchTokenScopes(restClient)
               settings.meta.gitlabTokenScopes = scopes
               settings.meta.gitlabCanWrite = Array.isArray(scopes) ? scopes.includes('api') : false
             } catch (e) {
@@ -1920,7 +1921,7 @@ const loadData = async (opts = {}) => {
             }
 
             // Fetch opened issues
-            issues = await fetchProjectIssues(client, settings.config.projectId, (msg) => {
+            issues = await fetchProjectIssues(gqlClient, settings.config.projectId, (msg) => {
                 loadingMessage.value = msg
                 updateStatus.value = { loading: true, source: 'gitlab', message: msg }
             })
@@ -1930,7 +1931,7 @@ const loadData = async (opts = {}) => {
                 const closedAfter = new Date();
                 closedAfter.setDate(closedAfter.getDate() - settings.config.gitlabClosedDays);
                 
-                const closedIssues = await fetchProjectIssues(client, settings.config.projectId, (msg) => {
+                const closedIssues = await fetchProjectIssues(gqlClient, settings.config.projectId, (msg) => {
                     loadingMessage.value = msg
                     updateStatus.value = { loading: true, source: 'gitlab', message: msg }
                 }, { 
@@ -2113,7 +2114,7 @@ const loadData = async (opts = {}) => {
             const index = nextIssueIndex++;
             const issue = issues[index];
             try {
-            linksResults[index] = await fetchIssueLinks(client, settings.config.projectId, issue.iid);
+            linksResults[index] = await fetchIssueLinks(restClient, settings.config.projectId, issue.iid);
             } catch (e) {
             linksResults[index] = [];
             }
@@ -2226,6 +2227,7 @@ const onIssueStateChange = async ({ iid, state_event } = {}) => {
   try {
     const client = createGitLabClient(baseUrl, settings.config.token)
     const updated = await updateIssue(client, settings.config.projectId, issueIid, { state_event: ev })
+    if (issueGraph.value && issueGraph.value.markDataOnlyUpdate) issueGraph.value.markDataOnlyUpdate()
     if (nodes[issueIid]) nodes[issueIid]._raw = updated
     nodes[issueIid]._uiForceShow = true
     snackbarText.value = ev === 'close' ? `Closed #${issueIid}` : `Reopened #${issueIid}`
@@ -2264,6 +2266,7 @@ const onIssueAssigneeChange = async ({ iid, assignee_ids } = {}) => {
       if (Array.isArray(updated.assignees) && updated.assignees.length === 0) updated.assignee = null
     }
 
+    if (issueGraph.value && issueGraph.value.markDataOnlyUpdate) issueGraph.value.markDataOnlyUpdate()
     if (nodes[issueIid]) nodes[issueIid]._raw = updated
     nodes[issueIid]._uiForceShow = true
     snackbarText.value = list.length ? `Assigned #${issueIid}` : `Unassigned #${issueIid}`

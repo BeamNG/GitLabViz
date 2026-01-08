@@ -1086,6 +1086,7 @@ function resizeCanvas() {
 let nodesData = []
 let edgesData = []
 let lastGroupBy = null
+let dataOnlyUpdateOnce = false
 
 function updateGraph() {
   if (!props.nodes) return
@@ -1101,14 +1102,19 @@ function updateGraph() {
 
   // 1. Prepare Data
   nodesData = Object.values(toRaw(props.nodes)).map(n => {
-    const node = { ...n }
-    const prev = layoutModeChanged ? null : prevById.get(String(node.id))
-    node._hadPrev = !!prev
-    if (prev) {
+    const id = n && n.id != null ? String(n.id) : ''
+    const prev = layoutModeChanged ? null : prevById.get(id)
+    const node = prev || {}
+    const hadPrev = !!prev
+    const x = node.x, y = node.y, vx = node.vx, vy = node.vy, fx = node.fx, fy = node.fy
+
+    Object.assign(node, n)
+    node._hadPrev = hadPrev
+    if (hadPrev) {
       // Preserve current physics state
-      node.x = prev.x; node.y = prev.y
-      node.vx = prev.vx; node.vy = prev.vy
-      node.fx = prev.fx; node.fy = prev.fy
+      node.x = x; node.y = y
+      node.vx = vx; node.vy = vy
+      node.fx = fx; node.fy = fy
     }
     
     // Extract metadata
@@ -1328,6 +1334,20 @@ function updateGraph() {
     })
   }
 
+  // Data-only refresh (context menu edits): keep positions and do NOT tick physics.
+  // App sets a one-shot flag before updating a ticket's _raw payload.
+  if (dataOnlyUpdateOnce && simulation && !layoutModeChanged) {
+    dataOnlyUpdateOnce = false
+    simulation.stop()
+    // Keep simulation in sync for optional manual reflow later.
+    simulation.nodes(nodesData)
+    const lf = simulation.force && simulation.force('link')
+    if (lf && typeof lf.links === 'function') lf.links(edgesData)
+    scheduleRender()
+    return
+  }
+  dataOnlyUpdateOnce = false
+
   // --- Initial Layout (Grid) ---
   const cols = Math.ceil(Math.sqrt(nodesData.length))
   nodesData.forEach((node, index) => {
@@ -1478,7 +1498,10 @@ function updateGraph() {
   // --- Simulation ---
   if (simulation) simulation.stop()
 
-  simulation = d3.forceSimulation(nodesData)
+  const shouldPreTick = layoutModeChanged || !nodesData.some(n => n._hadPrev)
+  const preSimTicks = 40
+
+  simulation = d3.forceSimulation(nodesData).stop()
     .force("charge", d3.forceManyBody().strength(-props.repulsion)) // Increased repulsion
   
   if (props.linkMode !== 'none') {
@@ -1555,7 +1578,6 @@ function updateGraph() {
   simulation
     .alphaDecay(0.02) // Faster decay to stabilize flickering
     .velocityDecay(props.friction) // High friction to prevent jitter
-    .on("tick", ticked)
 
       // Apply Forces based on mode
       if (isSvnRevisionMode) {
@@ -1593,6 +1615,24 @@ function updateGraph() {
             .force("x", d3.forceX(0).strength(props.centerGravity))
             .force("y", d3.forceY(0).strength(props.centerGravity))
       }
+
+  // Pre-simulate a few steps (no rendering) so initial paint is less "explody".
+  if (shouldPreTick && preSimTicks > 0) {
+    simulation.alpha(1)
+    simulation.tick(preSimTicks)
+
+    const hasGrid = !isSvnRevisionMode && (Number(props.gridStrength) || 0) > 0
+    if (hasGrid) {
+      const factor = Number(props.gridSpacing) || 1.5
+      resolveOverlaps(nodesData, CAPSULE_WIDTH * factor, CAPSULE_HEIGHT * factor)
+    } else {
+      resolveOverlaps(nodesData, SPACING_X, SPACING_Y)
+    }
+  }
+
+  simulation.on("tick", ticked)
+  simulation.restart()
+  scheduleRender()
 
   function ticked() {
     const hasGrid = !isSvnRevisionMode && (Number(props.gridStrength) || 0) > 0
@@ -2591,6 +2631,9 @@ defineExpose({
             
         transform = t
         saveTransform(t)
+    },
+    markDataOnlyUpdate: () => {
+        dataOnlyUpdateOnce = true
     },
     restartSimulation: () => {
         if (simulation) {
