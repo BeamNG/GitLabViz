@@ -57,12 +57,48 @@ describe('gitlab service', () => {
   it('fetchProjectIssues (GraphQL) posts with correct variables', async () => {
     const mockClient = {
       post: vi.fn()
-        // detectFeatures introspection
+        // detectFeatures introspection (Issue fields)
         .mockResolvedValueOnce({
           data: {
             data: {
               __type: {
-                fields: [{ name: 'status' }]
+                fields: [{ name: 'status' }, { name: 'timeEstimate' }, { name: 'totalTimeSpent' }]
+              }
+            }
+          }
+        })
+        // detectProjectIssuesArgs introspection (Project.issues args)
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              __type: {
+                fields: [{
+                  name: 'issues',
+                  type: { kind: 'OBJECT', name: 'IssueConnection', ofType: null },
+                  args: [{
+                    name: 'state',
+                    type: { kind: 'ENUM', name: 'IssuableState', ofType: null }
+                  }]
+                }]
+              }
+            }
+          }
+        })
+        // enum values for IssuableState + IssueConnection fields
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              stateEnum: { enumValues: [{ name: 'opened' }, { name: 'closed' }] },
+              conn: { fields: [{ name: 'count' }] }
+            }
+          }
+        })
+        // detectMilestoneCaps introspection (Milestone fields)
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              __type: {
+                fields: [{ name: 'webPath' }]
               }
             }
           }
@@ -73,8 +109,18 @@ describe('gitlab service', () => {
             data: {
               project: {
                 issues: {
-                  nodes: [{ iid: '1', title: 'x', state: 'opened', labels: { nodes: [] }, assignees: { nodes: [] }, status: { name: 'To do' } }],
-                  pageInfo: { hasNextPage: false, endCursor: null }
+                  nodes: [{
+                    iid: '1',
+                    title: 'x',
+                    state: 'opened',
+                    labels: { nodes: [] },
+                    assignees: { nodes: [] },
+                    status: { name: 'To do' },
+                    timeEstimate: 0,
+                    totalTimeSpent: 0
+                  }],
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  count: 1
                 }
               }
             }
@@ -84,13 +130,13 @@ describe('gitlab service', () => {
 
     const result = await fetchProjectIssues(mockClient, 'group/project');
 
-    expect(mockClient.post).toHaveBeenCalledTimes(2)
-    const [url, body] = mockClient.post.mock.calls[1]
+    expect(mockClient.post).toHaveBeenCalledTimes(5)
+    const [url, body] = mockClient.post.mock.calls[4]
     expect(url).toBe('')
     expect(body).toHaveProperty('query')
     expect(body.variables).toEqual(expect.objectContaining({
       fullPath: 'group/project',
-      first: 100,
+      first: 50,
       after: null,
       state: 'opened',
       updatedAfter: null
@@ -101,12 +147,48 @@ describe('gitlab service', () => {
   it('fetchProjectIssues (GraphQL) handles pagination', async () => {
     const mockClient = {
       post: vi.fn()
-        // detectFeatures introspection
+        // detectFeatures introspection (Issue fields)
         .mockResolvedValueOnce({
           data: {
             data: {
               __type: {
-                fields: [{ name: 'status' }]
+                fields: [{ name: 'status' }, { name: 'timeEstimate' }, { name: 'totalTimeSpent' }]
+              }
+            }
+          }
+        })
+        // detectProjectIssuesArgs introspection (Project.issues args)
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              __type: {
+                fields: [{
+                  name: 'issues',
+                  type: { kind: 'OBJECT', name: 'IssueConnection', ofType: null },
+                  args: [{
+                    name: 'state',
+                    type: { kind: 'ENUM', name: 'IssuableState', ofType: null }
+                  }]
+                }]
+              }
+            }
+          }
+        })
+        // enum values for IssuableState + IssueConnection fields
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              stateEnum: { enumValues: [{ name: 'opened' }, { name: 'closed' }] },
+              conn: { fields: [{ name: 'count' }] }
+            }
+          }
+        })
+        // detectMilestoneCaps introspection (Milestone fields)
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              __type: {
+                fields: [{ name: 'webPath' }]
               }
             }
           }
@@ -116,8 +198,18 @@ describe('gitlab service', () => {
             data: {
               project: {
                 issues: {
-                  nodes: [{ iid: '1', title: 'a', state: 'opened', labels: { nodes: [] }, assignees: { nodes: [] }, status: { name: 'To do' } }],
-                  pageInfo: { hasNextPage: true, endCursor: 'CUR1' }
+                  nodes: [{
+                    iid: '1',
+                    title: 'a',
+                    state: 'opened',
+                    labels: { nodes: [] },
+                    assignees: { nodes: [] },
+                    status: { name: 'To do' },
+                    timeEstimate: 0,
+                    totalTimeSpent: 0
+                  }],
+                  pageInfo: { hasNextPage: true, endCursor: 'CUR1' },
+                  count: 2
                 }
               }
             }
@@ -128,8 +220,18 @@ describe('gitlab service', () => {
             data: {
               project: {
                 issues: {
-                  nodes: [{ iid: '2', title: 'b', state: 'opened', labels: { nodes: [] }, assignees: { nodes: [] }, status: { name: 'To do' } }],
-                  pageInfo: { hasNextPage: false, endCursor: null }
+                  nodes: [{
+                    iid: '2',
+                    title: 'b',
+                    state: 'opened',
+                    labels: { nodes: [] },
+                    assignees: { nodes: [] },
+                    status: { name: 'To do' },
+                    timeEstimate: 0,
+                    totalTimeSpent: 0
+                  }],
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  count: 2
                 }
               }
             }
@@ -139,9 +241,9 @@ describe('gitlab service', () => {
 
     const result = await fetchProjectIssues(mockClient, '123');
 
-    expect(mockClient.post).toHaveBeenCalledTimes(3)
-    expect(mockClient.post.mock.calls[1][1].variables.after).toBe(null)
-    expect(mockClient.post.mock.calls[2][1].variables.after).toBe('CUR1')
+    expect(mockClient.post).toHaveBeenCalledTimes(6)
+    expect(mockClient.post.mock.calls[4][1].variables.after).toBe(null)
+    expect(mockClient.post.mock.calls[5][1].variables.after).toBe('CUR1')
     expect(result.length).toBe(2)
   });
 
@@ -183,12 +285,48 @@ describe('gitlab service', () => {
     const mockClient = {
       post: vi.fn()
         .mockRejectedValueOnce({ response: { status: 429, headers: { 'retry-after': '0' } } })
-        // detectFeatures introspection
+        // detectFeatures introspection (Issue fields)
         .mockResolvedValueOnce({
           data: {
             data: {
               __type: {
-                fields: [{ name: 'status' }]
+                fields: [{ name: 'status' }, { name: 'timeEstimate' }, { name: 'totalTimeSpent' }]
+              }
+            }
+          }
+        })
+        // detectProjectIssuesArgs introspection (Project.issues args)
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              __type: {
+                fields: [{
+                  name: 'issues',
+                  type: { kind: 'OBJECT', name: 'IssueConnection', ofType: null },
+                  args: [{
+                    name: 'state',
+                    type: { kind: 'ENUM', name: 'IssuableState', ofType: null }
+                  }]
+                }]
+              }
+            }
+          }
+        })
+        // enum values for IssuableState + IssueConnection fields
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              stateEnum: { enumValues: [{ name: 'opened' }, { name: 'closed' }] },
+              conn: { fields: [{ name: 'count' }] }
+            }
+          }
+        })
+        // detectMilestoneCaps introspection (Milestone fields)
+        .mockResolvedValueOnce({
+          data: {
+            data: {
+              __type: {
+                fields: [{ name: 'webPath' }]
               }
             }
           }
@@ -198,8 +336,18 @@ describe('gitlab service', () => {
             data: {
               project: {
                 issues: {
-                  nodes: [{ iid: '1', title: 'x', state: 'opened', labels: { nodes: [] }, assignees: { nodes: [] }, status: { name: 'To do' } }],
-                  pageInfo: { hasNextPage: false, endCursor: null }
+                  nodes: [{
+                    iid: '1',
+                    title: 'x',
+                    state: 'opened',
+                    labels: { nodes: [] },
+                    assignees: { nodes: [] },
+                    status: { name: 'To do' },
+                    timeEstimate: 0,
+                    totalTimeSpent: 0
+                  }],
+                  pageInfo: { hasNextPage: false, endCursor: null },
+                  count: 1
                 }
               }
             }
@@ -211,7 +359,7 @@ describe('gitlab service', () => {
     const result = await fetchProjectIssues(mockClient, mockProjectId, null, { retry: { maxRetries: 2, retryBaseDelayMs: 0 } });
 
     expect(result.length).toBe(1);
-    expect(mockClient.post).toHaveBeenCalledTimes(3);
+    expect(mockClient.post).toHaveBeenCalledTimes(6);
     expect(consoleSpy).toHaveBeenCalled();
   });
 });

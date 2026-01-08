@@ -4,6 +4,8 @@ import { decodeGitLabTokenFromStorage } from '../utils/tokenObfuscation'
 // Set to -1 to fetch all pages, or a positive integer (e.g. 3) for debugging/limit
 export const PAGE_LIMIT = -1;
 const PER_PAGE = 100
+// GraphQL responses can get huge; keep pages smaller.
+const GRAPHQL_PAGE_SIZE = 50
 const DEFAULT_TIMEOUT_MS = 30_000
 const DEFAULT_MAX_RETRIES = 3
 const DEFAULT_RETRY_BASE_DELAY_MS = 500
@@ -129,6 +131,107 @@ const gitlabPost = (client, url, config = {}, retryOptions = {}) => {
   return gitlabRequest(client, 'post', url, config, retryOptions)
 }
 
+const unwrapTypeName = (t) => {
+  let cur = t
+  while (cur) {
+    if (cur.name) return cur.name
+    cur = cur.ofType
+  }
+  return null
+}
+
+const detectProjectIssuesArgs = async (client) => {
+  const key = '__glvProjectIssuesArgs'
+  if (client && client[key]) return client[key]
+
+  const fallback = { stateType: 'IssuableState', stateEnumValues: null, issuesCountField: null }
+  if (!client) return fallback
+
+  try {
+    const query = `
+      query {
+        __type(name: "Project") {
+          fields {
+            name
+            type { kind name ofType { kind name ofType { kind name } } }
+            args {
+              name
+              type { kind name ofType { kind name ofType { kind name } } }
+            }
+          }
+        }
+      }
+    `
+    const resp = await gitlabPost(client, '', { data: { query } }, { maxRetries: 1 })
+    const fields = resp?.data?.data?.__type?.fields || []
+    const issuesField = Array.isArray(fields) ? fields.find(f => f?.name === 'issues') : null
+    const args = issuesField?.args || []
+    const stateArg = Array.isArray(args) ? args.find(a => a?.name === 'state') : null
+    const stateType = unwrapTypeName(stateArg?.type) || fallback.stateType
+    const connType = unwrapTypeName(issuesField?.type) || 'IssueConnection'
+
+    let stateEnumValues = null
+    let issuesCountField = null
+    try {
+      const q2 = `
+        query GetCaps($stateType: String!, $connType: String!) {
+          stateEnum: __type(name: $stateType) { enumValues { name } }
+          conn: __type(name: $connType) { fields { name } }
+        }
+      `
+      const r2 = await gitlabPost(
+        client,
+        '',
+        { data: { query: q2, variables: { stateType, connType } } },
+        { maxRetries: 1 }
+      )
+      const vals = r2?.data?.data?.stateEnum?.enumValues?.map(v => v?.name).filter(Boolean) || null
+      stateEnumValues = Array.isArray(vals) && vals.length ? vals : null
+
+      const connFields = r2?.data?.data?.conn?.fields?.map(f => f?.name).filter(Boolean) || []
+      if (connFields.includes('totalCount')) issuesCountField = 'totalCount'
+      else if (connFields.includes('count')) issuesCountField = 'count'
+    } catch {}
+
+    const out = { stateType, stateEnumValues, issuesCountField }
+    client[key] = out
+    return out
+  } catch {
+    client[key] = fallback
+    return fallback
+  }
+}
+
+const detectMilestoneCaps = async (client) => {
+  const key = '__glvMilestoneCaps'
+  if (client && client[key]) return client[key]
+
+  const fallback = { hasWebUrl: false, hasWebPath: false }
+  if (!client) return fallback
+
+  try {
+    const query = `
+      query {
+        __type(name: "Milestone") {
+          fields { name }
+        }
+      }
+    `
+    const resp = await gitlabPost(client, '', { data: { query } }, { maxRetries: 1 })
+    const fields = resp?.data?.data?.__type?.fields?.map(f => f?.name).filter(Boolean) || []
+    const has = (name) => fields.includes(name)
+    const caps = {
+      hasWebUrl: has('webUrl'),
+      hasWebPath: has('webPath')
+    }
+    client[key] = caps
+    return caps
+  } catch {
+    client[key] = fallback
+    return fallback
+  }
+}
+
 /**
  * Detect which GraphQL Issue fields exist on this GitLab instance.
  * Cached per-client instance.
@@ -178,6 +281,13 @@ const detectFeatures = async (client) => {
       hasCustomerRelationsContacts: has('customerRelationsContacts'),
       hasUserPermissions: has('userPermissions'),
       hasDesignCollection: has('designCollection'),
+
+      // Time tracking: schema varies by version
+      hasTimeStats: has('timeStats'),
+      hasTimeEstimate: has('timeEstimate'),
+      hasTotalTimeSpent: has('totalTimeSpent'),
+      hasHumanTimeEstimate: has('humanTimeEstimate'),
+      hasHumanTotalTimeSpent: has('humanTotalTimeSpent'),
     }
 
     if (client) client[key] = caps
@@ -208,6 +318,11 @@ const detectFeatures = async (client) => {
       hasCustomerRelationsContacts: false,
       hasUserPermissions: false,
       hasDesignCollection: false,
+      hasTimeStats: false,
+      hasTimeEstimate: false,
+      hasTotalTimeSpent: false,
+      hasHumanTimeEstimate: false,
+      hasHumanTotalTimeSpent: false,
     }
     if (client) client[key] = caps
     return caps
@@ -220,8 +335,23 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
     if (!fullPath) return []
 
     const caps = await detectFeatures(client)
+    const issueArgs = await detectProjectIssuesArgs(client)
+    const milestoneCaps = await detectMilestoneCaps(client)
     const state = options.state || 'opened' // opened | closed
     const updatedAfter = options?.params?.updated_after || null
+
+    const enumVals = issueArgs.stateEnumValues
+    const pickState = (s) => {
+      const want = String(s || '')
+      if (!enumVals) return want
+      if (enumVals.includes(want)) return want
+      const upper = want.toUpperCase()
+      if (enumVals.includes(upper)) return upper
+      const cap = upper.charAt(0) + upper.slice(1).toLowerCase()
+      if (enumVals.includes(cap)) return cap
+      return want
+    }
+    const stateValue = pickState(state)
 
     const iterationField = caps.hasIteration ? 'iteration { id title }' : ''
     const healthField = caps.hasHealthStatus ? 'healthStatus' : ''
@@ -229,6 +359,15 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
     const issueTypeField = caps.hasIssueType ? 'issueType' : ''
     const statusField = caps.hasStatus ? 'status { name }' : ''
     const epicField = caps.hasEpic ? 'epic { id title }' : ''
+
+    const timeField = caps.hasTimeStats
+      ? 'timeStats { timeEstimate totalTimeSpent humanTimeEstimate humanTotalTimeSpent }'
+      : [
+          caps.hasTimeEstimate ? 'timeEstimate' : '',
+          caps.hasTotalTimeSpent ? 'totalTimeSpent' : '',
+          caps.hasHumanTimeEstimate ? 'humanTimeEstimate' : '',
+          caps.hasHumanTotalTimeSpent ? 'humanTotalTimeSpent' : ''
+        ].filter(Boolean).join('\n')
 
     // Keep the "fetch all issues" query reasonably light:
     // include additional scalars if available; omit huge nested collections (linkedIssues, emails, designs, etc.)
@@ -244,8 +383,11 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
     const subscribedField = caps.hasSubscribed ? 'subscribed' : ''
     const parentField = caps.hasParent ? 'parent { id iid title }' : ''
 
+    const milestoneWebField = milestoneCaps.hasWebUrl ? 'webUrl' : (milestoneCaps.hasWebPath ? 'webPath' : '')
+    const issuesCountField = issueArgs.issuesCountField ? issueArgs.issuesCountField : ''
+
     const query = `
-      query ProjectIssues($fullPath: ID!, $first: Int!, $after: String, $state: IssueState, $updatedAfter: Time) {
+      query ProjectIssues($fullPath: ID!, $first: Int!, $after: String, $state: ${issueArgs.stateType}, $updatedAfter: Time) {
         project(fullPath: $fullPath) {
           issues(first: $first, after: $after, state: $state, updatedAfter: $updatedAfter) {
             nodes {
@@ -273,13 +415,13 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
               ${userDiscussionsCountField}
               mergeRequestsCount
               taskCompletionStatus { count completedCount }
-              timeStats { timeEstimate totalTimeSpent }
+              ${timeField}
               labels { nodes { title } }
               author { id name username webUrl avatarUrl }
               assignees { nodes { id name username webUrl avatarUrl } }
               ${participantsField}
               milestone {
-                id iid title description state createdAt updatedAt dueDate startDate expired webUrl
+                id iid title description state createdAt updatedAt dueDate startDate expired ${milestoneWebField}
               }
               ${parentField}
               ${statusField}
@@ -292,16 +434,18 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
               ${subscribedField}
             }
             pageInfo { hasNextPage endCursor }
+            ${issuesCountField}
           }
         }
       }
     `
 
-    const first = PER_PAGE
+    const first = GRAPHQL_PAGE_SIZE
     let after = null
     let hasMore = true
     let page = 0
     const allIssues = []
+    let totalCount = null
 
     while (hasMore) {
       page++
@@ -309,10 +453,16 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
 
       if (onProgress) {
         const stateLabel = state === 'opened' ? '' : ` (${state})`
-        onProgress(`Fetching issues${stateLabel} page ${page}...`)
+        if (Number.isFinite(totalCount) && totalCount > 0) {
+          const totalPages = Math.max(1, Math.ceil(totalCount / first))
+          const pct = Math.round((allIssues.length / totalCount) * 100)
+          onProgress(`Fetching issues${stateLabel} page ${page} of ${totalPages} (${pct}%)...`)
+        } else {
+          onProgress(`Fetching issues${stateLabel} page ${page}... (${allIssues.length} fetched)`)
+        }
       }
 
-      const variables = { fullPath, first, after, state, updatedAfter: updatedAfter || null }
+      const variables = { fullPath, first, after, state: stateValue, updatedAfter: updatedAfter || null }
       const resp = await gitlabPost(client, '', { data: { query, variables } }, options.retry)
 
       const payload = resp?.data || {}
@@ -323,6 +473,11 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
 
       const nodes = payload?.data?.project?.issues?.nodes
       const pageInfo = payload?.data?.project?.issues?.pageInfo
+      if (issueArgs.issuesCountField) {
+        const rawCount = payload?.data?.project?.issues?.[issueArgs.issuesCountField]
+        const n = Number(rawCount)
+        if (Number.isFinite(n) && n >= 0) totalCount = n
+      }
       if (!Array.isArray(nodes)) throw new Error('GitLab GraphQL returned unexpected data (issues.nodes missing)')
 
       nodes.forEach(n => {
@@ -334,7 +489,7 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
         const tc = n?.taskCompletionStatus || null
         const count = Number(tc?.count) || 0
         const completed = Number(tc?.completedCount) || 0
-        const time = n?.timeStats || null
+        const time = caps.hasTimeStats ? (n?.timeStats || null) : null
 
         const statusName = caps.hasStatus && n?.status?.name ? String(n.status.name).trim() : ''
         const withStatusLabel = statusName ? [`Status::${statusName}`, ...labels] : labels
@@ -368,7 +523,8 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
                 due_date: n.milestone.dueDate,
                 start_date: n.milestone.startDate,
                 expired: n.milestone.expired,
-                web_url: n.milestone.webUrl
+                web_url: milestoneCaps.hasWebUrl ? (n.milestone.webUrl || '') : '',
+                web_path: milestoneCaps.hasWebPath ? (n.milestone.webPath || '') : ''
               }
             : null,
           assignees: assignees.map(a => ({
@@ -423,10 +579,10 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
           issue_type_field: caps.hasIssueType ? (n?.issueType || null) : null,
           legacy_type: caps.hasTypeLegacy ? (n?.type || null) : null,
           time_stats: {
-            time_estimate: Number(time?.timeEstimate) || 0,
-            total_time_spent: Number(time?.totalTimeSpent) || 0,
-            human_time_estimate: null,
-            human_total_time_spent: null
+            time_estimate: Number((caps.hasTimeStats ? time?.timeEstimate : n?.timeEstimate)) || 0,
+            total_time_spent: Number((caps.hasTimeStats ? time?.totalTimeSpent : n?.totalTimeSpent)) || 0,
+            human_time_estimate: (caps.hasTimeStats ? (time?.humanTimeEstimate ?? null) : (n?.humanTimeEstimate ?? null)),
+            human_total_time_spent: (caps.hasTimeStats ? (time?.humanTotalTimeSpent ?? null) : (n?.humanTotalTimeSpent ?? null))
           },
           task_completion_status: { count, completed_count: completed },
           weight: n?.weight ?? null,
