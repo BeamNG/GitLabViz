@@ -4,7 +4,8 @@
 - fixed scoped labels
 - added start/stop button for the physics simulation
 - using graphql API to catch more fields
-- 
+- fixed autocomplete and filter selection
+- added new component preset
 
 ## [0.3.15] - 2026-01-08
 - preserving graph view during ticket changes
