@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.13] - 2026-01-08
+- Improved border radius on context menus - tiny UX fix
+
 ## [0.3.12] - 2026-01-08
 - Fixed tests :D
 

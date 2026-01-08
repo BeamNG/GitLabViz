@@ -2594,7 +2594,7 @@ canvas {
   max-height: 70vh;
   overflow: auto;
   padding: 6px;
-  border-radius: 10px;
+  border-radius: 0 10px 10px 10px;
   border: 1px solid rgba(0, 0, 0, 0.12);
   background: rgba(255, 255, 255, 0.98);
   color: rgba(0, 0, 0, 0.9);
@@ -2609,7 +2609,7 @@ canvas {
   /* Full-bleed title bar (no inset card look) */
   margin: -6px -6px 6px -6px;
   padding: 10px 12px 8px 12px;
-  border-radius: 10px 10px 0 0;
+  border-radius: 0 10px 0 0;
   border: 0;
   border-bottom: 1px solid rgba(0, 0, 0, 0.10);
   border-left: 6px solid rgba(0, 0, 0, 0.18);
