@@ -691,7 +691,6 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
           task_status: `${completed} of ${count} checklist items completed`,
           _links: {},
           references: {},
-          severity: 'UNKNOWN',
           moved_to_id: null,
           imported: false,
           imported_from: 'none',
