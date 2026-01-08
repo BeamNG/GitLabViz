@@ -1055,7 +1055,8 @@ const filteredNodes = computed(() => {
     let statusMatch = true
     if (settings.uiState.filters.selectedStatuses?.length > 0) {
         // Map common GitLab states to our status list if the specific label is missing
-        let currentStatus = (node && node._raw && node._raw.work_item_status) ? String(node._raw.work_item_status).trim() : ''
+        let currentStatus = (node && node._raw && typeof node._raw.status_display === 'string') ? String(node._raw.status_display).trim() : ''
+        if (!currentStatus) currentStatus = (node && node._raw && node._raw.work_item_status) ? String(node._raw.work_item_status).trim() : ''
         if (!currentStatus) currentStatus = getScopedLabelValue(nodeLabels, 'Status')
         if (!currentStatus) {
             currentStatus = 'To do'
@@ -1362,7 +1363,8 @@ const groupStatsText = computed(() => {
          if (settings.uiState.view.groupingMode === 'tag') key = node.tag || '_no_tag_'
          else if (settings.uiState.view.groupingMode === 'author') key = n.author ? n.author.name : 'Unknown'
          else if (settings.uiState.view.groupingMode === 'state') {
-             key = getScopedLabelValue(node._raw.labels, 'Status') || (n.state === 'closed' ? 'Done' : 'To do')
+             const statusDisplay = (n && typeof n.status_display === 'string') ? n.status_display.trim() : ''
+             key = statusDisplay || getScopedLabelValue(node._raw.labels, 'Status') || (n.state === 'closed' ? 'Done' : 'To do')
          }
          else if (settings.uiState.view.groupingMode === 'assignee') key = n.assignee ? n.assignee.name : 'Unassigned'
          else if (settings.uiState.view.groupingMode === 'milestone') key = n.milestone ? n.milestone.title : 'No Milestone'
@@ -1987,7 +1989,9 @@ const loadData = async (opts = {}) => {
                 }
                 
                 // Determine color based on status label or state
-                const status = getScopedLabelValue(issue.labels, 'Status')
+                const status = (typeof issue.status_display === 'string' && issue.status_display.trim())
+                  ? issue.status_display.trim()
+                  : getScopedLabelValue(issue.labels, 'Status')
                 let color = issue.state === 'opened' ? '#28a745' : '#dc3545' // defaults
                 
                 if (status === 'To do') color = '#6c757d'
