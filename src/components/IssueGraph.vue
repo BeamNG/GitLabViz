@@ -273,6 +273,7 @@ const props = defineProps({
   groupBy: { type: String, default: 'none' }, // 'none' | 'tag' | 'author' | 'state' | 'scoped:<Prefix>'
   linkMode: { type: String, default: 'dependency' }, // 'none' | 'dependency' | 'group'
   hideUnlinked: { type: Boolean, default: false },
+  physicsPaused: { type: Boolean, default: false },
   repulsion: { type: Number, default: 300 },
   friction: { type: Number, default: 0.6 },
   groupGravity: { type: Number, default: 0.2 },
@@ -825,6 +826,32 @@ let groupCenters = {} // Persist group centers for rendering
 let containerResizeObserver = null
 let renderRaf = 0
 
+function applyPhysicsPaused () {
+  const paused = !!props.physicsPaused
+  if (paused) {
+    // Lock current positions in place
+    nodesData.forEach(n => {
+      if (!n) return
+      const x = Number(n.x)
+      const y = Number(n.y)
+      n.fx = Number.isFinite(x) ? x : 0
+      n.fy = Number.isFinite(y) ? y : 0
+    })
+    if (simulation) simulation.stop()
+    scheduleRender()
+    return
+  }
+
+  // Release locks and resume simulation
+  nodesData.forEach(n => {
+    if (!n) return
+    n.fx = null
+    n.fy = null
+  })
+  if (simulation) simulation.alpha(1).restart()
+  scheduleRender()
+}
+
 function scheduleRender () {
   if (renderRaf) return
   renderRaf = requestAnimationFrame(() => {
@@ -891,6 +918,10 @@ onUnmounted(() => {
 watch(() => [props.nodes, props.edges, props.colorMode, props.groupBy, props.linkMode, props.hideUnlinked, props.repulsion, props.friction, props.groupGravity, props.linkStrength, props.linkDistance, props.centerGravity, props.gridStrength, props.gridSpacing], () => {
   updateGraph()
 }, { deep: true })
+
+watch(() => props.physicsPaused, () => {
+  applyPhysicsPaused()
+})
 
 watch(legendSort, () => {
   if (!legendItems.value.length) return
@@ -1633,6 +1664,7 @@ function updateGraph() {
   simulation.on("tick", ticked)
   simulation.restart()
   scheduleRender()
+  applyPhysicsPaused()
 
   function ticked() {
     const hasGrid = !isSvnRevisionMode && (Number(props.gridStrength) || 0) > 0
@@ -2636,9 +2668,8 @@ defineExpose({
         dataOnlyUpdateOnce = true
     },
     restartSimulation: () => {
-        if (simulation) {
-            simulation.alpha(1).restart()
-        }
+        if (props.physicsPaused) return
+        if (simulation) simulation.alpha(1).restart()
     }
 })
 </script>

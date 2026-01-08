@@ -11,6 +11,10 @@ const DEFAULT_MAX_RETRIES = 3
 const DEFAULT_RETRY_BASE_DELAY_MS = 500
 const DEFAULT_RETRY_MAX_DELAY_MS = 5_000
 
+// Payload control knobs (kept small on purpose)
+const INCLUDE_AVATARS = false
+const INCLUDE_DESCRIPTION_HTML = false
+
 export const normalizeGitLabApiBaseUrl = (gitlabUrl) => {
   let u = String(gitlabUrl || '').trim().replace(/\/+$/, '')
   if (!u) return ''
@@ -140,6 +144,27 @@ const unwrapTypeName = (t) => {
   return null
 }
 
+const getWidgetBaseTypeNameFromIssue = async (client) => {
+  try {
+    const q = `
+      query {
+        __type(name: "Issue") {
+          fields {
+            name
+            type { kind name ofType { kind name ofType { kind name ofType { kind name } } } }
+          }
+        }
+      }
+    `
+    const r = await gitlabPost(client, '', { data: { query: q } }, { maxRetries: 1 })
+    const fields = r?.data?.data?.__type?.fields || []
+    const widgetsField = Array.isArray(fields) ? fields.find(f => f?.name === 'widgets') : null
+    return widgetsField ? unwrapTypeName(widgetsField.type) : null
+  } catch {
+    return null
+  }
+}
+
 const detectProjectIssuesArgs = async (client) => {
   const key = '__glvProjectIssuesArgs'
   if (client && client[key]) return client[key]
@@ -261,6 +286,8 @@ const detectFeatures = async (client) => {
       hasIssueType: has('issueType'),
       hasStatus: has('status'),
       hasEpic: has('epic'),
+      hasWidgets: has('widgets'),
+      hasWorkItemType: has('workItemType'),
 
       // Extra fields (vary by GitLab version/edition)
       hasDescriptionHtml: has('descriptionHtml'),
@@ -290,6 +317,45 @@ const detectFeatures = async (client) => {
       hasHumanTotalTimeSpent: has('humanTotalTimeSpent'),
     }
 
+    // Only reference WorkItemWidgetStatus in queries if:
+    // - the type exists, AND
+    // - it's a possible type of Issue.widgets (union/interface)
+    caps.hasWorkItemWidgetStatusType = false
+    if (caps.hasWidgets) {
+      try {
+        const widgetsBase = await getWidgetBaseTypeNameFromIssue(client)
+        if (widgetsBase) {
+          const q = `
+            query {
+              base: __type(name: "${widgetsBase}") { possibleTypes { name } }
+              st: __type(name: "WorkItemWidgetStatus") { name }
+            }
+          `
+          const r = await gitlabPost(client, '', { data: { query: q } }, { maxRetries: 1 })
+          const possible = r?.data?.data?.base?.possibleTypes?.map(x => x?.name).filter(Boolean) || []
+          const statusExists = !!r?.data?.data?.st?.name
+          caps.hasWorkItemWidgetStatusType = statusExists && possible.includes('WorkItemWidgetStatus')
+        }
+      } catch {}
+    }
+
+    // Detect if the Project type exposes work item queries (for future on-demand status fetches)
+    caps.hasProjectWorkItem = false
+    caps.hasProjectWorkItems = false
+    try {
+      const q = `
+        query {
+          __type(name: "Project") {
+            fields { name }
+          }
+        }
+      `
+      const r = await gitlabPost(client, '', { data: { query: q } }, { maxRetries: 1 })
+      const f = r?.data?.data?.__type?.fields?.map(x => x?.name).filter(Boolean) || []
+      caps.hasProjectWorkItem = f.includes('workItem')
+      caps.hasProjectWorkItems = f.includes('workItems')
+    } catch {}
+
     if (client) client[key] = caps
     return caps
   } catch (e) {
@@ -300,6 +366,9 @@ const detectFeatures = async (client) => {
       hasIssueType: false,
       hasStatus: false,
       hasEpic: false,
+      hasWidgets: false,
+      hasWorkItemType: false,
+      hasWorkItemWidgetStatusType: false,
       hasDescriptionHtml: false,
       hasHidden: false,
       hasWebPath: false,
@@ -323,6 +392,8 @@ const detectFeatures = async (client) => {
       hasTotalTimeSpent: false,
       hasHumanTimeEstimate: false,
       hasHumanTotalTimeSpent: false,
+      hasProjectWorkItem: false,
+      hasProjectWorkItems: false,
     }
     if (client) client[key] = caps
     return caps
@@ -360,6 +431,20 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
     const statusField = caps.hasStatus ? 'status { name }' : ''
     const epicField = caps.hasEpic ? 'epic { id title }' : ''
 
+    const widgetStatusField =
+      (caps.hasWidgets && caps.hasWorkItemWidgetStatusType)
+        ? `
+          widgets {
+            __typename
+            ... on WorkItemWidgetStatus {
+              status { name }
+            }
+          }
+        `
+        : ''
+
+    const workItemTypeField = caps.hasWorkItemType ? 'workItemType { name }' : ''
+
     const timeField = caps.hasTimeStats
       ? 'timeStats { timeEstimate totalTimeSpent humanTimeEstimate humanTotalTimeSpent }'
       : [
@@ -371,14 +456,14 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
 
     // Keep the "fetch all issues" query reasonably light:
     // include additional scalars if available; omit huge nested collections (linkedIssues, emails, designs, etc.)
-    const descriptionHtmlField = caps.hasDescriptionHtml ? 'descriptionHtml' : ''
+    const descriptionHtmlField = (INCLUDE_DESCRIPTION_HTML && caps.hasDescriptionHtml) ? 'descriptionHtml' : ''
     const hiddenField = caps.hasHidden ? 'hidden' : ''
     const webPathField = caps.hasWebPath ? 'webPath' : ''
     const referenceField = caps.hasReference ? 'reference(full: true)' : ''
     const startDateField = caps.hasStartDate ? 'startDate' : ''
     const relativePositionField = caps.hasRelativePosition ? 'relativePosition' : ''
     const typeLegacyField = caps.hasTypeLegacy ? 'type' : ''
-    const participantsField = caps.hasParticipants ? 'participants { nodes { username name avatarUrl } }' : ''
+    const participantsField = caps.hasParticipants ? 'participants { nodes { username name } }' : ''
     const userDiscussionsCountField = caps.hasUserDiscussionsCount ? 'userDiscussionsCount' : ''
     const subscribedField = caps.hasSubscribed ? 'subscribed' : ''
     const parentField = caps.hasParent ? 'parent { id iid title }' : ''
@@ -417,14 +502,16 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
               taskCompletionStatus { count completedCount }
               ${timeField}
               labels { nodes { title } }
-              author { id name username webUrl avatarUrl }
-              assignees { nodes { id name username webUrl avatarUrl } }
+              author { id name username webUrl ${INCLUDE_AVATARS ? 'avatarUrl' : ''} }
+              assignees { nodes { id name username webUrl ${INCLUDE_AVATARS ? 'avatarUrl' : ''} } }
               ${participantsField}
               milestone {
                 id iid title description state createdAt updatedAt dueDate startDate expired ${milestoneWebField}
               }
               ${parentField}
               ${statusField}
+              ${workItemTypeField}
+              ${widgetStatusField}
               ${iterationField}
               ${epicField}
               ${healthField}
@@ -491,8 +578,22 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
         const completed = Number(tc?.completedCount) || 0
         const time = caps.hasTimeStats ? (n?.timeStats || null) : null
 
-        const statusName = caps.hasStatus && n?.status?.name ? String(n.status.name).trim() : ''
-        const withStatusLabel = statusName ? [`Status::${statusName}`, ...labels] : labels
+        const legacyLabelStatus = (() => {
+          const hit = labels.find(l => typeof l === 'string' && (l.startsWith('Status::') || l.startsWith('Status:')))
+          if (!hit) return ''
+          const v = hit.includes('::') ? hit.split('::').slice(1).join('::') : hit.split(':').slice(1).join(':')
+          return String(v || '').trim()
+        })()
+
+        const statusFromField = caps.hasStatus && n?.status?.name ? String(n.status.name).trim() : ''
+        const statusFromWidget = (() => {
+          if (!caps.hasWidgets || !Array.isArray(n?.widgets)) return ''
+          const w = n.widgets.find(x => x && x.status && x.status.name)
+          return w?.status?.name ? String(w.status.name).trim() : ''
+        })()
+
+        const workItemStatus = statusFromWidget || statusFromField || ''
+        const withStatusLabel = workItemStatus ? [`Status::${workItemStatus}`, ...labels] : labels
 
         allIssues.push({
           id: n?.id || null,
@@ -500,7 +601,6 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
           project_id: null,
           title: n?.title || '',
           description: n?.description || '',
-          description_html: caps.hasDescriptionHtml ? (n?.descriptionHtml || null) : null,
           state: n?.state || '',
           hidden: caps.hasHidden ? !!n?.hidden : false,
           created_at: n?.createdAt || null,
@@ -534,7 +634,7 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
             name: a?.name,
             state: 'active',
             locked: false,
-            avatar_url: a?.avatarUrl || null,
+            avatar_url: INCLUDE_AVATARS ? (a?.avatarUrl || null) : null,
             web_url: a?.webUrl || ''
           })),
           author: n?.author
@@ -545,7 +645,7 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
                 name: n.author.name,
                 state: 'active',
                 locked: false,
-                avatar_url: n.author.avatarUrl || null,
+                avatar_url: INCLUDE_AVATARS ? (n.author.avatarUrl || null) : null,
                 web_url: n.author.webUrl || ''
               }
             : null,
@@ -558,7 +658,7 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
                 name: assignee?.name,
                 state: 'active',
                 locked: false,
-                avatar_url: assignee?.avatarUrl || null,
+                avatar_url: INCLUDE_AVATARS ? (assignee?.avatarUrl || null) : null,
                 web_url: assignee?.webUrl || ''
               }
             : null,
@@ -603,9 +703,10 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
           participants: caps.hasParticipants ? participants.map(p => ({
             username: p?.username,
             name: p?.name,
-            avatar_url: p?.avatarUrl || null
+            avatar_url: INCLUDE_AVATARS ? (p?.avatarUrl || null) : null
           })) : [],
-          work_item_status: statusName || null
+          work_item_status: workItemStatus || null,
+          status_display: workItemStatus || legacyLabelStatus || (String(n?.state) === 'closed' ? 'Done' : 'To do'),
         })
       })
 

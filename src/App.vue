@@ -26,6 +26,17 @@
         
         <!-- Config & Update buttons in title bar -->
         <div v-if="settings.uiState.ui.isDrawerExpanded" class="d-flex gap-1 flex-shrink-0">
+          <v-btn
+            id="glv-toggle-physics-btn"
+            icon
+            variant="text"
+            size="small"
+            density="compact"
+            @click.stop="physicsPaused = !physicsPaused"
+            :title="physicsPaused ? 'Resume physics (unlock positions)' : 'Pause physics (freeze positions)'"
+          >
+            <v-icon :icon="physicsPaused ? 'mdi-play' : 'mdi-stop'"></v-icon>
+          </v-btn>
           <v-btn 
             icon 
             variant="text" 
@@ -373,6 +384,19 @@
       </div>
       <div v-else class="d-flex flex-column align-center mt-2 gap-2">
          <!-- Mini Toolbar -->
+         <v-tooltip :text="physicsPaused ? 'Resume physics (unlock positions)' : 'Pause physics (freeze positions)'" location="right">
+           <template v-slot:activator="{ props }">
+             <v-btn
+               id="glv-toggle-physics-btn-mini"
+               :icon="physicsPaused ? 'mdi-play' : 'mdi-stop'"
+               variant="text"
+               size="small"
+               v-bind="props"
+               @click.stop="physicsPaused = !physicsPaused"
+             ></v-btn>
+           </template>
+         </v-tooltip>
+
          <v-tooltip text="Recenter Graph" location="right">
            <template v-slot:activator="{ props }">
              <v-btn icon="mdi-crosshairs-gps" variant="text" size="small" v-bind="props" @click.stop="refocusGraph"></v-btn>
@@ -455,6 +479,7 @@
           :group-by="settings.uiState.view.groupingMode"
           :link-mode="settings.uiState.view.linkMode"
           :hide-unlinked="settings.uiState.view.hideUnlinked"
+          :physics-paused="physicsPaused"
           :repulsion="settings.uiState.simulation.repulsion"
           :friction="settings.uiState.simulation.friction"
           :group-gravity="settings.uiState.simulation.groupGravity"
@@ -717,6 +742,8 @@ const svnVizLimit = ref(2000)
 const showSvnLog = ref(false)
 const svnRecentCommits = ref([])
 const svnCommitCount = ref(0)
+
+const physicsPaused = ref(false)
 
 const gitlabCacheMeta = ref({ nodes: 0, edges: 0, updatedAt: null })
 const updateStatus = ref({ loading: false, source: '', message: '' })
@@ -1028,7 +1055,8 @@ const filteredNodes = computed(() => {
     let statusMatch = true
     if (settings.uiState.filters.selectedStatuses?.length > 0) {
         // Map common GitLab states to our status list if the specific label is missing
-        let currentStatus = getScopedLabelValue(nodeLabels, 'Status')
+        let currentStatus = (node && node._raw && node._raw.work_item_status) ? String(node._raw.work_item_status).trim() : ''
+        if (!currentStatus) currentStatus = getScopedLabelValue(nodeLabels, 'Status')
         if (!currentStatus) {
             currentStatus = 'To do'
         }

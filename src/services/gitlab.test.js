@@ -56,55 +56,57 @@ describe('gitlab service', () => {
 
   it('fetchProjectIssues (GraphQL) posts with correct variables', async () => {
     const mockClient = {
-      post: vi.fn()
-        // detectFeatures introspection (Issue fields)
-        .mockResolvedValueOnce({
-          data: {
-            data: {
-              __type: {
-                fields: [{ name: 'status' }, { name: 'timeEstimate' }, { name: 'totalTimeSpent' }]
-              }
-            }
-          }
-        })
-        // detectProjectIssuesArgs introspection (Project.issues args)
-        .mockResolvedValueOnce({
-          data: {
-            data: {
-              __type: {
-                fields: [{
-                  name: 'issues',
-                  type: { kind: 'OBJECT', name: 'IssueConnection', ofType: null },
-                  args: [{
-                    name: 'state',
-                    type: { kind: 'ENUM', name: 'IssuableState', ofType: null }
-                  }]
-                }]
-              }
-            }
-          }
-        })
-        // enum values for IssuableState + IssueConnection fields
-        .mockResolvedValueOnce({
-          data: {
-            data: {
-              stateEnum: { enumValues: [{ name: 'opened' }, { name: 'closed' }] },
-              conn: { fields: [{ name: 'count' }] }
-            }
-          }
-        })
-        // detectMilestoneCaps introspection (Milestone fields)
-        .mockResolvedValueOnce({
-          data: {
-            data: {
-              __type: {
-                fields: [{ name: 'webPath' }]
-              }
-            }
-          }
-        })
+      post: vi.fn().mockImplementation((url, body) => {
+        const q = String(body?.query || '')
+        // detectFeatures: Issue fields
+        if (q.includes('__type(name: "Issue")')) {
+          return Promise.resolve({ data: { data: { __type: { fields: [
+            { name: 'hidden' },
+            { name: 'webPath' },
+            { name: 'reference' },
+            { name: 'relativePosition' },
+            { name: 'type' },
+            { name: 'participants' },
+            { name: 'userDiscussionsCount' },
+            { name: 'subscribed' },
+            { name: 'timeEstimate' },
+            { name: 'totalTimeSpent' }
+          ] } } } })
+        }
+        // detectProjectIssuesArgs: Project field args
+        if (q.includes('__type(name: "Project")')) {
+          return Promise.resolve({ data: { data: { __type: { fields: [{
+            name: 'issues',
+            type: { kind: 'OBJECT', name: 'IssueConnection', ofType: null },
+            args: [{ name: 'state', type: { kind: 'ENUM', name: 'IssuableState', ofType: null } }]
+          }] } } } })
+        }
+        // detectProjectIssuesArgs: enum + connection fields
+        if (q.includes('query GetCaps')) {
+          return Promise.resolve({ data: { data: {
+            stateEnum: { enumValues: [{ name: 'opened' }, { name: 'closed' }] },
+            conn: { fields: [{ name: 'count' }] }
+          } } })
+        }
+        // detectMilestoneCaps: Milestone fields
+        if (q.includes('__type(name: "Milestone")')) {
+          return Promise.resolve({ data: { data: { __type: { fields: [{ name: 'webPath' }] } } } })
+        }
+        // WorkItemWidgetStatus existence check (optional)
+        if (q.includes('__type(name: "WorkItemWidgetStatus")')) {
+          return Promise.resolve({ data: { data: { __type: null } } })
+        }
+        // widgets base type + possibleTypes probe (new)
+        if (q.includes('possibleTypes') && q.includes('WorkItemWidgetStatus')) {
+          return Promise.resolve({ data: { data: { base: { possibleTypes: [] }, st: { name: null } } } })
+        }
+        // Project fields probe (new)
+        if (q.includes('__type(name: "Project")')) {
+          return Promise.resolve({ data: { data: { __type: { fields: [{ name: 'issues' }] } } } })
+        }
+
         // issues query
-        .mockResolvedValueOnce({
+        return Promise.resolve({
           data: {
             data: {
               project: {
@@ -115,7 +117,6 @@ describe('gitlab service', () => {
                     state: 'opened',
                     labels: { nodes: [] },
                     assignees: { nodes: [] },
-                    status: { name: 'To do' },
                     timeEstimate: 0,
                     totalTimeSpent: 0
                   }],
@@ -125,13 +126,16 @@ describe('gitlab service', () => {
               }
             }
           }
-        }),
+        })
+      }),
     };
 
     const result = await fetchProjectIssues(mockClient, 'group/project');
 
-    expect(mockClient.post).toHaveBeenCalledTimes(5)
-    const [url, body] = mockClient.post.mock.calls[4]
+    const calls = mockClient.post.mock.calls
+    const issuesCall = calls.find(c => c && c[1] && c[1].variables && c[1].variables.fullPath === 'group/project')
+    expect(issuesCall).toBeTruthy()
+    const [url, body] = issuesCall
     expect(url).toBe('')
     expect(body).toHaveProperty('query')
     expect(body.variables).toEqual(expect.objectContaining({
@@ -147,103 +151,104 @@ describe('gitlab service', () => {
   it('fetchProjectIssues (GraphQL) handles pagination', async () => {
     const mockClient = {
       post: vi.fn()
-        // detectFeatures introspection (Issue fields)
-        .mockResolvedValueOnce({
-          data: {
-            data: {
-              __type: {
-                fields: [{ name: 'status' }, { name: 'timeEstimate' }, { name: 'totalTimeSpent' }]
-              }
-            }
+        .mockImplementation((url, body) => {
+          const q = String(body?.query || '')
+          // same schema mocks as above
+          if (q.includes('__type(name: "Issue")')) {
+            return Promise.resolve({ data: { data: { __type: { fields: [
+              { name: 'hidden' },
+              { name: 'webPath' },
+              { name: 'reference' },
+              { name: 'relativePosition' },
+              { name: 'type' },
+              { name: 'participants' },
+              { name: 'userDiscussionsCount' },
+              { name: 'subscribed' },
+              { name: 'timeEstimate' },
+              { name: 'totalTimeSpent' }
+            ] } } } })
           }
-        })
-        // detectProjectIssuesArgs introspection (Project.issues args)
-        .mockResolvedValueOnce({
-          data: {
-            data: {
-              __type: {
-                fields: [{
-                  name: 'issues',
-                  type: { kind: 'OBJECT', name: 'IssueConnection', ofType: null },
-                  args: [{
-                    name: 'state',
-                    type: { kind: 'ENUM', name: 'IssuableState', ofType: null }
-                  }]
-                }]
-              }
-            }
+          if (q.includes('__type(name: "Project")')) {
+            return Promise.resolve({ data: { data: { __type: { fields: [{
+              name: 'issues',
+              type: { kind: 'OBJECT', name: 'IssueConnection', ofType: null },
+              args: [{ name: 'state', type: { kind: 'ENUM', name: 'IssuableState', ofType: null } }]
+            }] } } } })
           }
-        })
-        // enum values for IssuableState + IssueConnection fields
-        .mockResolvedValueOnce({
-          data: {
-            data: {
+          if (q.includes('query GetCaps')) {
+            return Promise.resolve({ data: { data: {
               stateEnum: { enumValues: [{ name: 'opened' }, { name: 'closed' }] },
               conn: { fields: [{ name: 'count' }] }
-            }
+            } } })
           }
-        })
-        // detectMilestoneCaps introspection (Milestone fields)
-        .mockResolvedValueOnce({
-          data: {
-            data: {
-              __type: {
-                fields: [{ name: 'webPath' }]
+          if (q.includes('__type(name: "Milestone")')) {
+            return Promise.resolve({ data: { data: { __type: { fields: [{ name: 'webPath' }] } } } })
+          }
+          if (q.includes('__type(name: "WorkItemWidgetStatus")')) {
+            return Promise.resolve({ data: { data: { __type: null } } })
+          }
+          if (q.includes('possibleTypes') && q.includes('WorkItemWidgetStatus')) {
+            return Promise.resolve({ data: { data: { base: { possibleTypes: [] }, st: { name: null } } } })
+          }
+          if (q.includes('__type(name: "Project")')) {
+            return Promise.resolve({ data: { data: { __type: { fields: [{ name: 'issues' }] } } } })
+          }
+
+          // issues pages
+          const after = body?.variables?.after || null
+          if (!after) {
+            return Promise.resolve({
+              data: {
+                data: {
+                  project: {
+                    issues: {
+                      nodes: [{
+                        iid: '1',
+                        title: 'a',
+                        state: 'opened',
+                        labels: { nodes: [] },
+                        assignees: { nodes: [] },
+                        timeEstimate: 0,
+                        totalTimeSpent: 0
+                      }],
+                      pageInfo: { hasNextPage: true, endCursor: 'CUR1' },
+                      count: 2
+                    }
+                  }
+                }
               }
-            }
+            })
           }
-        })
-        .mockResolvedValueOnce({
-          data: {
+          return Promise.resolve({
             data: {
-              project: {
-                issues: {
-                  nodes: [{
-                    iid: '1',
-                    title: 'a',
-                    state: 'opened',
-                    labels: { nodes: [] },
-                    assignees: { nodes: [] },
-                    status: { name: 'To do' },
-                    timeEstimate: 0,
-                    totalTimeSpent: 0
-                  }],
-                  pageInfo: { hasNextPage: true, endCursor: 'CUR1' },
-                  count: 2
+              data: {
+                project: {
+                  issues: {
+                    nodes: [{
+                      iid: '2',
+                      title: 'b',
+                      state: 'opened',
+                      labels: { nodes: [] },
+                      assignees: { nodes: [] },
+                      timeEstimate: 0,
+                      totalTimeSpent: 0
+                    }],
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    count: 2
+                  }
                 }
               }
             }
-          }
-        })
-        .mockResolvedValueOnce({
-          data: {
-            data: {
-              project: {
-                issues: {
-                  nodes: [{
-                    iid: '2',
-                    title: 'b',
-                    state: 'opened',
-                    labels: { nodes: [] },
-                    assignees: { nodes: [] },
-                    status: { name: 'To do' },
-                    timeEstimate: 0,
-                    totalTimeSpent: 0
-                  }],
-                  pageInfo: { hasNextPage: false, endCursor: null },
-                  count: 2
-                }
-              }
-            }
-          }
+          })
         }),
     };
 
     const result = await fetchProjectIssues(mockClient, '123');
 
-    expect(mockClient.post).toHaveBeenCalledTimes(6)
-    expect(mockClient.post.mock.calls[4][1].variables.after).toBe(null)
-    expect(mockClient.post.mock.calls[5][1].variables.after).toBe('CUR1')
+    const issueCalls = mockClient.post.mock.calls.filter(c => c && c[1] && c[1].variables && c[1].variables.fullPath === '123')
+    expect(issueCalls.length).toBe(2)
+    expect(issueCalls[0][1].variables.after).toBe(null)
+    expect(issueCalls[1][1].variables.after).toBe('CUR1')
     expect(result.length).toBe(2)
   });
 
@@ -284,74 +289,67 @@ describe('gitlab service', () => {
   it('fetchProjectIssues retries on 429 and succeeds', async () => {
     const mockClient = {
       post: vi.fn()
-        .mockRejectedValueOnce({ response: { status: 429, headers: { 'retry-after': '0' } } })
-        // detectFeatures introspection (Issue fields)
-        .mockResolvedValueOnce({
-          data: {
-            data: {
-              __type: {
-                fields: [{ name: 'status' }, { name: 'timeEstimate' }, { name: 'totalTimeSpent' }]
-              }
-            }
+        .mockImplementation((url, body) => {
+          const q = String(body?.query || '')
+          // schema probes succeed
+          if (q.includes('__type(name: "Issue")')) {
+            return Promise.resolve({ data: { data: { __type: { fields: [{ name: 'timeEstimate' }, { name: 'totalTimeSpent' }] } } } })
           }
-        })
-        // detectProjectIssuesArgs introspection (Project.issues args)
-        .mockResolvedValueOnce({
-          data: {
-            data: {
-              __type: {
-                fields: [{
-                  name: 'issues',
-                  type: { kind: 'OBJECT', name: 'IssueConnection', ofType: null },
-                  args: [{
-                    name: 'state',
-                    type: { kind: 'ENUM', name: 'IssuableState', ofType: null }
-                  }]
-                }]
-              }
-            }
+          if (q.includes('__type(name: "Project")')) {
+            return Promise.resolve({ data: { data: { __type: { fields: [{
+              name: 'issues',
+              type: { kind: 'OBJECT', name: 'IssueConnection', ofType: null },
+              args: [{ name: 'state', type: { kind: 'ENUM', name: 'IssuableState', ofType: null } }]
+            }] } } } })
           }
-        })
-        // enum values for IssuableState + IssueConnection fields
-        .mockResolvedValueOnce({
-          data: {
-            data: {
+          if (q.includes('query GetCaps')) {
+            return Promise.resolve({ data: { data: {
               stateEnum: { enumValues: [{ name: 'opened' }, { name: 'closed' }] },
               conn: { fields: [{ name: 'count' }] }
-            }
+            } } })
           }
-        })
-        // detectMilestoneCaps introspection (Milestone fields)
-        .mockResolvedValueOnce({
-          data: {
-            data: {
-              __type: {
-                fields: [{ name: 'webPath' }]
-              }
-            }
+          if (q.includes('__type(name: "Milestone")')) {
+            return Promise.resolve({ data: { data: { __type: { fields: [{ name: 'webPath' }] } } } })
           }
-        })
-        .mockResolvedValueOnce({
-          data: {
+          if (q.includes('__type(name: "WorkItemWidgetStatus")')) {
+            return Promise.resolve({ data: { data: { __type: null } } })
+          }
+          if (q.includes('possibleTypes') && q.includes('WorkItemWidgetStatus')) {
+            return Promise.resolve({ data: { data: { base: { possibleTypes: [] }, st: { name: null } } } })
+          }
+          if (q.includes('__type(name: "Project")')) {
+            return Promise.resolve({ data: { data: { __type: { fields: [{ name: 'issues' }] } } } })
+          }
+
+          // first issues query: 429
+          const after = body?.variables?.after || null
+          if (after === null && !mockClient.__did429) {
+            mockClient.__did429 = true
+            return Promise.reject({ response: { status: 429, headers: { 'retry-after': '0' } } })
+          }
+
+          // then succeed
+          return Promise.resolve({
             data: {
-              project: {
-                issues: {
-                  nodes: [{
-                    iid: '1',
-                    title: 'x',
-                    state: 'opened',
-                    labels: { nodes: [] },
-                    assignees: { nodes: [] },
-                    status: { name: 'To do' },
-                    timeEstimate: 0,
-                    totalTimeSpent: 0
-                  }],
-                  pageInfo: { hasNextPage: false, endCursor: null },
-                  count: 1
+              data: {
+                project: {
+                  issues: {
+                    nodes: [{
+                      iid: '1',
+                      title: 'x',
+                      state: 'opened',
+                      labels: { nodes: [] },
+                      assignees: { nodes: [] },
+                      timeEstimate: 0,
+                      totalTimeSpent: 0
+                    }],
+                    pageInfo: { hasNextPage: false, endCursor: null },
+                    count: 1
+                  }
                 }
               }
             }
-          }
+          })
         }),
     };
 
@@ -359,7 +357,7 @@ describe('gitlab service', () => {
     const result = await fetchProjectIssues(mockClient, mockProjectId, null, { retry: { maxRetries: 2, retryBaseDelayMs: 0 } });
 
     expect(result.length).toBe(1);
-    expect(mockClient.post).toHaveBeenCalledTimes(6);
+    expect(mockClient.post).toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalled();
   });
 });

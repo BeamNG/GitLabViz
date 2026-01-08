@@ -2,6 +2,9 @@
 
 ## [0.3.16] - 2026-01-08
 - fixed scoped labels
+- added start/stop button for the physics simulation
+- using graphql API to catch more fields
+- 
 
 ## [0.3.15] - 2026-01-08
 - preserving graph view during ticket changes

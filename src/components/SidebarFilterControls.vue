@@ -41,6 +41,7 @@
         multiple
         chips
         closable-chips
+        clear-on-select
         density="compact"
         variant="outlined"
         :class="['mb-1 compact-input', { 'is-active': isSetArray(state.filters.selectedLabels) }]"
@@ -64,6 +65,7 @@
         multiple
         chips
         closable-chips
+        clear-on-select
         density="compact"
         variant="outlined"
         :class="['mb-1 compact-input', { 'is-active': isSetArray(state.filters.excludedLabels) }]"
@@ -88,6 +90,7 @@
         multiple
         chips
         closable-chips
+        clear-on-select
         density="compact"
         variant="outlined"
         :class="['mb-1 compact-input', { 'is-active': isSetArray(state.filters.selectedAuthors) }]"
@@ -111,6 +114,7 @@
         multiple
         chips
         closable-chips
+        clear-on-select
         density="compact"
         variant="outlined"
         :class="['mb-1 compact-input', { 'is-active': isSetArray(state.filters.selectedAssignees) }]"
@@ -135,6 +139,7 @@
         multiple
         chips
         closable-chips
+        clear-on-select
         density="compact"
         variant="outlined"
         :class="['mb-1 compact-input', { 'is-active': isSetArray(state.filters.selectedMilestones) }]"
@@ -158,6 +163,7 @@
         multiple
         chips
         closable-chips
+        clear-on-select
         density="compact"
         variant="outlined"
         :class="['mb-1 compact-input', { 'is-active': isSetArray(state.filters.selectedPriorities) }]"
@@ -181,6 +187,7 @@
         multiple
         chips
         closable-chips
+        clear-on-select
         density="compact"
         variant="outlined"
         :class="['mb-1 compact-input', { 'is-active': isSetArray(state.filters.selectedTypes) }]"
@@ -212,6 +219,7 @@
         multiple
         chips
         closable-chips
+        clear-on-select
         density="compact"
         variant="outlined"
         :class="['mb-1 compact-input', { 'is-active': isSetArray(state.filters.selectedStatuses) }]"
