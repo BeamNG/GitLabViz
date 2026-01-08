@@ -1,7 +1,10 @@
 # Changelog
 
+## [0.3.12] - 2026-01-08
+- Fixed tests :D
+
 ## [0.3.11] - 2026-01-08
-- GitLab: detect token scopes and show a warning when write is disabled (needs `api` scope).
+- GitLab: detect token scopes and show a warning when write is disabled
 - Context menu: add write actions (close/reopen, assign to me, unassign) when token allows.
 
 ## [0.3.10] - 2026-01-07

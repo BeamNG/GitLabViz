@@ -59,7 +59,23 @@ const gitlabRequest = async (client, method, url, config = {}, retryOptions = {}
   // total tries = 1 + maxRetries
   while (true) {
     try {
-      return await client.request({ method, url, ...config })
+      // Support both axios instances (client.request) and unit test mocks (client.get/put).
+      if (typeof client?.request === 'function') {
+        return await client.request({ method, url, ...config })
+      }
+
+      const m = String(method || '').toLowerCase()
+      if (m === 'get') {
+        if (typeof client?.get !== 'function') throw new TypeError('client.get is not a function')
+        return await client.get(url, config)
+      }
+      if (m === 'put') {
+        if (typeof client?.put !== 'function') throw new TypeError('client.put is not a function')
+        const { data, ...rest } = config || {}
+        return await client.put(url, data, rest)
+      }
+
+      throw new Error(`Unsupported GitLab client method: ${m || '(empty)'}`)
     } catch (error) {
       if (attempt >= maxRetries || !isRetryableGitLabError(error)) throw error
 
