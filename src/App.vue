@@ -1812,6 +1812,14 @@ const loadData = async (opts = {}) => {
   // Do not start another fetch while one is already running (no queueing).
   if (loading.value) return
 
+  // Check for app updates (hosted builds) before re-fetching data.
+  try {
+    if (typeof window.__glvCheckForUpdate === 'function') {
+      const didReload = await window.__glvCheckForUpdate()
+      if (didReload) return
+    }
+  } catch {}
+
   const only = opts.only || 'both' // 'gitlab' | 'svn' | 'mattermost' | 'both'
   const doGitLab = (only === 'both' || only === 'gitlab') && settings.config.enableGitLab
   const doSvn = isElectron.value && (only === 'both' || only === 'svn') && settings.config.enableSvn

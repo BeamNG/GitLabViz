@@ -14,6 +14,7 @@ export default defineConfig(({ mode }) => {
     String(process.env.VITEST || '').toLowerCase() === 'true' ||
     String(process.env.npm_lifecycle_event || '').toLowerCase() === 'test' ||
     process.argv.some(a => String(a || '').toLowerCase().includes('vitest'))
+  const isProdBuild = mode === 'production' && !isVitest
   const env = loadEnv(mode, process.cwd(), '')
   const gitlabTarget = String(env.VITE_GITLAB_PROXY_TARGET || '').trim()
   const svnTarget = String(env.VITE_SVN_PROXY_TARGET || '').trim()
@@ -75,6 +76,7 @@ export default defineConfig(({ mode }) => {
       return html
         .replaceAll('%APP_VERSION%', String(versionInfo.version || ''))
         .replaceAll('%BUILD_TIME%', String(versionInfo.buildTime || ''))
+        .replaceAll('%IS_PROD_BUILD%', isProdBuild ? 'true' : 'false')
     },
     generateBundle() {
       this.emitFile({

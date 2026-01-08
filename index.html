@@ -10,14 +10,27 @@
     <!-- GitHub Pages cache-buster: if a newer deploy exists, reload this HTML with ?v=... -->
     <script>
       (() => {
-        try {
-          const host = String(location.hostname || '').toLowerCase()
-          const isGitHubPages = host.endsWith('github.io')
-          if (!isGitHubPages) return
+        const LOCAL_VERSION = '%APP_VERSION%'
+        const IS_PROD_BUILD = '%IS_PROD_BUILD%' === 'true'
 
-          const LOCAL_VERSION = '%APP_VERSION%'
+        const parseSemver = (v) => {
+          const s = String(v || '').trim().replace(/^v/i, '')
+          const core = s.split('-')[0]
+          const [a, b, c] = core.split('.')
+          return [Number(a) || 0, Number(b) || 0, Number(c) || 0]
+        }
 
-          // If we're already on the latest build, remove the cache-buster param from the URL.
+        const isNewer = (remote, local) => {
+          const r = parseSemver(remote)
+          const l = parseSemver(local)
+          for (let i = 0; i < 3; i++) {
+            if (r[i] > l[i]) return true
+            if (r[i] < l[i]) return false
+          }
+          return false
+        }
+
+        const removeCacheBustParamIfCurrent = () => {
           try {
             const params = new URLSearchParams(location.search)
             const v = params.get('v') || ''
@@ -28,47 +41,42 @@
               history.replaceState(null, '', next.toString())
             }
           } catch {}
+        }
 
-          const parseSemver = (v) => {
-            const s = String(v || '').trim().replace(/^v/i, '')
-            const core = s.split('-')[0]
-            const [a, b, c] = core.split('.')
-            return [Number(a) || 0, Number(b) || 0, Number(c) || 0]
-          }
+        // Exposed so App.vue can re-check on "Refresh data" without duplicating logic.
+        window.__glvCheckForUpdate = async () => {
+          try {
+            const host = String(location.hostname || '').toLowerCase()
+            const isGitHubPages = host.endsWith('github.io')
+            if (!IS_PROD_BUILD || !isGitHubPages) return false
 
-          const isNewer = (remote, local) => {
-            const r = parseSemver(remote)
-            const l = parseSemver(local)
-            for (let i = 0; i < 3; i++) {
-              if (r[i] > l[i]) return true
-              if (r[i] < l[i]) return false
-            }
-            return false
-          }
+            removeCacheBustParamIfCurrent()
 
-          const fetchVersion = async () => {
             const u = new URL('current_version.json', location.href)
-            // If we already have a cache-bust query param, don't let it affect the JSON request.
             u.search = ''
             const res = await fetch(u.toString(), { cache: 'no-store' })
-            if (!res.ok) return null
-            return await res.json()
-          }
+            if (!res.ok) return false
 
-          fetchVersion().then(async (remote) => {
+            const remote = await res.json()
             const remoteVersion = remote && remote.version ? String(remote.version) : ''
-            if (!remoteVersion || !LOCAL_VERSION) return
+            if (!remoteVersion || !LOCAL_VERSION) return false
 
             const currentV = new URLSearchParams(location.search).get('v') || ''
-            if (currentV === remoteVersion) return
+            if (currentV === remoteVersion) return false
 
-            if (!isNewer(remoteVersion, LOCAL_VERSION)) return
+            if (!isNewer(remoteVersion, LOCAL_VERSION)) return false
 
             const next = new URL(location.href)
             next.searchParams.set('v', remoteVersion)
             location.replace(next.toString())
-          }).catch(() => {})
-        } catch {}
+            return true
+          } catch {
+            return false
+          }
+        }
+
+        // Initial check on page load.
+        try { window.__glvCheckForUpdate() } catch {}
       })()
     </script>
     <!-- Electron renderer security: avoid "no CSP / unsafe-eval" warnings -->
