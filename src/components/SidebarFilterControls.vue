@@ -85,7 +85,9 @@
       <!-- People -->
       <v-autocomplete
         v-model="state.filters.selectedAuthors"
-        :items="allAuthors"
+        :items="makeUserItems(allAuthors)"
+        item-title="title"
+        item-value="value"
         label="Author"
         multiple
         chips
@@ -99,17 +101,21 @@
         prepend-inner-icon="mdi-account-edit"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw">
+          <v-list-subheader v-if="item.raw.type === 'subheader'" :title="item.raw.title" />
+          <v-list-item v-else v-bind="props" :title="item.raw.title">
             <template v-slot:prepend>
-              <v-icon icon="mdi-account-circle-outline" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="userItemIcon(item.raw.value).icon" :color="userItemIcon(item.raw.value).color" size="small" class="mr-2"></v-icon>
             </template>
+            <template v-slot:title>{{ item.raw.title }}</template>
           </v-list-item>
         </template>
       </v-autocomplete>
 
       <v-autocomplete
         v-model="state.filters.selectedAssignees"
-        :items="allAssignees"
+        :items="makeUserItems(allAssignees)"
+        item-title="title"
+        item-value="value"
         label="Assignee"
         multiple
         chips
@@ -123,10 +129,12 @@
         prepend-inner-icon="mdi-account"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw">
+          <v-list-subheader v-if="item.raw.type === 'subheader'" :title="item.raw.title" />
+          <v-list-item v-else v-bind="props" :title="item.raw.title">
             <template v-slot:prepend>
-              <v-icon icon="mdi-account-circle" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="userItemIcon(item.raw.value).icon" :color="userItemIcon(item.raw.value).color" size="small" class="mr-2"></v-icon>
             </template>
+            <template v-slot:title>{{ item.raw.title }}</template>
           </v-list-item>
         </template>
       </v-autocomplete>
@@ -250,6 +258,187 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-bell-ring-outline"
+      >
+        <template v-slot:item="{ props, item }">
+          <v-list-item v-bind="props" :title="item.raw.title">
+            <template v-slot:prepend>
+              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+            </template>
+          </v-list-item>
+        </template>
+      </v-select>
+
+      <v-select
+        v-model="state.filters.mrMode"
+        :items="[
+          { title: 'Has merge requests', value: 'has', icon: 'mdi-source-merge' },
+          { title: 'No merge requests', value: 'none', icon: 'mdi-source-merge' }
+        ]"
+        label="Merge Requests"
+        density="compact"
+        variant="outlined"
+        :class="['mb-1 compact-input', { 'is-active': isSetString(state.filters.mrMode) }]"
+        hide-details
+        style="font-size: 12px"
+        clearable
+        prepend-inner-icon="mdi-source-merge"
+      >
+        <template v-slot:item="{ props, item }">
+          <v-list-item v-bind="props" :title="item.raw.title">
+            <template v-slot:prepend>
+              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+            </template>
+          </v-list-item>
+        </template>
+      </v-select>
+
+      <v-autocomplete
+        v-model="state.filters.selectedParticipants"
+        :items="makeUserItems(allParticipants)"
+        item-title="title"
+        item-value="value"
+        label="Participants"
+        multiple
+        chips
+        closable-chips
+        clear-on-select
+        density="compact"
+        variant="outlined"
+        :class="['mb-1 compact-input', { 'is-active': isSetArray(state.filters.selectedParticipants) }]"
+        hide-details
+        style="font-size: 12px"
+        prepend-inner-icon="mdi-account-multiple"
+      >
+        <template v-slot:item="{ props, item }">
+          <v-list-subheader v-if="item.raw.type === 'subheader'" :title="item.raw.title" />
+          <v-list-item v-else v-bind="props" :title="item.raw.title">
+            <template v-slot:prepend>
+              <v-icon :icon="userItemIcon(item.raw.value).icon" :color="userItemIcon(item.raw.value).color" size="small" class="mr-2"></v-icon>
+            </template>
+            <template v-slot:title>{{ item.raw.title }}</template>
+          </v-list-item>
+        </template>
+      </v-autocomplete>
+
+      <v-select
+        v-model="state.filters.dueStatus"
+        :items="[
+          { title: 'Overdue', value: 'overdue', icon: 'mdi-calendar-alert' },
+          { title: 'Due soon', value: 'soon', icon: 'mdi-calendar-clock' },
+          { title: 'Due later', value: 'later', icon: 'mdi-calendar' },
+          { title: 'No due date', value: 'none', icon: 'mdi-calendar-remove' }
+        ]"
+        label="Due status"
+        density="compact"
+        variant="outlined"
+        :class="['mb-1 compact-input', { 'is-active': isSetString(state.filters.dueStatus) }]"
+        hide-details
+        style="font-size: 12px"
+        clearable
+        prepend-inner-icon="mdi-calendar-alert"
+      >
+        <template v-slot:item="{ props, item }">
+          <v-list-item v-bind="props" :title="item.raw.title">
+            <template v-slot:prepend>
+              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+            </template>
+          </v-list-item>
+        </template>
+      </v-select>
+
+      <v-select
+        v-model="state.filters.spentMode"
+        :items="[
+          { title: 'Has time spent', value: 'has', icon: 'mdi-timer' },
+          { title: 'No time spent', value: 'none', icon: 'mdi-timer-off' }
+        ]"
+        label="Time spent"
+        density="compact"
+        variant="outlined"
+        :class="['mb-1 compact-input', { 'is-active': isSetString(state.filters.spentMode) }]"
+        hide-details
+        style="font-size: 12px"
+        clearable
+        prepend-inner-icon="mdi-timer"
+      >
+        <template v-slot:item="{ props, item }">
+          <v-list-item v-bind="props" :title="item.raw.title">
+            <template v-slot:prepend>
+              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+            </template>
+          </v-list-item>
+        </template>
+      </v-select>
+
+      <v-select
+        v-model="state.filters.budgetMode"
+        :items="[
+          { title: 'Over budget', value: 'over', icon: 'mdi-cash-remove' },
+          { title: 'Within budget', value: 'within', icon: 'mdi-cash-check' },
+          { title: 'No estimate', value: 'no_est', icon: 'mdi-cash-off' }
+        ]"
+        label="Budget"
+        density="compact"
+        variant="outlined"
+        :class="['mb-1 compact-input', { 'is-active': isSetString(state.filters.budgetMode) }]"
+        hide-details
+        style="font-size: 12px"
+        clearable
+        prepend-inner-icon="mdi-cash"
+      >
+        <template v-slot:item="{ props, item }">
+          <v-list-item v-bind="props" :title="item.raw.title">
+            <template v-slot:prepend>
+              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+            </template>
+          </v-list-item>
+        </template>
+      </v-select>
+
+      <v-select
+        v-model="state.filters.estimateBucket"
+        :items="[
+          { title: '< 1h', value: 'lt1h', icon: 'mdi-timer-sand' },
+          { title: '1–4h', value: '1_4h', icon: 'mdi-timer-sand' },
+          { title: '4–8h', value: '4_8h', icon: 'mdi-timer-sand' },
+          { title: '1–3d', value: '1_3d', icon: 'mdi-timer-sand' },
+          { title: '3d+', value: '3dplus', icon: 'mdi-timer-sand' },
+          { title: 'No estimate', value: 'none', icon: 'mdi-timer-sand-empty' }
+        ]"
+        label="Estimate bucket"
+        density="compact"
+        variant="outlined"
+        :class="['mb-1 compact-input', { 'is-active': isSetString(state.filters.estimateBucket) }]"
+        hide-details
+        style="font-size: 12px"
+        clearable
+        prepend-inner-icon="mdi-timer-sand"
+      >
+        <template v-slot:item="{ props, item }">
+          <v-list-item v-bind="props" :title="item.raw.title">
+            <template v-slot:prepend>
+              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+            </template>
+          </v-list-item>
+        </template>
+      </v-select>
+
+      <v-select
+        v-model="state.filters.taskMode"
+        :items="[
+          { title: 'No tasks', value: 'no_tasks', icon: 'mdi-format-list-bulleted' },
+          { title: '0% done', value: 'none_done', icon: 'mdi-format-list-checks' },
+          { title: 'In progress', value: 'in_progress', icon: 'mdi-progress-check' },
+          { title: '100% done', value: 'done', icon: 'mdi-check-circle-outline' }
+        ]"
+        label="Tasks"
+        density="compact"
+        variant="outlined"
+        :class="['mb-1 compact-input', { 'is-active': isSetString(state.filters.taskMode) }]"
+        hide-details
+        style="font-size: 12px"
+        clearable
+        prepend-inner-icon="mdi-format-list-checks"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.raw.title">
@@ -399,6 +588,19 @@
           </template>
         </v-select>
 
+        <v-text-field
+          v-if="state.view.viewMode === 'due_status' || !!state.filters.dueStatus"
+          v-model.number="state.view.dueSoonDays"
+          label="Due soon (days)"
+          type="number"
+          density="compact"
+          variant="outlined"
+          hide-details
+          class="compact-input sidebar-display-select"
+          style="font-size: 12px"
+          min="1"
+        ></v-text-field>
+
         <v-select
           v-model="state.view.linkMode"
           :items="linkModeOptions"
@@ -444,6 +646,9 @@ const props = defineProps({
   allLabels: { type: Array, required: true },
   allAuthors: { type: Array, required: true },
   allAssignees: { type: Array, required: true },
+  allParticipants: { type: Array, required: true },
+  userStateByName: { type: Object, required: false, default: () => ({}) },
+  meName: { type: String, required: false, default: '' },
   allMilestones: { type: Array, required: true },
   allPriorities: { type: Array, required: true },
   allTypes: { type: Array, required: true },
@@ -461,6 +666,47 @@ const { state } = props
 
 const isSetArray = (v) => Array.isArray(v) && v.length > 0
 const isSetString = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v
+const formatUserLabel = (name) => {
+  const n = String(name || '').trim()
+  if (!n) return ''
+  const m = props.userStateByName || {}
+  const sRaw = m[n] || m[n.toLowerCase()] || ''
+  const s = sRaw ? String(sRaw).trim().toLowerCase() : ''
+  if (!s || s === 'active') return n
+  return `${n} (${s})`
+}
+const isDeactivatedUser = (name) => {
+  const n = String(name || '').trim()
+  if (!n) return false
+  const m = props.userStateByName || {}
+  const sRaw = m[n] || m[n.toLowerCase()] || ''
+  const s = sRaw ? String(sRaw).trim().toLowerCase() : ''
+  return !!s && s !== 'active'
+}
+const userItemIcon = (value) => {
+  const v = String(value || '').trim()
+  if (v === '@me') return { icon: 'mdi-account-star-outline', color: 'primary' }
+  if (v === '@deactivated') return { icon: 'mdi-account-off-outline', color: 'error' }
+  if (isDeactivatedUser(v)) return { icon: 'mdi-account-off-outline', color: 'error' }
+  return { icon: 'mdi-account-circle-outline', color: '' }
+}
+const makeUserItems = (names) => {
+  const list = Array.isArray(names) ? names.filter(Boolean) : []
+  const active = []
+  const deactivated = []
+  list.forEach(n => (isDeactivatedUser(n) ? deactivated : active).push(n))
+
+  const meLabel = props.meName ? `Me (${props.meName})` : 'Me'
+  const items = [{ title: meLabel, value: '@me', disabled: !props.meName }]
+  active.forEach(n => items.push({ title: formatUserLabel(n), value: n }))
+  if (deactivated.length) {
+    items.push({ title: 'Deactivated users', value: '__sub_deactivated__', type: 'subheader', disabled: true })
+    deactivated.forEach(n => items.push({ title: formatUserLabel(n), value: n }))
+  }
+  // requested: keep this at the very end
+  items.push({ title: 'Any deactivated user', value: '@deactivated', disabled: deactivated.length === 0 })
+  return items
+}
 const isDateActive = (mode, after, before, days) => {
   if (!mode || mode === 'none') return false
   if (mode === 'last_x_days') return !!days

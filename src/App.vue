@@ -201,6 +201,9 @@
               :all-labels="allLabels"
               :all-authors="allAuthors"
               :all-assignees="allAssignees"
+              :all-participants="allParticipants"
+              :user-state-by-name="userStateByName"
+              :me-name="settings.meta.gitlabMeName"
               :all-milestones="allMilestones"
               :all-priorities="allPriorities"
               :all-types="allTypes"
@@ -675,6 +678,13 @@ const resetFilters = () => {
   settings.uiState.filters.selectedMilestones = []
   settings.uiState.filters.selectedPriorities = []
   settings.uiState.filters.selectedTypes = []
+  settings.uiState.filters.mrMode = null
+  settings.uiState.filters.selectedParticipants = []
+  settings.uiState.filters.dueStatus = null
+  settings.uiState.filters.spentMode = null
+  settings.uiState.filters.budgetMode = null
+  settings.uiState.filters.estimateBucket = null
+  settings.uiState.filters.taskMode = null
   settings.uiState.filters.searchQuery = ''
   settings.uiState.filters.dateFilters.createdMode = 'none'
   settings.uiState.filters.dateFilters.createdAfter = null
@@ -691,6 +701,7 @@ const resetFilters = () => {
   settings.uiState.view.viewMode = 'state'
   settings.uiState.view.groupingMode = 'none'
   settings.uiState.view.linkMode = 'none'
+  settings.uiState.view.dueSoonDays = 7
 }
 const snackbar = ref(false)
 const snackbarText = ref('')
@@ -797,12 +808,20 @@ const getCurrentConfigSnapshot = () => ({
     milestones: settings.uiState.filters.selectedMilestones,
     priorities: settings.uiState.filters.selectedPriorities,
     types: settings.uiState.filters.selectedTypes,
+    mrMode: settings.uiState.filters.mrMode,
+    participants: settings.uiState.filters.selectedParticipants,
+    dueStatus: settings.uiState.filters.dueStatus,
+    spentMode: settings.uiState.filters.spentMode,
+    budgetMode: settings.uiState.filters.budgetMode,
+    estimateBucket: settings.uiState.filters.estimateBucket,
+    taskMode: settings.uiState.filters.taskMode,
     dateFilters: { ...settings.uiState.filters.dateFilters }
   },
   view: {
     colorMode: settings.uiState.view.viewMode,
     grouping: settings.uiState.view.groupingMode,
     linkMode: settings.uiState.view.linkMode,
+    dueSoonDays: settings.uiState.view.dueSoonDays,
     issueOpenTarget: settings.uiState.view.issueOpenTarget
   },
   ui: {
@@ -897,6 +916,12 @@ const viewModeOptions = [
   { title: 'Type', value: 'type', icon: 'mdi-shape' },
   { title: 'Weight', value: 'weight', icon: 'mdi-weight' },
   { title: 'Time Spent Ratio', value: 'time_ratio', icon: 'mdi-timer-outline' },
+  { title: 'Due Status', value: 'due_status', icon: 'mdi-calendar-alert' },
+  { title: 'Time Estimate', value: 'time_estimate', icon: 'mdi-timer-sand' },
+  { title: 'Time Spent', value: 'time_spent', icon: 'mdi-timer' },
+  { title: 'Budget (Over/Within)', value: 'budget_status', icon: 'mdi-cash' },
+  { title: 'Estimate Buckets', value: 'estimate_bucket', icon: 'mdi-format-list-bulleted' },
+  { title: 'Task Completion', value: 'task_completion', icon: 'mdi-format-list-checks' },
   { title: 'Upvotes', value: 'upvotes', icon: 'mdi-thumb-up-outline' },
   { title: 'Merge Requests', value: 'merge_requests', icon: 'mdi-git' },
   { title: 'Comment Count', value: 'comments', icon: 'mdi-comment-outline' },
@@ -988,6 +1013,73 @@ const allAssignees = computed(() => {
   return Array.from(assignees).sort()
 })
 
+const allParticipants = computed(() => {
+  const people = new Set()
+  Object.values(nodes).forEach(node => {
+    const raw = node?._raw || {}
+    const parts = Array.isArray(raw.participants) ? raw.participants : []
+    parts.forEach(p => {
+      const n = p?.name || p?.username
+      if (n) people.add(n)
+    })
+    if (raw.author?.name) people.add(raw.author.name)
+    if (raw.assignee?.name) people.add(raw.assignee.name)
+    if (Array.isArray(raw.assignees)) {
+      raw.assignees.forEach(a => {
+        if (a?.name) people.add(a.name)
+      })
+    }
+  })
+  return Array.from(people).sort()
+})
+
+const userStateByName = computed(() => {
+  const map = {}
+  const setState = (name, state) => {
+    const n = String(name || '').trim()
+    if (!n) return
+    const s = String(state || '').trim().toLowerCase()
+    if (!s) return
+    // prefer non-active if we see it anywhere
+    const prev = map[n]
+    if (!prev || prev === 'active') map[n] = s
+  }
+
+  Object.values(nodes).forEach(node => {
+    const raw = node?._raw || {}
+    if (raw.author?.name) setState(raw.author.name, raw.author.state)
+    if (raw.assignee?.name) setState(raw.assignee.name, raw.assignee.state)
+    if (Array.isArray(raw.assignees)) {
+      raw.assignees.forEach(a => setState(a?.name, a?.state))
+    }
+    if (Array.isArray(raw.participants)) {
+      raw.participants.forEach(p => setState(p?.name || p?.username, p?.state))
+    }
+  })
+
+  return map
+})
+
+// DEV helper: verify we actually receive user.state from GitLab GraphQL
+if (import.meta?.env?.DEV) {
+  watch(userStateByName, (m) => {
+    try {
+      const entries = Object.entries(m || {})
+      const nonActive = entries.filter(([, s]) => {
+        const st = s ? String(s).trim().toLowerCase() : ''
+        return !!st && st !== 'active'
+      })
+      if (nonActive.length) {
+        console.log('[GitLabViz] non-active users:', nonActive.slice(0, 50))
+      } else {
+        console.log('[GitLabViz] user states: none non-active (or state not provided)')
+      }
+    } catch (e) {
+      console.log('[GitLabViz] user state debug failed', e)
+    }
+  }, { immediate: true })
+}
+
 const allMilestones = computed(() => {
   const milestones = new Set()
   Object.values(nodes).forEach(node => {
@@ -1026,6 +1118,13 @@ const filteredNodes = computed(() => {
       (settings.uiState.filters.selectedTypes?.length || 0) === 0 &&
       (settings.uiState.filters.selectedStatuses?.length || 0) === 0 &&
       !settings.uiState.filters.selectedSubscription &&
+      !settings.uiState.filters.mrMode &&
+      (settings.uiState.filters.selectedParticipants?.length || 0) === 0 &&
+      !settings.uiState.filters.dueStatus &&
+      !settings.uiState.filters.spentMode &&
+      !settings.uiState.filters.budgetMode &&
+      !settings.uiState.filters.estimateBucket &&
+      !settings.uiState.filters.taskMode &&
       settings.uiState.filters.includeClosed &&
       !settings.uiState.filters.searchQuery &&
       settings.uiState.filters.dateFilters.createdMode === 'none' &&
@@ -1034,6 +1133,7 @@ const filteredNodes = computed(() => {
   ) return nodes
   
   const result = {}
+  const stateMap = userStateByName.value || {}
   Object.values(nodes).forEach(node => {
     // Keep user-updated issues visible even if filters would exclude them.
     if (node && node._uiForceShow) {
@@ -1042,6 +1142,7 @@ const filteredNodes = computed(() => {
     }
 
     const nodeLabels = node._raw.labels || []
+    const meName = settings.meta.gitlabMeName || ''
     const authorName = node._raw.author ? node._raw.author.name : null
     const assigneeName = node._raw.assignee ? node._raw.assignee.name : null
     const milestoneTitle = node._raw.milestone ? node._raw.milestone.title : null
@@ -1090,13 +1191,35 @@ const filteredNodes = computed(() => {
     // 1c. Author Filter
     let authorMatch = true
     if (settings.uiState.filters.selectedAuthors?.length > 0) {
-        authorMatch = authorName && settings.uiState.filters.selectedAuthors.includes(authorName)
+        const rawWant = settings.uiState.filters.selectedAuthors
+        const wantsDeactivated = rawWant.includes('@deactivated')
+        const want = rawWant.includes('@me')
+          ? (meName ? rawWant.map(v => (v === '@me' ? meName : v)) : [])
+          : rawWant
+        const wantNames = want.filter(v => v && v !== '@deactivated')
+        const isDeactivated = authorName && (() => {
+          const s = stateMap[authorName]
+          const st = s ? String(s).trim().toLowerCase() : ''
+          return !!st && st !== 'active'
+        })()
+        authorMatch = !!authorName && (wantNames.includes(authorName) || (wantsDeactivated && isDeactivated))
     }
 
     // 2. Assignee Filter
     let assigneeMatch = true
     if ((settings.uiState.filters.selectedAssignees?.length || 0) > 0) {
-        assigneeMatch = assigneeName && settings.uiState.filters.selectedAssignees.includes(assigneeName)
+        const rawWant = settings.uiState.filters.selectedAssignees
+        const wantsDeactivated = rawWant.includes('@deactivated')
+        const want = rawWant.includes('@me')
+          ? (meName ? rawWant.map(v => (v === '@me' ? meName : v)) : [])
+          : rawWant
+        const wantNames = want.filter(v => v && v !== '@deactivated')
+        const isDeactivated = assigneeName && (() => {
+          const s = stateMap[assigneeName]
+          const st = s ? String(s).trim().toLowerCase() : ''
+          return !!st && st !== 'active'
+        })()
+        assigneeMatch = !!assigneeName && (wantNames.includes(assigneeName) || (wantsDeactivated && isDeactivated))
     }
 
     // Logic: AND between different filters
@@ -1118,6 +1241,103 @@ const filteredNodes = computed(() => {
     let typeMatch = true
     if ((settings.uiState.filters.selectedTypes?.length || 0) > 0) {
         typeMatch = type && settings.uiState.filters.selectedTypes.includes(type)
+    }
+
+    // 5b. Merge Requests Filter
+    if (settings.uiState.filters.mrMode) {
+        const mrCount = Number(node.mergeRequestsCount) || 0
+        if (settings.uiState.filters.mrMode === 'has' && mrCount <= 0) return false
+        if (settings.uiState.filters.mrMode === 'none' && mrCount > 0) return false
+    }
+
+    // 5c. Participants Filter
+    const rawParticipants = Array.isArray(node._raw?.participants) ? node._raw.participants : []
+    const participantNames = rawParticipants
+      .map(p => (p && (p.name || p.username)) ? String(p.name || p.username) : '')
+      .filter(Boolean)
+    if ((settings.uiState.filters.selectedParticipants?.length || 0) > 0) {
+        const rawWant = settings.uiState.filters.selectedParticipants
+        const wantsDeactivated = rawWant.includes('@deactivated')
+        const want = rawWant.includes('@me')
+          ? (meName ? rawWant.map(v => (v === '@me' ? meName : v)) : [])
+          : rawWant
+        const wantNames = want.filter(v => v && v !== '@deactivated')
+        const hitName = wantNames.some(n => participantNames.includes(n))
+        const hitDeactivated = wantsDeactivated && participantNames.some(n => {
+          const s = stateMap[n]
+          const st = s ? String(s).trim().toLowerCase() : ''
+          return !!st && st !== 'active'
+        })
+        if (!hitName && !hitDeactivated) return false
+    }
+
+    // 5d. Due Status Filter
+    if (settings.uiState.filters.dueStatus) {
+        const dueRaw = node.dueDate || node._raw?.due_date || node._raw?.dueDate || null
+        const due = dueRaw ? new Date(dueRaw) : null
+        const dueMs = due && Number.isFinite(due.getTime()) ? due.getTime() : null
+        const nowMs = Date.now()
+        const soonDays = Math.max(1, Number(settings.uiState.view.dueSoonDays) || 7)
+        const soonMs = soonDays * 24 * 60 * 60 * 1000
+        const mode = settings.uiState.filters.dueStatus
+        if (mode === 'none') {
+            if (dueMs != null) return false
+        } else if (mode === 'overdue') {
+            if (dueMs == null || dueMs >= nowMs) return false
+        } else if (mode === 'soon') {
+            if (dueMs == null || dueMs < nowMs || (dueMs - nowMs) > soonMs) return false
+        } else if (mode === 'later') {
+            if (dueMs == null || (dueMs - nowMs) <= soonMs) return false
+        }
+    }
+
+    // 5e. Time Spent Filter
+    if (settings.uiState.filters.spentMode) {
+        const spent = Number(node.timeSpent) || 0
+        if (settings.uiState.filters.spentMode === 'has' && spent <= 0) return false
+        if (settings.uiState.filters.spentMode === 'none' && spent > 0) return false
+    }
+
+    // 5f. Budget Filter
+    if (settings.uiState.filters.budgetMode) {
+        const est = Number(node.timeEstimate) || 0
+        const spent = Number(node.timeSpent) || 0
+        const mode = settings.uiState.filters.budgetMode
+        if (mode === 'no_est') {
+            if (est > 0) return false
+        } else if (mode === 'over') {
+            if (est <= 0 || spent <= est) return false
+        } else if (mode === 'within') {
+            if (est <= 0 || spent > est) return false
+        }
+    }
+
+    // 5g. Estimate Bucket Filter
+    if (settings.uiState.filters.estimateBucket) {
+        const est = Number(node.timeEstimate) || 0
+        const h = est / 3600
+        const b = settings.uiState.filters.estimateBucket
+        if (b === 'none') {
+            if (est > 0) return false
+        } else if (est <= 0) {
+            return false
+        } else if (b === 'lt1h' && !(h < 1)) return false
+        else if (b === '1_4h' && !(h >= 1 && h < 4)) return false
+        else if (b === '4_8h' && !(h >= 4 && h < 8)) return false
+        else if (b === '1_3d' && !(h >= 8 && h < 24)) return false
+        else if (b === '3dplus' && !(h >= 24)) return false
+    }
+
+    // 5h. Task Completion Filter
+    if (settings.uiState.filters.taskMode) {
+        const tcs = node._raw?.task_completion_status || node._raw?.taskCompletionStatus || null
+        const count = Number(tcs?.count) || 0
+        const done = Number(tcs?.completed_count ?? tcs?.completedCount) || 0
+        const mode = settings.uiState.filters.taskMode
+        if (mode === 'no_tasks' && count > 0) return false
+        if (mode === 'none_done' && !(count > 0 && done === 0)) return false
+        if (mode === 'in_progress' && !(count > 0 && done > 0 && done < count)) return false
+        if (mode === 'done' && !(count > 0 && done >= count)) return false
     }
 
     // 6. Search Filter
@@ -2363,6 +2583,13 @@ const applyConfiguration = (config) => {
       if (config.filters.subscription !== undefined) settings.uiState.filters.selectedSubscription = config.filters.subscription
       if (config.filters.labels) settings.uiState.filters.selectedLabels = config.filters.labels
       if (config.filters.excludedLabels) settings.uiState.filters.excludedLabels = config.filters.excludedLabels
+      if (config.filters.mrMode != null) settings.uiState.filters.mrMode = config.filters.mrMode
+      if (config.filters.participants) settings.uiState.filters.selectedParticipants = resolveMe(config.filters.participants)
+      if (config.filters.dueStatus != null) settings.uiState.filters.dueStatus = config.filters.dueStatus
+      if (config.filters.spentMode != null) settings.uiState.filters.spentMode = config.filters.spentMode
+      if (config.filters.budgetMode != null) settings.uiState.filters.budgetMode = config.filters.budgetMode
+      if (config.filters.estimateBucket != null) settings.uiState.filters.estimateBucket = config.filters.estimateBucket
+      if (config.filters.taskMode != null) settings.uiState.filters.taskMode = config.filters.taskMode
       if (config.filters.authors) settings.uiState.filters.selectedAuthors = resolveMe(config.filters.authors)
       if (config.filters.assignees) settings.uiState.filters.selectedAssignees = resolveMe(config.filters.assignees)
       if (config.filters.milestones) settings.uiState.filters.selectedMilestones = config.filters.milestones
@@ -2375,6 +2602,7 @@ const applyConfiguration = (config) => {
       if (config.view.colorMode) settings.uiState.view.viewMode = config.view.colorMode
       if (config.view.grouping) settings.uiState.view.groupingMode = config.view.grouping
       if (config.view.linkMode) settings.uiState.view.linkMode = config.view.linkMode
+      if (config.view.dueSoonDays != null) settings.uiState.view.dueSoonDays = config.view.dueSoonDays
       if (config.view.issueOpenTarget) settings.uiState.view.issueOpenTarget = config.view.issueOpenTarget
     }
 

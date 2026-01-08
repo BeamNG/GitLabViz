@@ -645,9 +645,13 @@ function onFilterSameLabelCombo () {
 
 const legendItems = ref([])
 const timelineLegend = ref(null) // { css, minLabel, maxLabel } | null
+const numericLegend = ref(null) // { css, minLabel, maxLabel } | null
 const legendGradient = computed(() => {
   if (props.colorMode && props.colorMode.startsWith('timeline_')) {
     return timelineLegend.value
+  }
+  if (props.colorMode === 'time_estimate' || props.colorMode === 'time_spent') {
+    return numericLegend.value
   }
   const neutral = colors.value.neutralNode
   if (props.colorMode === 'upvotes') {
@@ -706,7 +710,13 @@ const showLegend = computed(() => (
     'priority',
     'type',
     'weight',
+    'due_status',
+    'budget_status',
+    'estimate_bucket',
+    'task_completion',
     'time_ratio',
+    'time_estimate',
+    'time_spent',
     'upvotes',
     'merge_requests',
     'comments',
@@ -1127,6 +1137,17 @@ function updateGraph() {
   const layoutModeChanged = lastGroupBy !== props.groupBy
   lastGroupBy = props.groupBy
 
+  const formatSecondsShort = (secs) => {
+    const s = Number(secs) || 0
+    if (s <= 0) return '0'
+    const minutes = Math.round(s / 60)
+    if (minutes < 60) return `${minutes}m`
+    const hours = Math.round(minutes / 60)
+    if (hours < 24) return `${hours}h`
+    const days = Math.round(hours / 24)
+    return `${days}d`
+  }
+
   // Preserve previous positions/physics by id so "data refresh" (ex: context menu edits)
   // doesn't reset the graph layout.
   const prevById = new Map(nodesData.map(n => [String(n.id), n]))
@@ -1181,6 +1202,30 @@ function updateGraph() {
     if (props.colorMode === 'none') {
         node.color = node.state === 'opened' ? '#28a745' : '#dc3545'
         node.displayTag = null
+    } else if (props.colorMode === 'due_status') {
+        const dueRaw = node.dueDate || node._raw?.due_date || node._raw?.dueDate || null
+        const due = dueRaw ? new Date(dueRaw) : null
+        const dueMs = due && Number.isFinite(due.getTime()) ? due.getTime() : null
+        const soonDays = Math.max(1, Number(settings?.uiState?.view?.dueSoonDays) || 7)
+        const soonMs = soonDays * 24 * 60 * 60 * 1000
+        const nowMs = Date.now()
+        if (!dueMs) {
+          node.color = neutralNode
+          node.displayTag = null
+          node._legendKey = 'No due date'
+        } else if (dueMs < nowMs) {
+          node.color = '#d32f2f'
+          node.displayTag = 'Overdue'
+          node._legendKey = 'Overdue'
+        } else if (dueMs - nowMs <= soonMs) {
+          node.color = '#f57c00'
+          node.displayTag = 'Due soon'
+          node._legendKey = 'Due soon'
+        } else {
+          node.color = '#388e3c'
+          node.displayTag = 'Due later'
+          node._legendKey = 'Due later'
+        }
     } else if (props.colorMode === 'tag') {
         node.color = node.tag === '_no_tag_' ? neutralNode : colorScale(node.tag)
         node.displayTag = node.tag
@@ -1202,6 +1247,80 @@ function updateGraph() {
     } else if (props.colorMode === 'weight') {
         node.color = node.weight === 'No Weight' ? neutralNode : colorScale(node.weight)
         node.displayTag = node.weight
+    } else if (props.colorMode === 'time_estimate') {
+        const v = Number(node.timeEstimate) || 0
+        node._numericT = v > 0 ? v : null
+        node.color = neutralNode
+        node.displayTag = v > 0 ? formatSecondsShort(v) : null
+    } else if (props.colorMode === 'time_spent') {
+        const v = Number(node.timeSpent) || 0
+        node._numericT = v > 0 ? v : null
+        node.color = neutralNode
+        node.displayTag = v > 0 ? formatSecondsShort(v) : null
+    } else if (props.colorMode === 'budget_status') {
+        const est = Number(node.timeEstimate) || 0
+        const spent = Number(node.timeSpent) || 0
+        if (est <= 0) {
+          node.color = neutralNode
+          node.displayTag = 'No Est.'
+          node._legendKey = 'No estimate'
+        } else if (spent > est) {
+          node.color = '#d32f2f'
+          node.displayTag = 'Over'
+          node._legendKey = 'Over budget'
+        } else {
+          node.color = '#388e3c'
+          node.displayTag = 'Within'
+          node._legendKey = 'Within budget'
+        }
+    } else if (props.colorMode === 'estimate_bucket') {
+        const est = Number(node.timeEstimate) || 0
+        const h = est / 3600
+        let key = 'No estimate'
+        let color = neutralNode
+        if (est <= 0) {
+          key = 'No estimate'
+          color = neutralNode
+        } else if (h < 1) {
+          key = '<1h'
+          color = '#90caf9'
+        } else if (h < 4) {
+          key = '1–4h'
+          color = '#42a5f5'
+        } else if (h < 8) {
+          key = '4–8h'
+          color = '#1e88e5'
+        } else if (h < 24) {
+          key = '1–3d'
+          color = '#1565c0'
+        } else {
+          key = '3d+'
+          color = '#0d47a1'
+        }
+        node.color = color
+        node.displayTag = est > 0 ? formatSecondsShort(est) : null
+        node._legendKey = key
+    } else if (props.colorMode === 'task_completion') {
+        const tcs = node._raw?.task_completion_status || node._raw?.taskCompletionStatus || null
+        const count = Number(tcs?.count) || 0
+        const done = Number(tcs?.completed_count ?? tcs?.completedCount) || 0
+        if (count <= 0) {
+          node.color = neutralNode
+          node.displayTag = null
+          node._legendKey = 'No tasks'
+        } else if (done <= 0) {
+          node.color = '#d32f2f'
+          node.displayTag = `${done}/${count}`
+          node._legendKey = '0% done'
+        } else if (done >= count) {
+          node.color = '#388e3c'
+          node.displayTag = `${done}/${count}`
+          node._legendKey = '100% done'
+        } else {
+          node.color = '#fbc02d'
+          node.displayTag = `${done}/${count}`
+          node._legendKey = 'In progress'
+        }
     } else if (props.colorMode === 'time_ratio') {
         // Continuous scale for time ratio: 0 (green) -> 1 (yellow) -> >1 (red)
         const ratio = node.timeSpentRatio || 0
@@ -1277,6 +1396,35 @@ function updateGraph() {
 
   // Apply timeline coloring + legend once we know min/max dates.
   timelineLegend.value = null
+  numericLegend.value = null
+
+  if (props.colorMode === 'time_estimate' || props.colorMode === 'time_spent') {
+    const values = nodesData.map(n => n._numericT).filter(v => Number.isFinite(v) && v > 0)
+    const maxV = values.length ? Math.max(...values) : null
+    if (maxV != null && maxV > 0) {
+      const scale = d3.scaleSqrt().domain([0, maxV]).range([0, 1])
+      const interp = props.colorMode === 'time_estimate' ? d3.interpolateBlues : d3.interpolateOranges
+      nodesData.forEach(n => {
+        if (!Number.isFinite(n._numericT) || n._numericT <= 0) {
+          n.color = neutralNode
+          return
+        }
+        n.color = interp(scale(n._numericT))
+      })
+      numericLegend.value = {
+        css: `linear-gradient(90deg, ${neutralNode}, ${interp(1)})`,
+        minLabel: '0',
+        maxLabel: formatSecondsShort(maxV)
+      }
+    } else {
+      numericLegend.value = {
+        css: `linear-gradient(90deg, ${neutralNode}, ${neutralNode})`,
+        minLabel: '0',
+        maxLabel: '0'
+      }
+    }
+  }
+
   if (props.colorMode && props.colorMode.startsWith('timeline_')) {
     const times = nodesData.map(n => n._timelineT).filter(Number.isFinite)
     const minT = times.length ? Math.min(...times) : null
@@ -1320,6 +1468,10 @@ function updateGraph() {
       if (props.colorMode === 'priority') return n.priority
       if (props.colorMode === 'type') return n.type
       if (props.colorMode === 'weight') return n.weight
+      if (props.colorMode === 'due_status') return n._legendKey || 'Unknown'
+      if (props.colorMode === 'budget_status') return n._legendKey || 'Unknown'
+      if (props.colorMode === 'estimate_bucket') return n._legendKey || 'Unknown'
+      if (props.colorMode === 'task_completion') return n._legendKey || 'Unknown'
       return null
     }
 

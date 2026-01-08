@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.3.17] - 2026-01-09
+- added more filters + color modes for due date / time tracking / tasks
+- filters: merge request presence, participants, due status, spent, budget, estimate buckets, task completion
+- show non-active user states in user selectors when available
+- user selectors: add special entries "Me", "Deactivated users" section, and "Any deactivated user"
+
 ## [0.3.16] - 2026-01-08
 - fixed scoped labels
 - added start/stop button for the physics simulation

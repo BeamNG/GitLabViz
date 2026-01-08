@@ -89,6 +89,13 @@ export const defaultSettings = () => ({
       selectedMilestones: [],
       selectedPriorities: [],
       selectedTypes: [],
+      mrMode: null, // 'has' | 'none' | null
+      selectedParticipants: [],
+      dueStatus: null, // 'overdue' | 'soon' | 'later' | 'none' | null
+      spentMode: null, // 'has' | 'none' | null
+      budgetMode: null, // 'over' | 'within' | 'no_est' | null
+      estimateBucket: null, // 'lt1h' | '1_4h' | '4_8h' | '1_3d' | '3dplus' | 'none' | null
+      taskMode: null, // 'no_tasks' | 'none_done' | 'in_progress' | 'done' | null
       searchQuery: '',
       dateFilters: {
         createdMode: 'none',
@@ -111,6 +118,7 @@ export const defaultSettings = () => ({
       linkMode: 'none',
       hideUnlinked: true,
       legendSort: 'name', // 'name' | 'count'
+      dueSoonDays: 7,
       issueOpenTarget: '_blank' // '_blank' | '_self' | 'GitlabVizIssueTab'
     },
     simulation: {

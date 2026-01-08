@@ -257,6 +257,32 @@ const detectMilestoneCaps = async (client) => {
   }
 }
 
+const detectUserCaps = async (client) => {
+  const key = '__glvUserCaps'
+  if (client && client[key]) return client[key]
+
+  const fallback = { hasState: false }
+  if (!client) return fallback
+
+  try {
+    const query = `
+      query {
+        __type(name: "User") {
+          fields { name }
+        }
+      }
+    `
+    const resp = await gitlabPost(client, '', { data: { query } }, { maxRetries: 1 })
+    const fields = resp?.data?.data?.__type?.fields?.map(f => f?.name).filter(Boolean) || []
+    const caps = { hasState: fields.includes('state') }
+    client[key] = caps
+    return caps
+  } catch {
+    client[key] = fallback
+    return fallback
+  }
+}
+
 /**
  * Detect which GraphQL Issue fields exist on this GitLab instance.
  * Cached per-client instance.
@@ -408,6 +434,7 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
     const caps = await detectFeatures(client)
     const issueArgs = await detectProjectIssuesArgs(client)
     const milestoneCaps = await detectMilestoneCaps(client)
+    const userCaps = await detectUserCaps(client)
     const state = options.state || 'opened' // opened | closed
     const updatedAfter = options?.params?.updated_after || null
 
@@ -463,7 +490,8 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
     const startDateField = caps.hasStartDate ? 'startDate' : ''
     const relativePositionField = caps.hasRelativePosition ? 'relativePosition' : ''
     const typeLegacyField = caps.hasTypeLegacy ? 'type' : ''
-    const participantsField = caps.hasParticipants ? 'participants { nodes { username name } }' : ''
+    const userStateField = userCaps.hasState ? 'state' : ''
+    const participantsField = caps.hasParticipants ? `participants { nodes { username name ${userStateField} } }` : ''
     const userDiscussionsCountField = caps.hasUserDiscussionsCount ? 'userDiscussionsCount' : ''
     const subscribedField = caps.hasSubscribed ? 'subscribed' : ''
     const parentField = caps.hasParent ? 'parent { id iid title }' : ''
@@ -502,8 +530,8 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
               taskCompletionStatus { count completedCount }
               ${timeField}
               labels { nodes { title } }
-              author { id name username webUrl ${INCLUDE_AVATARS ? 'avatarUrl' : ''} }
-              assignees { nodes { id name username webUrl ${INCLUDE_AVATARS ? 'avatarUrl' : ''} } }
+              author { id name username webUrl ${INCLUDE_AVATARS ? 'avatarUrl' : ''} ${userStateField} }
+              assignees { nodes { id name username webUrl ${INCLUDE_AVATARS ? 'avatarUrl' : ''} ${userStateField} } }
               ${participantsField}
               milestone {
                 id iid title description state createdAt updatedAt dueDate startDate expired ${milestoneWebField}
@@ -632,7 +660,7 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
             username: a?.username,
             public_email: null,
             name: a?.name,
-            state: 'active',
+            state: a?.state || null,
             locked: false,
             avatar_url: INCLUDE_AVATARS ? (a?.avatarUrl || null) : null,
             web_url: a?.webUrl || ''
@@ -643,7 +671,7 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
                 username: n.author.username,
                 public_email: null,
                 name: n.author.name,
-                state: 'active',
+                state: n.author.state || null,
                 locked: false,
                 avatar_url: INCLUDE_AVATARS ? (n.author.avatarUrl || null) : null,
                 web_url: n.author.webUrl || ''
@@ -656,7 +684,7 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
                 username: assignee?.username,
                 public_email: null,
                 name: assignee?.name,
-                state: 'active',
+                state: assignee?.state || null,
                 locked: false,
                 avatar_url: INCLUDE_AVATARS ? (assignee?.avatarUrl || null) : null,
                 web_url: assignee?.webUrl || ''
@@ -702,6 +730,7 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
           participants: caps.hasParticipants ? participants.map(p => ({
             username: p?.username,
             name: p?.name,
+            state: p?.state || null,
             avatar_url: INCLUDE_AVATARS ? (p?.avatarUrl || null) : null
           })) : [],
           work_item_status: workItemStatus || null,
