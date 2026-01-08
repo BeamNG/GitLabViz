@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.16] - 2026-01-08
+- fixed scoped labels
+
 ## [0.3.15] - 2026-01-08
 - preserving graph view during ticket changes
 

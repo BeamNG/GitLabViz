@@ -520,6 +520,7 @@ import { svnCacheGetMeta, svnCacheClear, normalizeRepoUrl } from './services/cac
 import { useSettingsStore } from './composables/useSettingsStore'
 import { MattermostClient } from './chatTools/mmClient'
 import { GLOBAL_PRESETS } from './presets'
+import { getScopedLabelValue } from './utils/scopedLabels'
 import localforage from 'localforage'
 
 // Configure localforage
@@ -885,8 +886,13 @@ const groupingModeOptions = computed(() => {
     const labels = node?._raw?.labels || []
     labels.forEach(l => {
       if (typeof l !== 'string') return
-      const idx = l.indexOf('::')
-      if (idx > 0) scopedPrefixes.add(l.slice(0, idx))
+      const idx2 = l.indexOf('::')
+      if (idx2 > 0) {
+        scopedPrefixes.add(l.slice(0, idx2))
+        return
+      }
+      const idx1 = l.indexOf(':')
+      if (idx1 > 0) scopedPrefixes.add(l.slice(0, idx1))
     })
   })
 
@@ -925,13 +931,6 @@ const groupingModeOptions = computed(() => {
   if (scoped.length) items.push({ title: 'Labels', type: 'subheader' }, ...scoped)
   return items
 })
-
-// Helper to extract scoped label value (e.g. "Priority::High" -> "High")
-function getScopedLabelValue(labels, prefix) {
-  if (!labels) return null
-  const label = labels.find(l => l.startsWith(prefix + '::'))
-  return label ? label.substring(prefix.length + 2) : null
-}
 
 const allLabels = computed(() => {
   const labels = new Set()
@@ -1251,6 +1250,10 @@ const filteredEdges = computed(() => {
               else if (settings.uiState.view.groupingMode === 'milestone') key = n.milestone ? n.milestone.title : 'No Milestone'
               else if (settings.uiState.view.groupingMode === 'priority') key = getScopedLabelValue(n.labels, 'Priority') || 'No Priority'
               else if (settings.uiState.view.groupingMode === 'type') key = getScopedLabelValue(n.labels, 'Type') || 'No Type'
+              else if (String(settings.uiState.view.groupingMode || '').startsWith('scoped:')) {
+                const prefix = String(settings.uiState.view.groupingMode || '').substring('scoped:'.length)
+                key = getScopedLabelValue(n.labels, prefix) || `No ${prefix}`
+              }
           }
           
           if (!groups[key]) groups[key] = []
@@ -1337,6 +1340,10 @@ const groupStatsText = computed(() => {
          else if (settings.uiState.view.groupingMode === 'milestone') key = n.milestone ? n.milestone.title : 'No Milestone'
          else if (settings.uiState.view.groupingMode === 'priority') key = getScopedLabelValue(n.labels, 'Priority') || 'No Priority'
          else if (settings.uiState.view.groupingMode === 'type') key = getScopedLabelValue(n.labels, 'Type') || 'No Type'
+         else if (String(settings.uiState.view.groupingMode || '').startsWith('scoped:')) {
+           const prefix = String(settings.uiState.view.groupingMode || '').substring('scoped:'.length)
+           key = getScopedLabelValue(n.labels, prefix) || `No ${prefix}`
+         }
          
          groups.add(key)
     })
@@ -1592,12 +1599,10 @@ onMounted(async () => {
       Object.assign(issueGraphSnapshot.nodes, filteredCachedNodes)
       Object.assign(issueGraphSnapshot.edges, filteredCachedEdges)
 
-      /*
       console.log('--- Cached Data Loaded (First 3 Nodes) ---')
       const keys = Object.keys(nodes).slice(0, 3)
       keys.forEach(key => console.log(toRaw(nodes[key])))
       console.log('------------------------------------------')
-      */
     }
     // If no cached data exists at all, populate a small sample graph so the UI isn't empty.
     if (Object.keys(nodes).length === 0 && Object.keys(edges).length === 0) {
