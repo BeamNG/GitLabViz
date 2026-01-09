@@ -1,16 +1,24 @@
-export function getScopedLabelValue (labels, prefix) {
-  if (!Array.isArray(labels)) return null
+export function getScopedLabelValues (labels, prefix) {
+  if (!Array.isArray(labels)) return []
   const p = String(prefix || '').trim()
-  if (!p) return null
+  if (!p) return []
 
-  const matches = labels
-    .map(l => {
-      if (typeof l !== 'string') return null
-      if (l.startsWith(p + '::')) return l.substring(p.length + 2).trim()
-      if (l.startsWith(p + ':')) return l.substring(p.length + 1).trim()
-      return null
-    })
-    .filter(Boolean)
+  const out = []
+  const seen = new Set()
+  for (const l of labels) {
+    if (typeof l !== 'string') continue
+    let v = null
+    if (l.startsWith(p + '::')) v = l.substring(p.length + 2).trim()
+    else if (l.startsWith(p + ':')) v = l.substring(p.length + 1).trim()
+    if (!v) continue
+    if (seen.has(v)) continue
+    seen.add(v)
+    out.push(v)
+  }
+  return out
+}
 
+export function getScopedLabelValue (labels, prefix) {
+  const matches = getScopedLabelValues(labels, prefix)
   return matches.length ? matches[matches.length - 1] : null
 }

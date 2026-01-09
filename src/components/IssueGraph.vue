@@ -268,7 +268,7 @@
 import { ref, computed, onMounted, onUnmounted, watch, toRaw, nextTick } from 'vue'
 import * as d3 from 'd3'
 import { useSettingsStore } from '../composables/useSettingsStore'
-import { getScopedLabelValue } from '../utils/scopedLabels'
+import { getScopedLabelValue, getScopedLabelValues } from '../utils/scopedLabels'
 
 const emit = defineEmits(['issue-state-change', 'issue-assignee-change'])
 
@@ -1162,249 +1162,334 @@ function updateGraph() {
   // doesn't reset the graph layout.
   const prevById = new Map(nodesData.map(n => [String(n.id), n]))
 
-  // 1. Prepare Data
-  nodesData = Object.values(toRaw(props.nodes)).map(n => {
-    const id = n && n.id != null ? String(n.id) : ''
-    const prev = layoutModeChanged ? null : prevById.get(id)
-    const node = prev || {}
-    const hadPrev = !!prev
-    const x = node.x, y = node.y, vx = node.vx, vy = node.vy, fx = node.fx, fy = node.fy
+  const getWeekYear = (dateStr) => {
+    if (!dateStr) return 'No Date'
+    const d = new Date(dateStr)
+    const onejan = new Date(d.getFullYear(), 0, 1)
+    const week = Math.ceil((((d - onejan) / 86400000) + onejan.getDay() + 1) / 7)
+    return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`
+  }
 
-    Object.assign(node, n)
-    node._hadPrev = hadPrev
-    if (hadPrev) {
-      // Preserve current physics state
-      node.x = x; node.y = y
-      node.vx = vx; node.vy = vy
-      node.fx = fx; node.fy = fy
-    }
-    
-    // Extract metadata
-    const labels = node._raw.labels || []
-
-    node.tag = labels.length > 0 ? labels[0] : '_no_tag_'
-    node.authorName = node._raw.author ? node._raw.author.name : 'Unknown'
-    node.assigneeName = node._raw.assignee ? node._raw.assignee.name : 'Unassigned'
-    node.milestoneTitle = node._raw.milestone ? node._raw.milestone.title : 'No Milestone'
-    node.state = node._raw.state
-    // Status is a scoped label (Status::... / Status:...). If multiple exist, prefer the last one.
-    node.statusLabel = getScopedLabelValue(labels, 'Status')
-    node.priority = getScopedLabelValue(labels, 'Priority') || 'No Priority'
-    node.type = getScopedLabelValue(labels, 'Type') || 'No Type'
-    node.weight = node._raw.weight != null ? String(node._raw.weight) : 'No Weight'
-    // Epic can come from:
-    // - GitLab "epic" field (if available)
-    // - a scoped label like Epic::Something (common in setups without Epics)
-    const epicFromApi = node._raw?.epic?.title
-    // Newer GitLab: epics can show up as parent work items.
-    const parentType = String(node._raw?.parent?.work_item_type || '').trim().toLowerCase()
-    const epicFromParent = parentType === 'epic' ? node._raw?.parent?.title : null
-    const epicFromIid = node._raw?.epic_iid != null ? `Epic #${node._raw.epic_iid}` : null
-    const epicFromLabel = getScopedLabelValue(labels, 'Epic')
-    node.epic = epicFromApi || epicFromParent || epicFromIid || epicFromLabel || 'No Epic'
-    node.iteration = node._raw.iteration ? node._raw.iteration.title : 'No Iteration'
-    
-    // Calculate staleness (days since last update)
-    const now = new Date()
-    const updated = new Date(node._raw.updated_at)
-    const diffTime = Math.abs(now - updated)
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    node.daysSinceUpdate = diffDays
-    
-    const created = new Date(node._raw.created_at)
-    const ageDiff = Math.abs(now - created)
-    const ageDays = Math.ceil(ageDiff / (1000 * 60 * 60 * 24))
-    node.ageDays = ageDays
-
+  const applyColor = (node) => {
     // Assign Color
     // "none" = default coloring (only open/closed), no Status:: label overrides
     if (props.colorMode === 'none') {
-        node.color = node.state === 'opened' ? '#28a745' : '#dc3545'
-        node.displayTag = null
+      node.color = node.state === 'opened' ? '#28a745' : '#dc3545'
+      node.displayTag = null
     } else if (props.colorMode === 'due_status') {
-        const dueRaw = node.dueDate || node._raw?.due_date || node._raw?.dueDate || null
-        const due = dueRaw ? new Date(dueRaw) : null
-        const dueMs = due && Number.isFinite(due.getTime()) ? due.getTime() : null
-        const soonDays = Math.max(1, Number(settings?.uiState?.view?.dueSoonDays) || 7)
-        const soonMs = soonDays * 24 * 60 * 60 * 1000
-        const nowMs = Date.now()
-        if (!dueMs) {
-          node.color = neutralNode
-          node.displayTag = null
-          node._legendKey = 'No due date'
-        } else if (dueMs < nowMs) {
-          node.color = '#d32f2f'
-          node.displayTag = 'Overdue'
-          node._legendKey = 'Overdue'
-        } else if (dueMs - nowMs <= soonMs) {
-          node.color = '#f57c00'
-          node.displayTag = 'Due soon'
-          node._legendKey = 'Due soon'
-        } else {
-          node.color = '#388e3c'
-          node.displayTag = 'Due later'
-          node._legendKey = 'Due later'
-        }
-    } else if (props.colorMode === 'tag') {
-        node.color = node.tag === '_no_tag_' ? neutralNode : colorScale(node.tag)
-        node.displayTag = node.tag
-    } else if (props.colorMode === 'author') {
-        node.color = colorScale(node.authorName)
-        node.displayTag = node.authorName
-    } else if (props.colorMode === 'assignee') {
-        node.color = node.assigneeName === 'Unassigned' ? neutralNode : colorScale(node.assigneeName)
-        node.displayTag = node.assigneeName
-    } else if (props.colorMode === 'milestone') {
-        node.color = node.milestoneTitle === 'No Milestone' ? neutralNode : colorScale(node.milestoneTitle)
-        node.displayTag = node.milestoneTitle
-    } else if (props.colorMode === 'priority') {
-        node.color = node.priority === 'No Priority' ? neutralNode : colorScale(node.priority)
-        node.displayTag = node.priority
-    } else if (props.colorMode === 'type') {
-        node.color = node.type === 'No Type' ? neutralNode : colorScale(node.type)
-        node.displayTag = node.type
-    } else if (props.colorMode === 'weight') {
-        node.color = node.weight === 'No Weight' ? neutralNode : colorScale(node.weight)
-        node.displayTag = node.weight
-    } else if (props.colorMode === 'time_estimate') {
-        const v = Number(node.timeEstimate) || 0
-        node._numericT = v > 0 ? v : null
-        node.color = neutralNode
-        node.displayTag = v > 0 ? formatSecondsShort(v) : null
-    } else if (props.colorMode === 'time_spent') {
-        const v = Number(node.timeSpent) || 0
-        node._numericT = v > 0 ? v : null
-        node.color = neutralNode
-        node.displayTag = v > 0 ? formatSecondsShort(v) : null
-    } else if (props.colorMode === 'budget_status') {
-        const est = Number(node.timeEstimate) || 0
-        const spent = Number(node.timeSpent) || 0
-        if (est <= 0) {
-          node.color = neutralNode
-          node.displayTag = 'No Est.'
-          node._legendKey = 'No estimate'
-        } else if (spent > est) {
-          node.color = '#d32f2f'
-          node.displayTag = 'Over'
-          node._legendKey = 'Over budget'
-        } else {
-          node.color = '#388e3c'
-          node.displayTag = 'Within'
-          node._legendKey = 'Within budget'
-        }
-    } else if (props.colorMode === 'estimate_bucket') {
-        const est = Number(node.timeEstimate) || 0
-        const h = est / 3600
-        let key = 'No estimate'
-        let color = neutralNode
-        if (est <= 0) {
-          key = 'No estimate'
-          color = neutralNode
-        } else if (h < 1) {
-          key = '<1h'
-          color = '#90caf9'
-        } else if (h < 4) {
-          key = '1–4h'
-          color = '#42a5f5'
-        } else if (h < 8) {
-          key = '4–8h'
-          color = '#1e88e5'
-        } else if (h < 24) {
-          key = '1–3d'
-          color = '#1565c0'
-        } else {
-          key = '3d+'
-          color = '#0d47a1'
-        }
-        node.color = color
-        node.displayTag = est > 0 ? formatSecondsShort(est) : null
-        node._legendKey = key
-    } else if (props.colorMode === 'task_completion') {
-        const tcs = node._raw?.task_completion_status || node._raw?.taskCompletionStatus || null
-        const count = Number(tcs?.count) || 0
-        const done = Number(tcs?.completed_count ?? tcs?.completedCount) || 0
-        if (count <= 0) {
-          node.color = neutralNode
-          node.displayTag = null
-          node._legendKey = 'No tasks'
-        } else if (done <= 0) {
-          node.color = '#d32f2f'
-          node.displayTag = `${done}/${count}`
-          node._legendKey = '0% done'
-        } else if (done >= count) {
-          node.color = '#388e3c'
-          node.displayTag = `${done}/${count}`
-          node._legendKey = '100% done'
-        } else {
-          node.color = '#fbc02d'
-          node.displayTag = `${done}/${count}`
-          node._legendKey = 'In progress'
-        }
-    } else if (props.colorMode === 'time_ratio') {
-        // Continuous scale for time ratio: 0 (green) -> 1 (yellow) -> >1 (red)
-        const ratio = node.timeSpentRatio || 0
-        if (ratio === 0 && node.timeEstimate === 0) node.color = neutralNode
-        else if (ratio <= 1) node.color = d3.interpolateRdYlGn(1 - ratio) // Green to Red (reversed)? No, usually 100% spent is limit.
-        // Let's do: 0=Green, 1=Yellow, 2+=Red
-        else node.color = '#d32f2f' // Over budget
-        
-        // Better scale: interpolateYlGn(1-ratio) for under budget?
-        // Simple: 
-        if (node.timeEstimate === 0) {
-             node.color = neutralNode
-             node.displayTag = 'No Est.'
-        } else {
-            const pct = Math.round(ratio * 100)
-            node.displayTag = `${pct}%`
-            if (ratio > 1.1) node.color = '#d32f2f' // Red (Over)
-            else if (ratio > 0.9) node.color = '#fbc02d' // Yellow (Warning)
-            else node.color = '#388e3c' // Green (Good)
-        }
-    } else if (props.colorMode === 'upvotes') {
-        node.color = node.upvotes > 0 ? d3.interpolateBlues(Math.min(1, node.upvotes / 10)) : neutralNode
-        node.displayTag = node.upvotes > 0 ? `+${node.upvotes}` : null
-    } else if (props.colorMode === 'merge_requests') {
-        node.color = node.mergeRequestsCount > 0 ? d3.interpolatePurples(Math.min(1, node.mergeRequestsCount / 5)) : neutralNode
-        node.displayTag = node.mergeRequestsCount > 0 ? `${node.mergeRequestsCount} MRs` : null
-    } else if (props.colorMode === 'comments') {
-        node.color = node.commentsCount > 0 ? d3.interpolateOranges(Math.min(1, node.commentsCount / 20)) : neutralNode
-        node.displayTag = node.commentsCount > 0 ? `${node.commentsCount} 💬` : null
-    } else if (props.colorMode === 'age') {
-        // Newer = Green, Older = Red
-        // Scale: 0 days -> 365 days
-        const maxAge = 365
-        const normalized = Math.min(node.ageDays, maxAge) / maxAge
-        node.color = d3.interpolateRdYlGn(1 - normalized)
-        node.displayTag = `${node.ageDays}d`
-    } else if (props.colorMode === 'last_updated') {
-        // Recently updated = Green, Stale = Red
-        // Scale: 0 days -> 180 days
-        const maxStale = 180
-        const normalized = Math.min(node.daysSinceUpdate, maxStale) / maxStale
-        node.color = d3.interpolateRdYlGn(1 - normalized)
-        node.displayTag = `${node.daysSinceUpdate}d`
-    } else if (props.colorMode && props.colorMode.startsWith('timeline_')) {
-        // Color by date range (old -> red, new -> green). Applied after we compute min/max.
-        const field =
-          props.colorMode === 'timeline_created' ? 'created_at' :
-          props.colorMode === 'timeline_updated' ? 'updated_at' :
-          'closed_at'
-        const d = node._raw && node._raw[field] ? new Date(node._raw[field]) : null
-        node._timelineT = d && Number.isFinite(d.getTime()) ? d.getTime() : null
+      const dueRaw = node.dueDate || node._raw?.due_date || node._raw?.dueDate || null
+      const due = dueRaw ? new Date(dueRaw) : null
+      const dueMs = due && Number.isFinite(due.getTime()) ? due.getTime() : null
+      const soonDays = Math.max(1, Number(settings?.uiState?.view?.dueSoonDays) || 7)
+      const soonMs = soonDays * 24 * 60 * 60 * 1000
+      const nowMs = Date.now()
+      if (!dueMs) {
         node.color = neutralNode
         node.displayTag = null
+        node._legendKey = 'No due date'
+      } else if (dueMs < nowMs) {
+        node.color = '#d32f2f'
+        node.displayTag = 'Overdue'
+        node._legendKey = 'Overdue'
+      } else if (dueMs - nowMs <= soonMs) {
+        node.color = '#f57c00'
+        node.displayTag = 'Due soon'
+        node._legendKey = 'Due soon'
+      } else {
+        node.color = '#388e3c'
+        node.displayTag = 'Due later'
+        node._legendKey = 'Due later'
+      }
+    } else if (props.colorMode === 'tag') {
+      node.color = node.tag === '_no_tag_' ? neutralNode : colorScale(node.tag)
+      node.displayTag = node.tag
+    } else if (props.colorMode === 'author') {
+      node.color = colorScale(node.authorName)
+      node.displayTag = node.authorName
+    } else if (props.colorMode === 'assignee') {
+      node.color = node.assigneeName === 'Unassigned' ? neutralNode : colorScale(node.assigneeName)
+      node.displayTag = node.assigneeName
+    } else if (props.colorMode === 'milestone') {
+      node.color = node.milestoneTitle === 'No Milestone' ? neutralNode : colorScale(node.milestoneTitle)
+      node.displayTag = node.milestoneTitle
+    } else if (props.colorMode === 'priority') {
+      node.color = node.priority === 'No Priority' ? neutralNode : colorScale(node.priority)
+      node.displayTag = node.priority
+    } else if (props.colorMode === 'type') {
+      node.color = node.type === 'No Type' ? neutralNode : colorScale(node.type)
+      node.displayTag = node.type
+    } else if (props.colorMode === 'weight') {
+      node.color = node.weight === 'No Weight' ? neutralNode : colorScale(node.weight)
+      node.displayTag = node.weight
+    } else if (props.colorMode === 'time_estimate') {
+      const v = Number(node.timeEstimate) || 0
+      node._numericT = v > 0 ? v : null
+      node.color = neutralNode
+      node.displayTag = v > 0 ? formatSecondsShort(v) : null
+    } else if (props.colorMode === 'time_spent') {
+      const v = Number(node.timeSpent) || 0
+      node._numericT = v > 0 ? v : null
+      node.color = neutralNode
+      node.displayTag = v > 0 ? formatSecondsShort(v) : null
+    } else if (props.colorMode === 'budget_status') {
+      const est = Number(node.timeEstimate) || 0
+      const spent = Number(node.timeSpent) || 0
+      if (est <= 0) {
+        node.color = neutralNode
+        node.displayTag = 'No Est.'
+        node._legendKey = 'No estimate'
+      } else if (spent > est) {
+        node.color = '#d32f2f'
+        node.displayTag = 'Over'
+        node._legendKey = 'Over budget'
+      } else {
+        node.color = '#388e3c'
+        node.displayTag = 'Within'
+        node._legendKey = 'Within budget'
+      }
+    } else if (props.colorMode === 'estimate_bucket') {
+      const est = Number(node.timeEstimate) || 0
+      const h = est / 3600
+      let key = 'No estimate'
+      let color = neutralNode
+      if (est <= 0) {
+        key = 'No estimate'
+        color = neutralNode
+      } else if (h < 1) {
+        key = '<1h'
+        color = '#90caf9'
+      } else if (h < 4) {
+        key = '1–4h'
+        color = '#42a5f5'
+      } else if (h < 8) {
+        key = '4–8h'
+        color = '#1e88e5'
+      } else if (h < 24) {
+        key = '1–3d'
+        color = '#1565c0'
+      } else {
+        key = '3d+'
+        color = '#0d47a1'
+      }
+      node.color = color
+      node.displayTag = est > 0 ? formatSecondsShort(est) : null
+      node._legendKey = key
+    } else if (props.colorMode === 'task_completion') {
+      const tcs = node._raw?.task_completion_status || node._raw?.taskCompletionStatus || null
+      const count = Number(tcs?.count) || 0
+      const done = Number(tcs?.completed_count ?? tcs?.completedCount) || 0
+      if (count <= 0) {
+        node.color = neutralNode
+        node.displayTag = null
+        node._legendKey = 'No tasks'
+      } else if (done <= 0) {
+        node.color = '#d32f2f'
+        node.displayTag = `${done}/${count}`
+        node._legendKey = '0% done'
+      } else if (done >= count) {
+        node.color = '#388e3c'
+        node.displayTag = `${done}/${count}`
+        node._legendKey = '100% done'
+      } else {
+        node.color = '#fbc02d'
+        node.displayTag = `${done}/${count}`
+        node._legendKey = 'In progress'
+      }
+    } else if (props.colorMode === 'time_ratio') {
+      // Continuous scale for time ratio: 0 (green) -> 1 (yellow) -> >1 (red)
+      const ratio = node.timeSpentRatio || 0
+      if (ratio === 0 && node.timeEstimate === 0) node.color = neutralNode
+      else if (ratio <= 1) node.color = d3.interpolateRdYlGn(1 - ratio) // Green to Red (reversed)? No, usually 100% spent is limit.
+      // Let's do: 0=Green, 1=Yellow, 2+=Red
+      else node.color = '#d32f2f' // Over budget
+      
+      // Better scale: interpolateYlGn(1-ratio) for under budget?
+      // Simple: 
+      if (node.timeEstimate === 0) {
+        node.color = neutralNode
+        node.displayTag = 'No Est.'
+      } else {
+        const pct = Math.round(ratio * 100)
+        node.displayTag = `${pct}%`
+        if (ratio > 1.1) node.color = '#d32f2f' // Red (Over)
+        else if (ratio > 0.9) node.color = '#fbc02d' // Yellow (Warning)
+        else node.color = '#388e3c' // Green (Good)
+      }
+    } else if (props.colorMode === 'upvotes') {
+      node.color = node.upvotes > 0 ? d3.interpolateBlues(Math.min(1, node.upvotes / 10)) : neutralNode
+      node.displayTag = node.upvotes > 0 ? `+${node.upvotes}` : null
+    } else if (props.colorMode === 'merge_requests') {
+      node.color = node.mergeRequestsCount > 0 ? d3.interpolatePurples(Math.min(1, node.mergeRequestsCount / 5)) : neutralNode
+      node.displayTag = node.mergeRequestsCount > 0 ? `${node.mergeRequestsCount} MRs` : null
+    } else if (props.colorMode === 'comments') {
+      node.color = node.commentsCount > 0 ? d3.interpolateOranges(Math.min(1, node.commentsCount / 20)) : neutralNode
+      node.displayTag = node.commentsCount > 0 ? `${node.commentsCount} 💬` : null
+    } else if (props.colorMode === 'age') {
+      // Newer = Green, Older = Red
+      // Scale: 0 days -> 365 days
+      const maxAge = 365
+      const normalized = Math.min(node.ageDays, maxAge) / maxAge
+      node.color = d3.interpolateRdYlGn(1 - normalized)
+      node.displayTag = `${node.ageDays}d`
+    } else if (props.colorMode === 'last_updated') {
+      // Recently updated = Green, Stale = Red
+      // Scale: 0 days -> 180 days
+      const maxStale = 180
+      const normalized = Math.min(node.daysSinceUpdate, maxStale) / maxStale
+      node.color = d3.interpolateRdYlGn(1 - normalized)
+      node.displayTag = `${node.daysSinceUpdate}d`
+    } else if (props.colorMode && props.colorMode.startsWith('timeline_')) {
+      // Color by date range (old -> red, new -> green). Applied after we compute min/max.
+      const field =
+        props.colorMode === 'timeline_created' ? 'created_at' :
+        props.colorMode === 'timeline_updated' ? 'updated_at' :
+        'closed_at'
+      const d = node._raw && node._raw[field] ? new Date(node._raw[field]) : null
+      node._timelineT = d && Number.isFinite(d.getTime()) ? d.getTime() : null
+      node.color = neutralNode
+      node.displayTag = null
     } else {
-        // Status / State (with Status:: label overrides)
-        node.color = node.state === 'opened' ? '#28a745' : '#dc3545' // default
-        const s = typeof node.statusLabel === 'string' ? node.statusLabel.trim() : ''
-        const sl = s.toLowerCase()
-        if (node.state === 'opened' && s) {
-          node.color = statusColors[sl] || statusPalette(s)
-        }
+      // Status / State (with Status:: label overrides)
+      node.color = node.state === 'opened' ? '#28a745' : '#dc3545' // default
+      const s = typeof node.statusLabel === 'string' ? node.statusLabel.trim() : ''
+      const sl = s.toLowerCase()
+      if (node.state === 'opened' && s) {
+        node.color = statusColors[sl] || statusPalette(s)
+      }
 
-        node.displayTag = null // Don't show extra tag for state
+      node.displayTag = null // Don't show extra tag for state
     }
-    return node
+  }
+
+  // 1. Prepare Data
+  nodesData = Object.values(toRaw(props.nodes)).flatMap(n => {
+    const baseId = n && n.id != null ? String(n.id) : ''
+    const raw = n?._raw || {}
+
+    const labelsRaw = raw.labels || []
+    const labels = Array.isArray(labelsRaw)
+      ? labelsRaw.filter(l => typeof l === 'string' && l.trim()).map(l => l.trim())
+      : []
+
+    // Compute all group keys up front so we can duplicate nodes (and preserve positions by clone id).
+    const groupBy = props.groupBy
+    let groupKeys = null
+
+    if (groupBy === 'tag') {
+      groupKeys = labels.length ? labels : ['_no_tag_']
+    } else if (groupBy === 'state') {
+      const statusKeys = getScopedLabelValues(labels, 'Status')
+      groupKeys = statusKeys.length ? statusKeys : [String(raw.state || '').toLowerCase() === 'closed' ? 'Done' : 'To do']
+    } else if (groupBy === 'priority') {
+      const keys = getScopedLabelValues(labels, 'Priority')
+      groupKeys = keys.length ? keys : ['No Priority']
+    } else if (groupBy === 'type') {
+      const keys = getScopedLabelValues(labels, 'Type')
+      groupKeys = keys.length ? keys : ['No Type']
+    } else if (groupBy && groupBy.startsWith('scoped:')) {
+      const prefix = groupBy.substring('scoped:'.length)
+      const keys = getScopedLabelValues(labels, prefix)
+      groupKeys = keys.length ? keys : [`No ${prefix}`]
+    } else if (groupBy === 'stale') {
+      // based on node.daysSinceUpdate (computed below) but we can compute from raw here
+      const now = new Date()
+      const updated = raw.updated_at ? new Date(raw.updated_at) : null
+      const diffTime = updated ? Math.abs(now - updated) : 0
+      const diffDays = updated ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : 0
+      if (diffDays > 90) groupKeys = ['> 90 Days Stale']
+      else if (diffDays > 60) groupKeys = ['> 60 Days Stale']
+      else if (diffDays > 30) groupKeys = ['> 30 Days Stale']
+      else groupKeys = ['Active (< 30 Days)']
+    } else if (groupBy === 'timeline_created') {
+      groupKeys = [getWeekYear(raw.created_at)]
+    } else if (groupBy === 'timeline_updated') {
+      groupKeys = [getWeekYear(raw.updated_at)]
+    } else if (groupBy === 'timeline_closed') {
+      groupKeys = [getWeekYear(raw.closed_at)]
+    } else {
+      groupKeys = ['default']
+    }
+
+    // De-dupe while preserving order
+    const seen = new Set()
+    groupKeys = groupKeys.filter(k => {
+      const key = String(k == null ? '' : k).trim() || 'Unknown'
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    }).map(k => String(k == null ? '' : k).trim() || 'Unknown')
+
+    const makeId = (groupKey, idx) => {
+      if (groupKeys.length <= 1) return baseId
+      // Make a stable clone id so we preserve layout across refreshes.
+      const key = String(groupKey == null ? '' : groupKey).trim() || 'Unknown'
+      return `${baseId}::${groupBy}::${key}${idx ? `#${idx}` : ''}`
+    }
+
+    return groupKeys.map((groupKey, idx) => {
+      const id = makeId(groupKey, idx)
+      const prev = layoutModeChanged ? null : prevById.get(id)
+      const node = prev || {}
+      const hadPrev = !!prev
+      const x = node.x, y = node.y, vx = node.vx, vy = node.vy, fx = node.fx, fy = node.fy
+
+      Object.assign(node, n)
+      node.id = id
+      node._baseId = baseId
+      node._groupKey = groupKey
+      node._hadPrev = hadPrev
+      if (hadPrev) {
+        // Preserve current physics state
+        node.x = x; node.y = y
+        node.vx = vx; node.vy = vy
+        node.fx = fx; node.fy = fy
+      }
+
+      // Extract metadata
+      node.tags = labels
+      node.tag = labels.length > 0 ? labels[0] : '_no_tag_'
+      node.authorName = raw.author ? raw.author.name : 'Unknown'
+      node.assigneeName = raw.assignee ? raw.assignee.name : 'Unassigned'
+      node.milestoneTitle = raw.milestone ? raw.milestone.title : 'No Milestone'
+      node.state = raw.state
+      // Status is a scoped label (Status::... / Status:...). If multiple exist, prefer the last one.
+      node.statusLabel = getScopedLabelValue(labels, 'Status')
+      node.priority = getScopedLabelValue(labels, 'Priority') || 'No Priority'
+      node.type = getScopedLabelValue(labels, 'Type') || 'No Type'
+      node.weight = raw.weight != null ? String(raw.weight) : 'No Weight'
+      // Epic can come from:
+      // - GitLab "epic" field (if available)
+      // - a scoped label like Epic::Something (common in setups without Epics)
+      const epicFromApi = raw?.epic?.title
+      // Newer GitLab: epics can show up as parent work items.
+      const parentType = String(raw?.parent?.work_item_type || '').trim().toLowerCase()
+      const epicFromParent = parentType === 'epic' ? raw?.parent?.title : null
+      const epicFromIid = raw?.epic_iid != null ? `Epic #${raw.epic_iid}` : null
+      const epicFromLabel = getScopedLabelValue(labels, 'Epic')
+      node.epic = epicFromApi || epicFromParent || epicFromIid || epicFromLabel || 'No Epic'
+      node.iteration = raw.iteration ? raw.iteration.title : 'No Iteration'
+
+      // Calculate staleness (days since last update)
+      const now = new Date()
+      const updated = raw.updated_at ? new Date(raw.updated_at) : null
+      const diffTime = updated ? Math.abs(now - updated) : 0
+      const diffDays = updated ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : 0
+      node.daysSinceUpdate = diffDays
+
+      const created = raw.created_at ? new Date(raw.created_at) : null
+      const ageDiff = created ? Math.abs(now - created) : 0
+      const ageDays = created ? Math.ceil(ageDiff / (1000 * 60 * 60 * 24)) : 0
+      node.ageDays = ageDays
+
+      // If this issue is duplicated across groups, make the per-copy metadata match the group.
+      if (groupBy === 'tag') node.tag = groupKey
+      else if (groupBy === 'state') node.statusLabel = groupKey
+      else if (groupBy === 'priority') node.priority = groupKey
+      else if (groupBy === 'type') node.type = groupKey
+
+      applyColor(node)
+      return node
+    })
   })
 
   // Clear "last opened" highlight if that node no longer exists in the graph
@@ -1518,6 +1603,39 @@ function updateGraph() {
   
   edgesData = Object.values(toRaw(props.edges)).map(e => ({ ...e }))
 
+  // If we duplicated nodes (same issue drawn multiple times), expand edges to point at all copies.
+  // Keeps "hide unlinked" and link rendering behaving as expected.
+  const hasClones = nodesData.some(n => n && n._baseId != null && String(n._baseId) !== String(n.id))
+  if (hasClones) {
+    const cloneIdsByBaseId = new Map()
+    nodesData.forEach(n => {
+      const base = n && n._baseId != null ? String(n._baseId) : String(n.id)
+      const list = cloneIdsByBaseId.get(base) || []
+      list.push(String(n.id))
+      cloneIdsByBaseId.set(base, list)
+    })
+
+    const expanded = []
+    edgesData.forEach(e => {
+      const sourceBase = String(typeof e.source === 'object' ? e.source.id : e.source)
+      const targetBase = String(typeof e.target === 'object' ? e.target.id : e.target)
+      const srcs = cloneIdsByBaseId.get(sourceBase) || [sourceBase]
+      const tgts = cloneIdsByBaseId.get(targetBase) || [targetBase]
+      const baseEdgeId = e.id != null ? String(e.id) : `${sourceBase}->${targetBase}`
+      srcs.forEach(sid => {
+        tgts.forEach(tid => {
+          expanded.push({
+            ...e,
+            id: `${baseEdgeId}::${sid}::${tid}`,
+            source: sid,
+            target: tid
+          })
+        })
+      })
+    })
+    edgesData = expanded
+  }
+
   // Hide nodes with no links (dependency mode only)
   if (props.linkMode === 'dependency' && props.hideUnlinked) {
     const linked = new Set()
@@ -1617,9 +1735,13 @@ function updateGraph() {
         else if (props.groupBy === 'epic') d._groupKey = d.epic
         else if (props.groupBy === 'iteration') d._groupKey = d.iteration
         else if (props.groupBy && props.groupBy.startsWith('scoped:')) {
-            const prefix = props.groupBy.substring('scoped:'.length)
-            const value = getScopedLabelValue(d._raw?.labels || [], prefix)
-            d._groupKey = value || `No ${prefix}`
+            // `_groupKey` can be precomputed (and duplicated) in updateGraph()
+            // so keep it if present. Fallback to computing from labels.
+            if (!d._groupKey) {
+              const prefix = props.groupBy.substring('scoped:'.length)
+              const value = getScopedLabelValue(d._raw?.labels || [], prefix)
+              d._groupKey = value || `No ${prefix}`
+            }
         }
         else if (props.groupBy === 'stale') {
             if (d.daysSinceUpdate > 90) d._groupKey = '> 90 Days Stale'
