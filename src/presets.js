@@ -415,7 +415,7 @@ export const GLOBAL_PRESETS = [
     }
   },
   {
-    name: 'timeline - created',
+    name: 'Timeline - created',
     config: {
       filters: {
         labels: [],
@@ -462,7 +462,7 @@ export const GLOBAL_PRESETS = [
     }
   },
   {
-    name: 'timeline - updated',
+    name: 'Timeline - updated',
     config: {
       filters: {
         labels: [],
@@ -556,7 +556,7 @@ export const GLOBAL_PRESETS = [
     }
   },
   {
-    name: 'epics',
+    name: 'Epics',
     config: {
       filters: {
         includeClosed: false,
