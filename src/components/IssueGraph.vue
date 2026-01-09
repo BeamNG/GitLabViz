@@ -846,6 +846,12 @@ let groupCenters = {} // Persist group centers for rendering
 let containerResizeObserver = null
 let renderRaf = 0
 
+// Cached render layer for expensive group "smudge" hulls.
+// Rebuilt on-demand (throttled) to keep big zooms responsive.
+let hullCacheCanvas = null
+let hullCacheKey = ''
+let hullCacheAt = 0
+
 function applyPhysicsPaused () {
   const paused = !!props.physicsPaused
   if (paused) {
@@ -949,6 +955,10 @@ watch(legendSort, () => {
 })
 
 watch(legendHoverKey, () => {
+  scheduleRender()
+})
+
+watch(() => showGroupLabels.value, () => {
   scheduleRender()
 })
 
@@ -1988,38 +1998,73 @@ function updateGraph() {
 // Geometric overlap resolution
 function resolveOverlaps(nodes, width, height) {
   const l = nodes.length
-  
-  for (let pass = 0; pass < 3; pass++) { // Reduced passes from 5 to 3
-    for (let i = 0; i < l; ++i) {
+  if (l < 2) return
+
+  // This used to be O(n^2) per tick, which gets extremely slow on large graphs.
+  // Use a simple spatial hash grid so we only compare nodes that are plausibly overlapping.
+  const cellW = Math.max(1, width)
+  const cellH = Math.max(1, height)
+  const passes = l > 900 ? 1 : 3
+
+  const keyOf = (gx, gy) => `${gx}|${gy}`
+
+  for (let pass = 0; pass < passes; pass++) {
+    const buckets = new Map() // key -> [indices]
+
+    for (let i = 0; i < l; i++) {
+      const n = nodes[i]
+      const gx = Math.floor(n.x / cellW)
+      const gy = Math.floor(n.y / cellH)
+      const k = keyOf(gx, gy)
+      const arr = buckets.get(k)
+      if (arr) arr.push(i)
+      else buckets.set(k, [i])
+    }
+
+    for (let i = 0; i < l; i++) {
       const d1 = nodes[i]
-      for (let j = i + 1; j < l; ++j) {
-        const d2 = nodes[j]
-        const dx = d1.x - d2.x
-        const dy = d1.y - d2.y
-        
-        if (dx === 0 && dy === 0) {
-            d1.x += Math.random() - 0.5
-            d1.y += Math.random() - 0.5
-            continue
-        }
+      const gx0 = Math.floor(d1.x / cellW)
+      const gy0 = Math.floor(d1.y / cellH)
 
-        const absX = Math.abs(dx)
-        const absY = Math.abs(dy)
+      for (let dxCell = -1; dxCell <= 1; dxCell++) {
+        for (let dyCell = -1; dyCell <= 1; dyCell++) {
+          const arr = buckets.get(keyOf(gx0 + dxCell, gy0 + dyCell))
+          if (!arr) continue
 
-        if (absX < width && absY < height) {
-          const ox = width - absX
-          const oy = height - absY
+          for (let ai = 0; ai < arr.length; ai++) {
+            const j = arr[ai]
+            if (j <= i) continue
 
-          if (ox < oy) {
-             const move = ox / 2
-             const sx = dx > 0 ? 1 : -1
-             d1.x += sx * move
-             d2.x -= sx * move
-          } else {
-             const move = oy / 2
-             const sy = dy > 0 ? 1 : -1
-             d1.y += sy * move
-             d2.y -= sy * move
+            const d2 = nodes[j]
+            const dx = d1.x - d2.x
+            const dy = d1.y - d2.y
+
+            if (dx === 0 && dy === 0) {
+              // Break ties deterministically-ish to avoid stacking.
+              d1.x += Math.random() - 0.5
+              d1.y += Math.random() - 0.5
+              continue
+            }
+
+            const absX = Math.abs(dx)
+            const absY = Math.abs(dy)
+
+            if (absX < width && absY < height) {
+              const ox = width - absX
+              const oy = height - absY
+
+              if (ox < oy) {
+                const move = ox / 2
+                const sx = dx > 0 ? 1 : -1
+                d1.x += sx * move
+                d2.x -= sx * move
+              } else {
+                const move = oy / 2
+                const sy = dy > 0 ? 1 : -1
+                d1.y += sy * move
+                d2.y -= sy * move
+              }
+            }
           }
         }
       }
@@ -2036,7 +2081,7 @@ function render() {
   const height = canvas.value.height
   const dpr = window.devicePixelRatio || 1
 
-  const drawRoundedPoly = (poly, radius) => {
+  const drawRoundedPoly = (pctx, poly, radius) => {
     if (!poly || poly.length < 3) return
     const n = poly.length
     for (let i = 0; i < n; i++) {
@@ -2063,11 +2108,11 @@ function render() {
       const p2x = curr[0] + u2x * r
       const p2y = curr[1] + u2y * r
 
-      if (i === 0) ctx.moveTo(p1x, p1y)
-      else ctx.lineTo(p1x, p1y)
-      ctx.quadraticCurveTo(curr[0], curr[1], p2x, p2y)
+      if (i === 0) pctx.moveTo(p1x, p1y)
+      else pctx.lineTo(p1x, p1y)
+      pctx.quadraticCurveTo(curr[0], curr[1], p2x, p2y)
     }
-    ctx.closePath()
+    pctx.closePath()
   }
 
   ctx.save()
@@ -2195,141 +2240,184 @@ function render() {
     ctx.restore()
   }
   
+  // Draw cached group hull layer (screen-space). This keeps big zooms responsive by
+  // not recomputing the expensive smudge polygons every single frame/tick.
+  // Allow smudges even at the furthest zoom (scaleExtent min is 0.01).
+  // Keep it cached/throttled so it stays fast.
+  const canDrawHulls = props.groupBy !== 'none' && props.groupBy !== 'svn_revision' && transform.k > 0.0001
+  if (canDrawHulls) {
+    const now = (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now()
+    const alpha = (!props.physicsPaused && simulation && simulation.alpha) ? Number(simulation.alpha()) : 0
+    const maxAgeMs = alpha > 0.02 ? 140 : 1000
+    const key = [
+      width, height, dpr,
+      themeName.value,
+      props.groupBy, props.colorMode,
+      // Pan/zoom affects the screen-space layer.
+      Math.round(transform.x * 10) / 10,
+      Math.round(transform.y * 10) / 10,
+      Math.round(transform.k * 1000) / 1000
+    ].join('|')
+
+    const stale = key !== hullCacheKey || (now - hullCacheAt) > maxAgeMs
+    if (stale) {
+      hullCacheKey = key
+      hullCacheAt = now
+      if (!hullCacheCanvas && typeof document !== 'undefined' && document.createElement) {
+        hullCacheCanvas = document.createElement('canvas')
+      }
+      if (hullCacheCanvas) {
+        if (hullCacheCanvas.width !== width) hullCacheCanvas.width = width
+        if (hullCacheCanvas.height !== height) hullCacheCanvas.height = height
+
+        const hctx = hullCacheCanvas.getContext('2d')
+        if (hctx) {
+          hctx.setTransform(1, 0, 0, 1, 0, 0)
+          hctx.clearRect(0, 0, width, height)
+
+          // Match world-space transform so the cached layer lines up.
+          hctx.save()
+          hctx.translate(transform.x * dpr, transform.y * dpr)
+          hctx.scale(transform.k * dpr, transform.k * dpr)
+
+          // Draw Group Hulls ("smudge")
+          const groups = {}
+          nodesData.forEach(node => {
+            if (!groups[node._groupKey]) groups[node._groupKey] = []
+            groups[node._groupKey].push(node)
+          })
+
+          const intensity = Math.min(0.15, 0.05 + (0.1 / Math.max(0.1, transform.k)))
+          hctx.lineJoin = 'round'
+          hctx.lineWidth = HULL_STROKE_WIDTH
+
+          const colorModeMatchesGroup = props.groupBy === props.colorMode
+
+          Object.entries(groups).forEach(([groupKey, groupNodes]) => {
+            if (groupNodes.length === 0) return
+
+            let fillColor = c.hullBase(intensity)
+            if (colorModeMatchesGroup && groupNodes[0].color) {
+              const dc = d3.color(groupNodes[0].color)
+              if (dc) {
+                dc.opacity = intensity * 1.5
+                fillColor = dc.toString()
+              }
+            }
+
+            hctx.fillStyle = fillColor
+            hctx.shadowColor = fillColor
+            hctx.shadowBlur = 60
+            hctx.shadowOffsetX = 0
+            hctx.shadowOffsetY = 0
+
+            let avgX = 0
+            const points = []
+            const pad = 10
+            const hw = CAPSULE_WIDTH / 2 + pad
+            const hh = CAPSULE_HEIGHT / 2 + pad
+
+            groupNodes.forEach(n => {
+              avgX += n.x
+              points.push([n.x - hw, n.y - hh])
+              points.push([n.x + hw, n.y - hh])
+              points.push([n.x + hw, n.y + hh])
+              points.push([n.x - hw, n.y + hh])
+            })
+            avgX /= groupNodes.length
+
+            let hullMinY = Infinity
+            points.forEach(p => { if (p[1] < hullMinY) hullMinY = p[1] })
+
+            if (groupNodes.length === 1) {
+              const n = groupNodes[0]
+              const w = CAPSULE_WIDTH + 40
+              const h = CAPSULE_HEIGHT + 40
+              const x = n.x - w / 2
+              const y = n.y - h / 2
+              hctx.beginPath()
+              hctx.roundRect(x, y, w, h, 50)
+              hctx.fill()
+            } else {
+              const hull = d3.polygonHull(points)
+              if (hull) {
+                let cx = 0
+                let cy = 0
+                hull.forEach(p => { cx += p[0]; cy += p[1] })
+                cx /= hull.length
+                cy /= hull.length
+
+                const extrude = 1.2
+                const hull2 = hull.map(p => [cx + (p[0] - cx) * extrude, cy + (p[1] - cy) * extrude])
+
+                hullMinY = Infinity
+                hull2.forEach(p => { if (p[1] < hullMinY) hullMinY = p[1] })
+
+                hctx.beginPath()
+                drawRoundedPoly(hctx, hull2, 120)
+                hctx.fill()
+              }
+            }
+
+            hctx.shadowBlur = 0
+            hctx.shadowColor = 'transparent'
+          })
+
+          hctx.restore()
+          hctx.lineWidth = 1
+          hctx.lineJoin = 'miter'
+        }
+      }
+    }
+
+    if (hullCacheCanvas) {
+      // Draw in screen-space (identity transform at this point).
+      ctx.drawImage(hullCacheCanvas, 0, 0)
+    }
+  }
+
   // Apply Zoom Transform
   // Note: We scale by DPR here to ensure high res rendering
   ctx.translate(transform.x * dpr, transform.y * dpr)
   ctx.scale(transform.k * dpr, transform.k * dpr)
 
-  // Draw Group Hulls
-  if (props.groupBy !== 'none' && props.groupBy !== 'svn_revision') {
-      const groups = {}
-      nodesData.forEach(node => {
-          if (!groups[node._groupKey]) groups[node._groupKey] = []
-          groups[node._groupKey].push(node)
-      })
+  // Group labels (cheap): decoupled from smudge caching so toggling "Labels"
+  // doesn't force a full hull recompute.
+  if (showGroupLabels.value && props.groupBy !== 'none' && props.groupBy !== 'svn_revision' && transform.k > 0.04) {
+    // Keep this cheap: approximate "hull top" using capsule corners (matches smudge math closely).
+    const pad = 10
+    const hh = (CAPSULE_HEIGHT / 2) + pad
+    const stats = new Map() // key -> { sumX, minY, count }
+    nodesData.forEach(n => {
+      const k = n._groupKey
+      if (!k) return
+      let s = stats.get(k)
+      if (!s) {
+        s = { sumX: 0, minY: Infinity, count: 0 }
+        stats.set(k, s)
+      }
+      s.sumX += n.x
+      const top = n.y - hh
+      if (top < s.minY) s.minY = top
+      s.count++
+    })
 
-      // Use a fixed color for all smudges or varied slightly? Neutral is best for 'smudge'.
-      // Darker gray when zoomed out to make groups stand out more
-      const intensity = Math.min(0.15, 0.05 + (0.1 / Math.max(0.1, transform.k)))
-      // ctx.fillStyle = `rgba(200, 200, 200, ${intensity})` // Dynamic opacity
-      // ctx.strokeStyle = '#e0e0e0'
-      ctx.lineJoin = 'round'
-      ctx.lineWidth = HULL_STROKE_WIDTH // Large stroke to create "smudge" feel around points
+    ctx.save()
+    ctx.fillStyle = c.textDim
+    const minScreenFontSize = 10
+    const baseWorldFontSize = 40
+    const fontSize = Math.max(baseWorldFontSize, minScreenFontSize / transform.k)
+    ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'bottom'
 
-      const colorModeMatchesGroup = props.groupBy === props.colorMode
-
-      Object.entries(groups).forEach(([groupKey, groupNodes]) => {
-          if (groupNodes.length === 0) return
-
-          // Determine color
-          let fillColor = c.hullBase(intensity)
-          if (colorModeMatchesGroup && groupNodes[0].color) {
-               const dc = d3.color(groupNodes[0].color)
-               if (dc) {
-                   dc.opacity = intensity * 1.5 
-                   fillColor = dc.toString()
-               }
-          }
-          
-          // Uniform Smudge Rendering
-          // To avoid overlapping borders creating darker regions, we render without stroke.
-          // To expand the hull (since we removed the thick stroke), we need a different approach or accept tight fit.
-          // However, for "smudge", tight fit with shadowBlur creates a nice soft effect without hard borders.
-          
-          ctx.fillStyle = fillColor
-          ctx.shadowColor = fillColor
-          ctx.shadowBlur = 60 // Soft blur to create the smudge effect
-          ctx.shadowOffsetX = 0
-          ctx.shadowOffsetY = 0
-          
-          // Calculate stats for label and hull
-          let minY = Infinity
-          let avgX = 0
-          
-          // Create points from corners of all nodes in group
-          const points = []
-          // Add a small padding to ensure we fully enclose the visual capsule including border
-          const pad = 10 
-          const hw = CAPSULE_WIDTH / 2 + pad
-          const hh = CAPSULE_HEIGHT / 2 + pad
-          
-          groupNodes.forEach(n => {
-              if (n.y < minY) minY = n.y
-              avgX += n.x
-              
-              points.push([n.x - hw, n.y - hh])
-              points.push([n.x + hw, n.y - hh])
-              points.push([n.x + hw, n.y + hh])
-              points.push([n.x - hw, n.y + hh])
-          })
-          avgX /= groupNodes.length
-          
-          // Find min Y from hull points for label placement
-          let hullMinY = Infinity
-          points.forEach(p => {
-             if (p[1] < hullMinY) hullMinY = p[1]
-          })
-          
-          if (groupNodes.length === 1) {
-              const n = groupNodes[0]
-              const w = CAPSULE_WIDTH + 40 // Expand a bit
-              const h = CAPSULE_HEIGHT + 40
-              const x = n.x - w/2
-              const y = n.y - h/2
-              ctx.beginPath()
-              ctx.roundRect(x, y, w, h, 50) // Rounded corners
-              ctx.fill()
-          } else {
-              const hull = d3.polygonHull(points)
-              if (hull) {
-                  // Extrude hull by ~20% and round corners for a softer, more "blob" look
-                  let cx = 0
-                  let cy = 0
-                  hull.forEach(p => { cx += p[0]; cy += p[1] })
-                  cx /= hull.length
-                  cy /= hull.length
-
-                  const extrude = 1.2
-                  const hull2 = hull.map(p => [cx + (p[0] - cx) * extrude, cy + (p[1] - cy) * extrude])
-
-                  hullMinY = Infinity
-                  hull2.forEach(p => { if (p[1] < hullMinY) hullMinY = p[1] })
-
-                  ctx.beginPath()
-                  drawRoundedPoly(hull2, 120)
-                  ctx.fill()
-              }
-          }
-          
-          // Reset shadow
-          ctx.shadowBlur = 0
-          ctx.shadowColor = 'transparent'
-          
-          // Draw Label
-          if (showGroupLabels.value) {
-            ctx.save()
-            ctx.fillStyle = c.textDim
-            // Dynamic font size based on zoom
-            // Ensure readable on screen (approx 30px height) even when zoomed out
-            const minScreenFontSize = 10
-            const baseWorldFontSize = 40 
-            const fontSize = Math.max(baseWorldFontSize, minScreenFontSize / transform.k)
-            
-            ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`
-            ctx.textAlign = 'center'
-            ctx.textBaseline = 'bottom'
-            
-            // Place label above the group hull
-            const labelY = hullMinY - LABEL_PADDING
-            
-            ctx.fillText(groupKey, avgX, labelY)
-            ctx.restore()
-          }
-      })
-      
-      // Reset styles
-      ctx.lineWidth = 1
-      ctx.lineJoin = 'miter'
+    for (const [groupKey, s] of stats.entries()) {
+      if (!s.count || !Number.isFinite(s.minY)) continue
+      const avgX = s.sumX / s.count
+      const labelY = s.minY - LABEL_PADDING
+      ctx.fillText(groupKey, avgX, labelY)
+    }
+    ctx.restore()
   }
 
   // 1. Draw Links
@@ -2337,6 +2425,7 @@ function render() {
     const depLinksOnTop = props.linkMode === 'dependency' && transform.k < 0.55
 
     const drawDependencyLinks = () => {
+      const showArrows = transform.k > 0.22
       const arrowPx = 10
       const arrow = arrowPx / (transform.k * dpr)
       const lw = 4 / (transform.k * dpr)
@@ -2388,20 +2477,22 @@ function render() {
         ctx.lineTo(x2, y2)
         ctx.stroke()
 
-        // Arrow head at target
-        const ax = x2
-        const ay = y2
-        const leftX = ax - ux * arrow - uy * (arrow * 0.7)
-        const leftY = ay - uy * arrow + ux * (arrow * 0.7)
-        const rightX = ax - ux * arrow + uy * (arrow * 0.7)
-        const rightY = ay - uy * arrow - ux * (arrow * 0.7)
+        if (showArrows) {
+          // Arrow head at target
+          const ax = x2
+          const ay = y2
+          const leftX = ax - ux * arrow - uy * (arrow * 0.7)
+          const leftY = ay - uy * arrow + ux * (arrow * 0.7)
+          const rightX = ax - ux * arrow + uy * (arrow * 0.7)
+          const rightY = ay - uy * arrow - ux * (arrow * 0.7)
 
-        ctx.beginPath()
-        ctx.moveTo(ax, ay)
-        ctx.lineTo(leftX, leftY)
-        ctx.moveTo(ax, ay)
-        ctx.lineTo(rightX, rightY)
-        ctx.stroke()
+          ctx.beginPath()
+          ctx.moveTo(ax, ay)
+          ctx.lineTo(leftX, leftY)
+          ctx.moveTo(ax, ay)
+          ctx.lineTo(rightX, rightY)
+          ctx.stroke()
+        }
       })
 
       ctx.globalAlpha = 1.0
@@ -2438,6 +2529,9 @@ function render() {
   const w = CAPSULE_WIDTH
   const h = CAPSULE_HEIGHT
   const r = 20 // radius
+  const k = transform.k
+  const isFarZoom = k < 0.15
+  const isVeryFarZoom = k < 0.08
 
   nodesData.forEach(node => {
     const x = node.x - w/2
@@ -2450,9 +2544,22 @@ function render() {
     const isContextSelected = selectedId != null && String(node.id) === String(selectedId)
     const isForceShow = !!node._uiForceShow
     const isForceClosed = isForceShow && String(node._raw?.state || node.state || '').toLowerCase() === 'closed'
+    const isHovered = hoveredNodeId === node.id
+    const needsFocus = isHovered || isLegendHover || isLastOpened || isContextSelected || isForceShow
+
+    // Ultra zoomed out: draw a cheap box at the exact capsule bounds.
+    // Keep full rendering for focused/highlighted nodes so interactions still work.
+    if (isVeryFarZoom && !needsFocus) {
+      ctx.save()
+      ctx.fillStyle = node.color || c.neutralNode
+      ctx.globalAlpha = node.color ? 0.55 : 0.35
+      ctx.fillRect(x, y, w, h)
+      ctx.restore()
+      return
+    }
 
     // Shadow (Static) - only if not hovered (hover has its own dynamic shadow)
-    if (hoveredNodeId !== node.id) {
+    if (!isFarZoom && !isHovered) {
         ctx.fillStyle = c.shadow
         ctx.beginPath()
         ctx.roundRect(x + 2, y + 4, w, h, r)
@@ -2460,7 +2567,7 @@ function render() {
     }
 
     // Capsule Background
-    const isZoomedOut = transform.k < 0.4
+    const isZoomedOut = k < 0.4
     if (isForceClosed) {
       // Force-grey closed user-updated issues so they stay visually "done",
       // regardless of the current view / filter settings.
@@ -2501,59 +2608,50 @@ function render() {
       ctx.restore()
     }
     
-    // Border
-    ctx.strokeStyle = c.nodeBorder
-    ctx.lineWidth = 2
-    if (node.color) ctx.strokeStyle = node.color
+    // Border (skip at far zoom unless we need focus/highlight)
+    if (!isFarZoom || needsFocus) {
+      ctx.strokeStyle = c.nodeBorder
+      ctx.lineWidth = 2
+      if (node.color) ctx.strokeStyle = node.color
 
-    if (isForceClosed) {
-      ctx.strokeStyle = c.neutralNode
-    } else if (isForceShow && !isLegendHover && !isLastOpened && !isContextSelected && hoveredNodeId !== node.id) {
-      const scale = Math.max(0.0001, transform.k * dpr)
-      const lw = 5 / scale
-      ctx.strokeStyle = 'rgba(255, 152, 0, 0.95)'
-      ctx.lineWidth = Math.max(ctx.lineWidth, lw)
-      ctx.shadowColor = themeName.value === 'dark' ? 'rgba(255, 152, 0, 0.28)' : 'rgba(255, 152, 0, 0.22)'
-      ctx.shadowBlur = 16 / scale
-      ctx.shadowOffsetX = 0
-      ctx.shadowOffsetY = 0
-    }
+      if (isForceClosed) {
+        ctx.strokeStyle = c.neutralNode
+      } else if (isForceShow && !isLegendHover && !isLastOpened && !isContextSelected && !isHovered) {
+        const scale = Math.max(0.0001, k * dpr)
+        const lw = 5 / scale
+        ctx.strokeStyle = 'rgba(255, 152, 0, 0.95)'
+        ctx.lineWidth = Math.max(ctx.lineWidth, lw)
+        ctx.shadowColor = themeName.value === 'dark' ? 'rgba(255, 152, 0, 0.28)' : 'rgba(255, 152, 0, 0.22)'
+        ctx.shadowBlur = 16 / scale
+        ctx.shadowOffsetX = 0
+        ctx.shadowOffsetY = 0
+      }
 
-    if (isLegendHover) {
-        // Make highlight thickness depend on zoom (so it's still visible zoomed out).
-        const scale = Math.max(0.0001, transform.k * dpr)
-        // Make highlight smaller when zoomed out, bigger when zoomed in (px-based).
-        const px = Math.max(2, Math.min(8, 2 + (transform.k * 6)))
+      if (isLegendHover) {
+        const scale = Math.max(0.0001, k * dpr)
+        const px = Math.max(2, Math.min(8, 2 + (k * 6)))
         const lw = px / scale
-
-        // Perf: avoid per-node shadow blur (very expensive with lots of matches).
-        // Keep it as a simple thick outline.
         ctx.strokeStyle = 'rgba(255, 193, 7, 0.95)'
         ctx.lineWidth = lw * 1.8
         ctx.shadowColor = 'transparent'
         ctx.shadowBlur = 0
-    }
-    
-    // Hover Effect
-    if (hoveredNodeId === node.id) {
+      }
+
+      if (isHovered) {
         ctx.lineWidth = 4
-        // ctx.strokeStyle = '#000' // Or make border darker/thicker
-        // Maybe add shadow?
         ctx.shadowColor = c.hoverShadow
         ctx.shadowBlur = 15
         ctx.shadowOffsetX = 0
         ctx.shadowOffsetY = 4
-    } else {
-        // Keep legend highlight glow if active; otherwise clear.
+      } else {
         if (!isLegendHover) {
           ctx.shadowColor = 'transparent'
           ctx.shadowBlur = 0
         }
-    }
+      }
 
-    // Persistently highlight the last opened issue (one node only)
-    if (isLastOpened) {
-        const scale = Math.max(0.0001, transform.k * dpr)
+      if (isLastOpened) {
+        const scale = Math.max(0.0001, k * dpr)
         const lw = 6 / scale
         ctx.strokeStyle = 'rgba(0, 200, 255, 0.95)'
         ctx.lineWidth = Math.max(ctx.lineWidth, lw)
@@ -2561,9 +2659,10 @@ function render() {
         ctx.shadowBlur = 18 / scale
         ctx.shadowOffsetX = 0
         ctx.shadowOffsetY = 0
+      }
+
+      ctx.stroke()
     }
-    
-    ctx.stroke()
 
     // Right-click selection highlight (independent from hover + last-opened)
     if (isContextSelected) {
@@ -2599,7 +2698,7 @@ function render() {
     // Threshold: 0.15 seems reasonable (adjust as needed)
     let lineY = y + 35 // Reduced from 50 for tighter spacing
 
-    if (transform.k > 0.15) {
+    if (k > 0.15) {
         // -- Header Row --
         const headerY = y + 20
         
@@ -2670,7 +2769,7 @@ function render() {
 
             const statusLower = String(node.statusLabel).trim().toLowerCase()
             // Status BG
-            if (statusLower === 'in progress') ctx.fillStyle = '#e7f0ff'
+        if (statusLower === 'in progress') ctx.fillStyle = '#e7f0ff'
             else if (statusLower === 'ready for review') ctx.fillStyle = '#fff4e5'
             else ctx.fillStyle = c.labelBg
             ctx.beginPath()
