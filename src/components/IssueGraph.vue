@@ -2946,21 +2946,37 @@ defineExpose({
             maxY = Math.max(maxY, n.y)
         })
         
-        // Add padding (capsule size + extra)
-        const padding = 100
-        minX -= CAPSULE_WIDTH/2 + padding
-        minY -= CAPSULE_HEIGHT/2 + padding
-        maxX += CAPSULE_WIDTH/2 + padding
-        maxY += CAPSULE_HEIGHT/2 + padding
+        // Add padding (capsule size + small extra)
+        const padding = 20
+        minX -= CAPSULE_WIDTH / 2 + padding
+        minY -= CAPSULE_HEIGHT / 2 + padding
+        maxX += CAPSULE_WIDTH / 2 + padding
+        maxY += CAPSULE_HEIGHT / 2 + padding
         
-        const contentWidth = maxX - minX
-        const contentHeight = maxY - minY
-        const viewWidth = container.value.clientWidth
+        const contentWidth = Math.max(0.0001, maxX - minX)
+        const contentHeight = Math.max(0.0001, maxY - minY)
+        let viewWidth = container.value.clientWidth
         const viewHeight = container.value.clientHeight
+
+        // Don't fit "behind" the legend (legend overlays the right side)
+        const wrapper = container.value.closest('.graph-wrapper')
+        const legendEl = wrapper ? wrapper.querySelector('.legend') : null
+        if (legendEl) {
+          const legendWidth = legendEl.getBoundingClientRect().width
+          const legendGap = 24 // allow some breathing room from legend edge
+          viewWidth = Math.max(1, viewWidth - legendWidth - legendGap)
+        }
+
+        // Add 20% border around the fitted content (10% per side)
+        const borderFrac = 0.2
+        const effectiveW = Math.max(1, viewWidth * (1 - borderFrac))
+        const effectiveH = Math.max(1, viewHeight * (1 - borderFrac))
+        const marginX = (viewWidth - effectiveW) / 2
+        const marginY = (viewHeight - effectiveH) / 2
         
-        const scale = Math.min(viewWidth / contentWidth, viewHeight / contentHeight, 2) // Cap max scale
-        const x = (viewWidth - contentWidth * scale) / 2 - minX * scale
-        const y = (viewHeight - contentHeight * scale) / 2 - minY * scale
+        const scale = Math.min(effectiveW / contentWidth, effectiveH / contentHeight, 2) // Cap max scale
+        const x = marginX + (effectiveW - contentWidth * scale) / 2 - minX * scale
+        const y = marginY + (effectiveH - contentHeight * scale) / 2 - minY * scale
         
         const zoom = d3.zoom()
         const t = d3.zoomIdentity.translate(x, y).scale(scale)
