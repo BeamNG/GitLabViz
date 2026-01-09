@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.19] - 2026-01-09
+- Graph perf: speed up physics overlap resolution on large graphs; faster zoomed-out drawing (LOD) + cached group smudges; faster group label toggling.
+- improved frame fit
+- label group positioning now deterministic
+- autocomplete for color and group now
+- drawing all labels for all issues now - resulting in issues being multiple times on screen
+- added Epic preset
+- fixed Epics not working
+- improved sync using REST again for speed
+- added 'Unassigned' as filter option
+- added group label setting in the legend window
+- fixed browser warnings
+
 ## [0.3.18] - 2026-01-09
 - GitLab sync: incremental refresh (only fetch updated issues) with a 12h overlap window to avoid clock/timezone drift; only refresh links for changed issues.
 

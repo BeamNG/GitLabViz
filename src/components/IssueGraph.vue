@@ -2075,7 +2075,13 @@ function resolveOverlaps(nodes, width, height) {
 function render() {
   if (!canvas.value) return
   const c = colors.value
-  const ctx = canvas.value.getContext('2d', { alpha: false }) // Optimize: opaque canvas
+  let ctx = null
+  try {
+    ctx = canvas.value.getContext('2d', { alpha: false }) // Optimize: opaque canvas
+  } catch {
+    // jsdom doesn't implement canvas getContext() without extra deps.
+    return
+  }
   if (!ctx) return
   const width = canvas.value.width
   const height = canvas.value.height
