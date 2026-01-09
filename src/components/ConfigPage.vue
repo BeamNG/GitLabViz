@@ -35,12 +35,13 @@
       </div>
 
       <div class="flex-grow-1 config-scroll bg-background">
-        <v-window
-          v-model="tab"
-          class="bg-background"
-          transition="scroll-x-transition"
-          reverse-transition="scroll-x-reverse-transition"
-        >
+        <form class="h-100" autocomplete="on" @submit.prevent>
+          <v-window
+            v-model="tab"
+            class="bg-background"
+            transition="scroll-x-transition"
+            reverse-transition="scroll-x-reverse-transition"
+          >
       <!-- Display -->
       <v-window-item value="display">
         <v-container class="py-6 config-max">
@@ -801,7 +802,8 @@
           </v-card>
         </v-container>
       </v-window-item>
-      </v-window>
+          </v-window>
+        </form>
       </div>
 
       <v-divider />
