@@ -1815,7 +1815,11 @@ onMounted(async () => {
       gitlabCacheMeta.value = {
         nodes: cachedMeta.nodes || 0,
         edges: cachedMeta.edges || 0,
-        updatedAt: cachedMeta.updatedAt || null
+        updatedAt: cachedMeta.updatedAt || null,
+        // incremental sync cursor + cache identity (backward compatible)
+        syncCursor: cachedMeta.syncCursor || null,
+        projectId: cachedMeta.projectId || null,
+        apiBaseUrl: cachedMeta.apiBaseUrl || null
       }
     }
     const cachedNodes = await localforage.getItem('gitlab_nodes')
@@ -2112,15 +2116,28 @@ const loadData = async (opts = {}) => {
   error.value = ''
   loadingMessage.value = 'Starting...'
   updateStatus.value = { loading: true, source: only === 'both' ? '' : only, message: 'Starting...' }
-  
-  // Clear previous data only if we're updating GitLab (otherwise keep the graph stable)
-  if (doGitLab) {
+
+  // Incremental GitLab sync (skip existing data) if cache matches this project.
+  const cachedProjectId = String(gitlabCacheMeta.value?.projectId || '').trim()
+  const cachedApiBaseUrl = String(gitlabCacheMeta.value?.apiBaseUrl || '').trim()
+  const cachedCursor = String(gitlabCacheMeta.value?.syncCursor || gitlabCacheMeta.value?.updatedAt || '').trim()
+  const sameGitlabCacheIdentity =
+    !!cachedProjectId &&
+    !!cachedApiBaseUrl &&
+    cachedProjectId === String(settings.config.projectId || '').trim() &&
+    cachedApiBaseUrl === String(gitlabApiBaseUrl || '').trim()
+  const canIncrementalGitLab = doGitLab && sameGitlabCacheIdentity && !!cachedCursor
+
+  // Clear previous data only for a full GitLab rebuild (otherwise keep and merge).
+  if (doGitLab && !canIncrementalGitLab) {
     for (const key in nodes) delete nodes[key]
     for (const key in edges) delete edges[key]
   }
 
   const restClient = doGitLab ? createGitLabClient(gitlabApiBaseUrl, settings.config.token) : null
   const gqlClient = doGitLab ? createGitLabGraphqlClient(gitlabApiBaseUrl, settings.config.token) : null
+  let didGitLabFetch = false
+  let gitlabSyncCursorForSave = null
 
   try {
     // 0. Refresh Mattermost (ChatTools) session data (lightweight)
@@ -2145,7 +2162,19 @@ const loadData = async (opts = {}) => {
     // 1. Fetch GitLab Data
     let issues = []
     if (doGitLab) {
-        loadingMessage.value = 'Fetching issues...'
+        const startedCursor = new Date().toISOString()
+        // Safety overlap: tolerate clock/timezone drift.
+        const cursorBufferMs = 2 * 60 * 60 * 1000
+        const parseCursorMs = (v) => {
+          const t = Date.parse(String(v || ''))
+          return Number.isFinite(t) ? t : null
+        }
+        const cursorMs = canIncrementalGitLab ? parseCursorMs(cachedCursor) : null
+        const updatedAfter = (canIncrementalGitLab && cursorMs != null)
+          ? new Date(Math.max(0, cursorMs - cursorBufferMs)).toISOString()
+          : null
+
+        loadingMessage.value = canIncrementalGitLab ? 'Fetching updated issues...' : 'Fetching issues...'
         updateStatus.value = { loading: true, source: 'gitlab', message: 'Fetching issues...' }
         try {
             // Cache "me" for dynamic presets (By me / Assigned to me)
@@ -2174,12 +2203,20 @@ const loadData = async (opts = {}) => {
             issues = await fetchProjectIssues(gqlClient, settings.config.projectId, (msg) => {
                 loadingMessage.value = msg
                 updateStatus.value = { loading: true, source: 'gitlab', message: msg }
-            })
+            }, updatedAfter ? { params: { updated_after: updatedAfter } } : {})
 
             // Fetch closed issues if requested
             if (settings.config.gitlabClosedDays > 0) {
                 const closedAfter = new Date();
                 closedAfter.setDate(closedAfter.getDate() - settings.config.gitlabClosedDays);
+
+                const closedAfterMs = closedAfter.getTime()
+                const closedUpdatedAfter = (() => {
+                  if (!updatedAfter) return closedAfter.toISOString()
+                  const updatedAfterMs = parseCursorMs(updatedAfter)
+                  if (updatedAfterMs == null) return closedAfter.toISOString()
+                  return new Date(Math.max(closedAfterMs, updatedAfterMs)).toISOString()
+                })()
                 
                 const closedIssues = await fetchProjectIssues(gqlClient, settings.config.projectId, (msg) => {
                     loadingMessage.value = msg
@@ -2187,7 +2224,7 @@ const loadData = async (opts = {}) => {
                 }, { 
                     state: 'closed', 
                     params: { 
-                        updated_after: closedAfter.toISOString()
+                        updated_after: closedUpdatedAfter
                     } 
                 });
                 
@@ -2195,6 +2232,9 @@ const loadData = async (opts = {}) => {
                 const actuallyClosed = closedIssues.filter(i => i.closed_at && new Date(i.closed_at) >= closedAfter);
                 issues = [...issues, ...actuallyClosed];
             }
+
+            didGitLabFetch = true
+            gitlabSyncCursorForSave = startedCursor
             
             // Create nodes
             loadingMessage.value = 'Creating nodes...'
@@ -2241,9 +2281,14 @@ const loadData = async (opts = {}) => {
                     hasTasks: issue.has_tasks,
                     taskStatus: issue.task_status,
                     type: 'gitlab_issue',
-                    _raw: issue 
+                    _raw: issue,
+                    // preserve UI-only flags if present
+                    _uiForceShow: nodes[id]?._uiForceShow
                 }
             })
+
+            // Persist sync cursor (conservative watermark) for next incremental run
+            settings.meta.gitlabSyncCursor = startedCursor
         } catch (e) {
             console.error(e)
             error.value = `GitLab Error: ${e.message}`
@@ -2361,6 +2406,20 @@ const loadData = async (opts = {}) => {
         const linksResults = new Array(issues.length);
         let nextIssueIndex = 0;
 
+        // Incremental sync: remove old GitLab issue-link edges for updated issues only.
+        if (doGitLab && canIncrementalGitLab) {
+          const touched = new Set(issues.map(i => String(i?.iid || '')).filter(Boolean))
+          const isIssueId = (v) => /^\d+$/.test(String(v || ''))
+          for (const k in edges) {
+            const e = edges[k]
+            if (!e) continue
+            const a = String(e.source || '')
+            const b = String(e.target || '')
+            if (!isIssueId(a) || !isIssueId(b)) continue // keep SVN edges, etc.
+            if (touched.has(a) || touched.has(b)) delete edges[k]
+          }
+        }
+
         const fetchWorker = async () => {
         while (nextIssueIndex < issues.length) {
             const index = nextIssueIndex++;
@@ -2430,12 +2489,21 @@ const loadData = async (opts = {}) => {
       Object.assign(issueGraphSnapshot.nodes, toRaw(nodes))
       Object.assign(issueGraphSnapshot.edges, toRaw(edges))
 
-      if (doGitLab) {
+      if (doGitLab && didGitLabFetch) {
         await localforage.setItem('gitlab_nodes', toRaw(nodes))
         await localforage.setItem('gitlab_edges', toRaw(edges))
         const now = Date.now()
-        await localforage.setItem('gitlab_meta', { nodes: Object.keys(nodes).length, edges: Object.keys(edges).length, updatedAt: now })
-        gitlabCacheMeta.value = { nodes: Object.keys(nodes).length, edges: Object.keys(edges).length, updatedAt: now }
+        const syncCursor = String(gitlabSyncCursorForSave || settings.meta.gitlabSyncCursor || '') || new Date(now).toISOString()
+        const meta = {
+          nodes: Object.keys(nodes).length,
+          edges: Object.keys(edges).length,
+          updatedAt: now,
+          syncCursor,
+          projectId: String(settings.config.projectId || '').trim(),
+          apiBaseUrl: String(gitlabApiBaseUrl || '').trim()
+        }
+        await localforage.setItem('gitlab_meta', meta)
+        gitlabCacheMeta.value = meta
       }
       const now = Date.now()
       lastUpdated.value = now

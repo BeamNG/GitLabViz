@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.18] - 2026-01-09
+- GitLab sync: incremental refresh (only fetch updated issues) with a 12h overlap window to avoid clock/timezone drift; only refresh links for changed issues.
+
 ## [0.3.17] - 2026-01-09
 - added more filters + color modes for due date / time tracking / tasks
 - filters: merge request presence, participants, due status, spent, budget, estimate buckets, task completion
