@@ -1057,17 +1057,20 @@ const filteredNodes = computed(() => {
     let assigneeMatch = true
     if ((settings.uiState.filters.selectedAssignees?.length || 0) > 0) {
         const rawWant = settings.uiState.filters.selectedAssignees
-        const wantsDeactivated = rawWant.includes('@deactivated')
         const want = rawWant.includes('@me')
           ? (meName ? rawWant.map(v => (v === '@me' ? meName : v)) : [])
           : rawWant
-        const wantNames = want.filter(v => v && v !== '@deactivated')
+        const wantsDeactivated = want.includes('@deactivated')
+        const wantsUnassigned = want.includes('@unassigned')
+        const wantNames = want.filter(v => v && v !== '@deactivated' && v !== '@unassigned')
         const isDeactivated = assigneeName && (() => {
           const s = stateMap[assigneeName]
           const st = s ? String(s).trim().toLowerCase() : ''
           return !!st && st !== 'active'
         })()
-        assigneeMatch = !!assigneeName && (wantNames.includes(assigneeName) || (wantsDeactivated && isDeactivated))
+        const matchUnassigned = wantsUnassigned && !assigneeName
+        const matchNamed = !!assigneeName && (wantNames.includes(assigneeName) || (wantsDeactivated && isDeactivated))
+        assigneeMatch = matchNamed || matchUnassigned
     }
 
     // Logic: AND between different filters

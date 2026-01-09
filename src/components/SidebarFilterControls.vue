@@ -113,7 +113,7 @@
 
       <v-autocomplete
         v-model="state.filters.selectedAssignees"
-        :items="makeUserItems(allAssignees)"
+        :items="makeUserItems(allAssignees, { includeUnassigned: true })"
         item-title="title"
         item-value="value"
         label="Assignee"
@@ -686,11 +686,13 @@ const isDeactivatedUser = (name) => {
 const userItemIcon = (value) => {
   const v = String(value || '').trim()
   if (v === '@me') return { icon: 'mdi-account-star-outline', color: 'primary' }
+  if (v === '@unassigned') return { icon: 'mdi-account-question-outline', color: '' }
   if (v === '@deactivated') return { icon: 'mdi-account-off-outline', color: 'error' }
   if (isDeactivatedUser(v)) return { icon: 'mdi-account-off-outline', color: 'error' }
   return { icon: 'mdi-account-circle-outline', color: '' }
 }
-const makeUserItems = (names) => {
+const makeUserItems = (names, opts = {}) => {
+  const { includeUnassigned = false } = opts || {}
   const list = Array.isArray(names) ? names.filter(Boolean) : []
   const active = []
   const deactivated = []
@@ -698,6 +700,7 @@ const makeUserItems = (names) => {
 
   const meLabel = props.meName ? `Me (${props.meName})` : 'Me'
   const items = [{ title: meLabel, value: '@me', disabled: !props.meName }]
+  if (includeUnassigned) items.push({ title: 'Unassigned', value: '@unassigned' })
   active.forEach(n => items.push({ title: formatUserLabel(n), value: n }))
   if (deactivated.length) {
     items.push({ title: 'Deactivated users', value: '__sub_deactivated__', type: 'subheader', disabled: true })
