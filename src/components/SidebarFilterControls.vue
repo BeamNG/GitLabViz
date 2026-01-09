@@ -545,7 +545,7 @@
 
   <v-expand-transition><div v-show="state.ui.showDisplay" class="px-1">
       <div class="d-flex flex-column gap-2 mb-2">
-        <v-select
+        <v-autocomplete
           v-model="state.view.groupingMode"
           :items="groupingModeOptions"
           item-title="title"
@@ -565,9 +565,9 @@
               </template>
             </v-list-item>
           </template>
-        </v-select>
+        </v-autocomplete>
 
-        <v-select
+        <v-autocomplete
           v-model="state.view.viewMode"
           :items="viewModeOptions"
           item-title="title"
@@ -586,7 +586,7 @@
               </template>
             </v-list-item>
           </template>
-        </v-select>
+        </v-autocomplete>
 
         <v-text-field
           v-if="state.view.viewMode === 'due_status' || !!state.filters.dueStatus"
