@@ -554,6 +554,67 @@ export const GLOBAL_PRESETS = [
         gridSpacing: 1.5
       }
     }
+  },
+  {
+    name: 'epics',
+    config: {
+      filters: {
+        includeClosed: false,
+        statuses: [],
+        subscription: null,
+        labels: [],
+        excludedLabels: [],
+        authors: [],
+        assignees: [],
+        milestones: [],
+        priorities: [],
+        types: [],
+        mrMode: null,
+        participants: [],
+        dueStatus: null,
+        spentMode: null,
+        budgetMode: null,
+        estimateBucket: null,
+        taskMode: null,
+        dateFilters: {
+          createdMode: "none",
+          createdAfter: null,
+          createdBefore: null,
+          createdDays: null,
+          updatedMode: "none",
+          updatedAfter: null,
+          updatedBefore: null,
+          updatedDays: null,
+          dueDateMode: "none",
+          dueDateAfter: null,
+          dueDateBefore: null,
+          dueDateDays: null
+        }
+      },
+      view: {
+        colorMode: "last_updated",
+        grouping: "epic",
+        linkMode: "none",
+        dueSoonDays: 7,
+        issueOpenTarget: "GitlabVizIssueTab"
+      },
+      ui: {
+        showFilters: true,
+        showTemplates: true,
+        showDisplay: true,
+        showAdvancedSim: true
+      },
+      simulation: {
+        repulsion: 760,
+        linkStrength: 0,
+        linkDistance: 250,
+        friction: 0.25,
+        groupGravity: 0.05,
+        centerGravity: 0.04,
+        gridStrength: 0,
+        gridSpacing: 1.5
+      }
+    }
   }
 ]
 

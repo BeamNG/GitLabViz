@@ -343,6 +343,108 @@ export const enrichIssuesFromGraphql = async (client, projectId, issues, onProgr
   return issues
 }
 
+export const enrichEpicTitlesFromRest = async (client, projectId, issues, onProgress, options = {}) => {
+  const encodedProjectId = encodeURIComponent(String(projectId || '').trim())
+  if (!client || !encodedProjectId || !Array.isArray(issues) || issues.length === 0) return issues
+
+  const epicIids = Array.from(new Set(
+    issues
+      .map(i => i && i.epic_iid != null ? Number(i.epic_iid) : null)
+      .filter(n => Number.isFinite(n) && n > 0)
+  ))
+  if (epicIids.length === 0) return issues
+
+  // Find group chain (subgroup -> parent -> ...), because issues can reference epics
+  // that live in an ancestor group.
+  let namespaceId = null
+  const groupIds = []
+  try {
+    const p = await gitlabGet(client, `/projects/${encodedProjectId}`, {}, { maxRetries: 1 })
+    const ns = p?.data?.namespace
+    if (ns && ns.kind === 'group' && ns.id != null) namespaceId = Number(ns.id)
+  } catch {
+    // ignore
+  }
+  if (!Number.isFinite(namespaceId)) return issues
+  groupIds.push(namespaceId)
+
+  const maxDepth = Math.max(0, Math.min(10, Number(options.maxGroupDepth) || 5))
+  try {
+    let cur = namespaceId
+    for (let d = 0; d < maxDepth; d++) {
+      const g = await gitlabGet(client, `/groups/${cur}`, {}, { maxRetries: 1 })
+      const parentId = g?.data?.parent_id
+      if (parentId == null) break
+      const pid = Number(parentId)
+      if (!Number.isFinite(pid) || pid <= 0) break
+      if (groupIds.includes(pid)) break
+      groupIds.push(pid)
+      cur = pid
+    }
+  } catch {
+    // ignore
+  }
+
+  const byEpicIid = new Map()
+  const byEpicIidGroup = new Map()
+  const max = Math.max(0, Number(options.maxEpics) || 500)
+  const limit = epicIids.slice(0, max)
+
+  const concurrency = Math.max(1, Math.min(8, Number(options.concurrency) || 6))
+  let idx = 0
+  const worker = async () => {
+    while (idx < limit.length) {
+      const cur = limit[idx]
+      idx++
+      if (onProgress) onProgress(`Enriching epic titles (REST) ${Math.min(idx, limit.length)} / ${limit.length}...`)
+      try {
+        for (const gid of groupIds) {
+          try {
+            const r = await gitlabGet(client, `/groups/${gid}/epics/${cur}`, {}, { maxRetries: 1 })
+            const title = r?.data?.title
+            if (typeof title === 'string' && title.trim()) {
+              byEpicIid.set(cur, title.trim())
+              byEpicIidGroup.set(cur, gid)
+              break
+            }
+          } catch {
+            // try next group
+          }
+        }
+      } catch {
+        // Not all instances expose epics or group may differ; ignore and keep iid fallback.
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: concurrency }, () => worker()))
+
+  if (byEpicIid.size === 0) return issues
+  issues.forEach(i => {
+    if (!i || i.epic_iid == null || i.epic != null) return
+    const iid = Number(i.epic_iid)
+    const title = byEpicIid.get(iid)
+    if (title) i.epic = { title }
+  })
+
+  try {
+    Object.defineProperty(issues, '__glvEpicTitleEnrich', {
+      value: {
+        groupIdsTried: groupIds.slice(),
+        epicsTotal: epicIids.length,
+        epicsResolved: byEpicIid.size,
+        epicsUnresolved: epicIids.length - byEpicIid.size,
+        resolvedByGroupId: Array.from(byEpicIidGroup.entries()).reduce((acc, [eid, gid]) => {
+          acc[String(gid)] = (acc[String(gid)] || 0) + 1
+          return acc
+        }, {})
+      },
+      enumerable: false
+    })
+  } catch {}
+
+  return issues
+}
+
 const gitlabPost = (client, url, config = {}, retryOptions = {}) => {
   return gitlabRequest(client, 'post', url, config, retryOptions)
 }
@@ -1047,158 +1149,3 @@ export const updateIssue = async (client, projectId, issueIid, payload) => {
 // Accepts either:
 // - raw GitLab issue objects, or
 // - IssueGraph nodes (objects with a `_raw` field).
-export const debugEpicGroupingStats = (items, options = {}) => {
-  const {
-    top = 20,
-    sample = 10,
-    log = true,
-  } = options || {}
-
-  const arr = Array.isArray(items) ? items : []
-
-  const counts = {
-    total: arr.length,
-    rawHasEpicObj: 0,
-    rawHasEpicTitle: 0,
-    rawHasEpicIid: 0,
-    rawHasParent: 0,
-    rawParentIsEpic: 0,
-    rawParentHasTitle: 0,
-    labelsIsArray: 0,
-    labelsHasString: 0,
-    labelsHasEpicPrefix: 0, // any label starting with Epic:: or Epic:
-    labelsHasEpicScoped: 0,
-    computedFromApi: 0,
-    computedFromParent: 0,
-    computedFromEpicIid: 0,
-    computedFromLabel: 0,
-    computedNoEpic: 0,
-  }
-
-  const byEpicKey = new Map()
-  const byEpicTitle = new Map()
-  const byParentType = new Map()
-  const byParentEpicTitle = new Map()
-  const byEpicLabel = new Map()
-  const examples = {
-    fromApi: [],
-    fromParent: [],
-    fromLabel: [],
-    noEpic: [],
-  }
-
-  const safeStr = (v) => {
-    if (v == null) return ''
-    const s = String(v).trim()
-    return s
-  }
-
-  const getId = (item) => {
-    const raw = item && item._raw ? item._raw : item
-    return raw?.iid ?? raw?.id ?? item?.id ?? null
-  }
-
-  const getTitle = (item) => {
-    const raw = item && item._raw ? item._raw : item
-    return raw?.title ?? item?.title ?? ''
-  }
-
-  const pushExample = (bucket, item, extra) => {
-    if (!examples[bucket] || examples[bucket].length >= Math.max(0, Number(sample) || 0)) return
-    examples[bucket].push({
-      id: getId(item),
-      title: safeStr(getTitle(item)),
-      ...extra,
-    })
-  }
-
-  arr.forEach(item => {
-    const raw = item && item._raw ? item._raw : item
-    const labels = Array.isArray(raw?.labels) ? raw.labels : []
-
-    const epicObj = raw?.epic || null
-    const epicTitle = safeStr(epicObj?.title)
-    const epicIid = raw?.epic_iid
-    const parent = raw?.parent || null
-    const parentType = safeStr(parent?.work_item_type).toLowerCase()
-    const parentTitle = safeStr(parent?.title)
-    const epicFromLabel = safeStr(getScopedLabelValue(labels, 'Epic'))
-
-    if (epicObj) counts.rawHasEpicObj++
-    if (epicTitle) counts.rawHasEpicTitle++
-    if (epicIid != null) counts.rawHasEpicIid++
-    if (parent) counts.rawHasParent++
-    if (parentType === 'epic') counts.rawParentIsEpic++
-    if (parentType === 'epic' && parentTitle) counts.rawParentHasTitle++
-
-    if (Array.isArray(raw?.labels)) {
-      counts.labelsIsArray++
-      if (raw.labels.some(l => typeof l === 'string' && l.trim())) counts.labelsHasString++
-      if (raw.labels.some(l => typeof l === 'string' && (l.startsWith('Epic::') || l.startsWith('Epic:')))) counts.labelsHasEpicPrefix++
-    }
-    if (epicFromLabel) counts.labelsHasEpicScoped++
-
-    // Mirror the actual grouping precedence in IssueGraph.vue
-    const epicKey = epicTitle || (parentType === 'epic' ? parentTitle : '') || (epicIid != null ? `Epic #${epicIid}` : '') || epicFromLabel || 'No Epic'
-
-    if (epicTitle) {
-      counts.computedFromApi++
-      pushExample('fromApi', item, { epicTitle })
-      byEpicTitle.set(epicTitle, (byEpicTitle.get(epicTitle) || 0) + 1)
-    } else if (parentType === 'epic' && parentTitle) {
-      counts.computedFromParent++
-      pushExample('fromParent', item, { parentTitle, parentType })
-      byParentEpicTitle.set(parentTitle, (byParentEpicTitle.get(parentTitle) || 0) + 1)
-    } else if (epicIid != null) {
-      counts.computedFromEpicIid++
-      pushExample('noEpic', item, { epicTitle: '', parentType, parentTitle, epicFromLabel: '', epicIid, labelsSample: labels.slice(0, 15) })
-    } else if (epicFromLabel) {
-      counts.computedFromLabel++
-      pushExample('fromLabel', item, { epicFromLabel })
-      byEpicLabel.set(epicFromLabel, (byEpicLabel.get(epicFromLabel) || 0) + 1)
-    } else {
-      counts.computedNoEpic++
-      pushExample('noEpic', item, {
-        epicTitle: '',
-        parentType,
-        parentTitle,
-        epicFromLabel: '',
-        labelsSample: labels.slice(0, 15),
-      })
-    }
-
-    if (parentType) byParentType.set(parentType, (byParentType.get(parentType) || 0) + 1)
-    byEpicKey.set(epicKey, (byEpicKey.get(epicKey) || 0) + 1)
-  })
-
-  const toTop = (m) => Array.from(m.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, Math.max(0, Number(top) || 0))
-    .map(([key, count]) => ({ key, count }))
-
-  const topEpicKeys = Array.from(byEpicKey.entries())
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, Math.max(0, Number(top) || 0))
-    .map(([key, count]) => ({ key, count }))
-
-  const result = {
-    counts,
-    topEpicKeys,
-    topEpicTitles: toTop(byEpicTitle),
-    topParentTypes: toTop(byParentType),
-    topParentEpicTitles: toTop(byParentEpicTitle),
-    topEpicLabels: toTop(byEpicLabel),
-    examples,
-  }
-
-  if (log && typeof console !== 'undefined') {
-    try {
-      console.log('[glv] debugEpicGroupingStats:', result)
-      if (console.table) console.table(topEpicKeys)
-    } catch {
-      // ignore
-    }
-  }
-
-  return result
-}

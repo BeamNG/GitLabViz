@@ -409,7 +409,7 @@ import ChatToolsPage from './components/ChatToolsPage.vue'
 import SvnLogDialog from './components/SvnLogDialog.vue'
 import SidebarFilterControls from './components/SidebarFilterControls.vue'
 import SidebarSimulationControls from './components/sidebar/SidebarSimulationControls.vue'
-import { createGitLabClient, createGitLabGraphqlClient, debugEpicGroupingStats, enrichIssuesFromGraphql, fetchProjectIssuesRest, fetchIssueLinks, fetchTokenScopes, normalizeGitLabApiBaseUrl, updateIssue } from './services/gitlab'
+import { createGitLabClient, createGitLabGraphqlClient, enrichEpicTitlesFromRest, enrichIssuesFromGraphql, fetchProjectIssuesRest, fetchIssueLinks, fetchTokenScopes, normalizeGitLabApiBaseUrl, updateIssue } from './services/gitlab'
 import { createSvnClient, fetchSvnLog } from './services/svn'
 import { svnCacheGetMeta, svnCacheClear, normalizeRepoUrl } from './services/cache'
 import { useSettingsStore } from './composables/useSettingsStore'
@@ -765,13 +765,6 @@ const dateFilterModes = [
 
 const nodes = reactive({})
 const edges = reactive({})
-
-// Dev-only: expose live graph data for debugging (call from devtools console)
-if (import.meta?.env?.DEV) {
-  window.__glvDebug = window.__glvDebug || {}
-  window.__glvDebug.getAppNodes = () => Object.values(nodes)
-  window.__glvDebug.debugEpicGroupingFromApp = (options) => debugEpicGroupingStats(Object.values(nodes), options)
-}
 
 const linkModeOptions = [
   { title: 'None (No Links)', value: 'none', icon: 'mdi-link-off' },
@@ -2120,6 +2113,12 @@ const loadData = async (opts = {}) => {
             // Optional GraphQL enrichment pass for fields REST doesn't provide (kept minimal).
             if (gqlClient) {
               await enrichIssuesFromGraphql(gqlClient, settings.config.projectId, issues, (msg) => {
+                loadingMessage.value = msg
+                updateStatus.value = { loading: true, source: 'gitlab', message: msg }
+              })
+            }
+            if (restClient) {
+              await enrichEpicTitlesFromRest(restClient, settings.config.projectId, issues, (msg) => {
                 loadingMessage.value = msg
                 updateStatus.value = { loading: true, source: 'gitlab', message: msg }
               })
