@@ -415,7 +415,7 @@ import { svnCacheGetMeta, svnCacheClear, normalizeRepoUrl } from './services/cac
 import { useSettingsStore } from './composables/useSettingsStore'
 import { MattermostClient } from './chatTools/mmClient'
 import { GLOBAL_PRESETS } from './presets'
-import { getScopedLabelValue } from './utils/scopedLabels'
+import { getScopedLabelValue, getScopedLabelValues } from './utils/scopedLabels'
 import localforage from 'localforage'
 
 // Configure localforage
@@ -1434,42 +1434,99 @@ const statsText = computed(() => {
 })
 
 const groupStatsText = computed(() => {
-    if (settings.uiState.view.groupingMode === 'none') return null
-    
-    // Count unique groups
-    const groups = new Set()
-    Object.values(filteredNodes.value).forEach(node => {
-         let key = 'default'
-         const n = node._raw
-         if (settings.uiState.view.groupingMode === 'tag') key = node.tag || '_no_tag_'
-         else if (settings.uiState.view.groupingMode === 'author') key = n.author ? n.author.name : 'Unknown'
-         else if (settings.uiState.view.groupingMode === 'state') {
-             const statusDisplay = (n && typeof n.status_display === 'string') ? n.status_display.trim() : ''
-             key = statusDisplay || getScopedLabelValue(node._raw.labels, 'Status') || (n.state === 'closed' ? 'Done' : 'To do')
-         }
-         else if (settings.uiState.view.groupingMode === 'assignee') key = n.assignee ? n.assignee.name : 'Unassigned'
-         else if (settings.uiState.view.groupingMode === 'milestone') key = n.milestone ? n.milestone.title : 'No Milestone'
-         else if (settings.uiState.view.groupingMode === 'priority') key = getScopedLabelValue(n.labels, 'Priority') || 'No Priority'
-         else if (settings.uiState.view.groupingMode === 'type') key = getScopedLabelValue(n.labels, 'Type') || 'No Type'
-         else if (settings.uiState.view.groupingMode === 'epic') {
-           const parentType = String(n.parent?.work_item_type || '').trim().toLowerCase()
-           key = (
-             (n.epic ? n.epic.title : null) ||
-             (parentType === 'epic' ? n.parent?.title : null) ||
-             (n.epic_iid != null ? `Epic #${n.epic_iid}` : null) ||
-             getScopedLabelValue(n.labels, 'Epic') ||
-             'No Epic'
-           )
-         }
-         else if (String(settings.uiState.view.groupingMode || '').startsWith('scoped:')) {
-           const prefix = String(settings.uiState.view.groupingMode || '').substring('scoped:'.length)
-           key = getScopedLabelValue(n.labels, prefix) || `No ${prefix}`
-         }
-         
-         groups.add(key)
+  const mode = String(settings.uiState.view.groupingMode || '')
+  if (!mode || mode === 'none') return null
+  // Special layout mode (SVN) doesn't meaningfully have groups.
+  if (mode === 'svn_revision') return null
+
+  const getWeekYear = (dateStr) => {
+    if (!dateStr) return 'No Date'
+    const d = new Date(dateStr)
+    if (!Number.isFinite(d.getTime())) return 'No Date'
+    const onejan = new Date(d.getFullYear(), 0, 1)
+    const week = Math.ceil((((d - onejan) / 86400000) + onejan.getDay() + 1) / 7)
+    return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`
+  }
+
+  const groups = new Set()
+  let multiGroupIssues = 0
+
+  Object.values(filteredNodes.value).forEach(node => {
+    const raw = node?._raw || {}
+    const labelsRaw = raw.labels || []
+    const labels = Array.isArray(labelsRaw)
+      ? labelsRaw.filter(l => typeof l === 'string' && l.trim()).map(l => l.trim())
+      : []
+
+    let keys = null
+    if (mode === 'tag') {
+      keys = labels.length ? labels : ['_no_tag_']
+    } else if (mode === 'state') {
+      const statusKeys = getScopedLabelValues(labels, 'Status')
+      keys = statusKeys.length ? statusKeys : [String(raw.state || '').toLowerCase() === 'closed' ? 'Done' : 'To do']
+    } else if (mode === 'priority') {
+      const ks = getScopedLabelValues(labels, 'Priority')
+      keys = ks.length ? ks : ['No Priority']
+    } else if (mode === 'type') {
+      const ks = getScopedLabelValues(labels, 'Type')
+      keys = ks.length ? ks : ['No Type']
+    } else if (mode.startsWith('scoped:')) {
+      const prefix = mode.substring('scoped:'.length)
+      const ks = getScopedLabelValues(labels, prefix)
+      keys = ks.length ? ks : [`No ${prefix}`]
+    } else if (mode === 'author') {
+      keys = [raw.author ? raw.author.name : 'Unknown']
+    } else if (mode === 'assignee') {
+      keys = [raw.assignee ? raw.assignee.name : 'Unassigned']
+    } else if (mode === 'milestone') {
+      keys = [raw.milestone ? raw.milestone.title : 'No Milestone']
+    } else if (mode === 'weight') {
+      keys = [raw.weight != null ? String(raw.weight) : 'No Weight']
+    } else if (mode === 'epic') {
+      const parentType = String(raw.parent?.work_item_type || '').trim().toLowerCase()
+      keys = [(
+        (raw.epic ? raw.epic.title : null) ||
+        (parentType === 'epic' ? raw.parent?.title : null) ||
+        (raw.epic_iid != null ? `Epic #${raw.epic_iid}` : null) ||
+        getScopedLabelValue(labels, 'Epic') ||
+        'No Epic'
+      )]
+    } else if (mode === 'iteration') {
+      keys = [raw.iteration ? raw.iteration.title : 'No Iteration']
+    } else if (mode === 'stale') {
+      const now = new Date()
+      const updated = raw.updated_at ? new Date(raw.updated_at) : null
+      const diffTime = updated && Number.isFinite(updated.getTime()) ? Math.abs(now - updated) : 0
+      const diffDays = updated && Number.isFinite(updated.getTime()) ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : 0
+      if (diffDays > 90) keys = ['> 90 Days Stale']
+      else if (diffDays > 60) keys = ['> 60 Days Stale']
+      else if (diffDays > 30) keys = ['> 30 Days Stale']
+      else keys = ['Active (< 30 Days)']
+    } else if (mode === 'timeline_created') {
+      keys = [getWeekYear(raw.created_at)]
+    } else if (mode === 'timeline_updated') {
+      keys = [getWeekYear(raw.updated_at)]
+    } else if (mode === 'timeline_closed') {
+      keys = [getWeekYear(raw.closed_at)]
+    } else {
+      keys = ['default']
+    }
+
+    // De-dupe while preserving order (matches graph behavior)
+    const seen = new Set()
+    keys = (Array.isArray(keys) ? keys : [keys]).map(k => String(k == null ? '' : k).trim() || 'Unknown').filter(k => {
+      if (seen.has(k)) return false
+      seen.add(k)
+      return true
     })
-    
-    return `${groups.size} Groups`
+
+    if (keys.length > 1) multiGroupIssues += 1
+    keys.forEach(k => groups.add(k))
+  })
+
+  let text = `${groups.size} Groups`
+  if (multiGroupIssues > 0) text += ` • ${multiGroupIssues} in multiple groups`
+  return text
 })
 
 const dataAge = computed(() => {
