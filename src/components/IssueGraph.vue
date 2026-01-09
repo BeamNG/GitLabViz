@@ -3454,7 +3454,8 @@ html[data-theme="dark"] .issue-context-menu__chip:hover {
   top: 12px;
   right: 12px;
   width: 220px;
-  max-height: calc(100% - 24px);
+  /* Leave room for the bottom-right scale bar overlay (range/distance). */
+  max-height: calc(100% - 24px - 70px);
   overflow: auto;
   padding: 10px;
   border-radius: 10px;
