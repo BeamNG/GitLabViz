@@ -118,6 +118,7 @@ export const defaultSettings = () => ({
       linkMode: 'none',
       hideUnlinked: true,
       legendSort: 'name', // 'name' | 'count'
+      showGroupLabels: true,
       dueSoonDays: 7,
       issueOpenTarget: '_blank' // '_blank' | '_self' | 'GitlabVizIssueTab'
     },

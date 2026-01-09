@@ -216,9 +216,15 @@
     <div v-if="(showLegend && (legendItems.length || legendGradient)) || showLinkLegend" class="legend">
       <div class="legend-title">
         <span>Legend</span>
-        <div v-if="!legendGradient" class="legend-sort">
-          <button type="button" class="legend-btn" :class="{ active: legendSort === 'name' }" @click="legendSort = 'name'">Name</button>
-          <button type="button" class="legend-btn" :class="{ active: legendSort === 'count' }" @click="legendSort = 'count'">#</button>
+        <div class="legend-controls">
+          <label v-if="props.groupBy !== 'none' && props.groupBy !== 'svn_revision'" class="legend-toggle" title="Show group labels">
+            <input v-model="showGroupLabels" type="checkbox">
+            <span>Groups</span>
+          </label>
+          <div v-if="!legendGradient" class="legend-sort">
+            <button type="button" class="legend-btn" :class="{ active: legendSort === 'name' }" @click="legendSort = 'name'">Name</button>
+            <button type="button" class="legend-btn" :class="{ active: legendSort === 'count' }" @click="legendSort = 'count'">#</button>
+          </div>
         </div>
       </div>
       <div v-if="legendGradient" class="legend-gradient">
@@ -730,6 +736,10 @@ const showLegend = computed(() => (
 const legendSort = computed({
   get: () => settings?.uiState?.view?.legendSort || 'name',
   set: (v) => { settings.uiState.view.legendSort = v }
+})
+const showGroupLabels = computed({
+  get: () => settings?.uiState?.view?.showGroupLabels ?? true,
+  set: (v) => { settings.uiState.view.showGroupLabels = !!v }
 })
 const legendHoverKey = ref(null)
 
@@ -1631,18 +1641,32 @@ function updateGraph() {
           groupSizes[d._groupKey] = (groupSizes[d._groupKey] || 0) + 1
       })
 
+      // Deterministic "random" group start positions based on group name.
+      // Keeps group layout roughly consistent across machines/sessions.
+      const hash32 = (s) => {
+        let h = 2166136261
+        const str = String(s ?? '')
+        for (let i = 0; i < str.length; i++) {
+          h ^= str.charCodeAt(i)
+          h = Math.imul(h, 16777619)
+        }
+        return h >>> 0
+      }
+
       const groupNodes = groups.map(g => {
           const count = groupSizes[g]
           // Heuristic for group radius based on node count and capsule size
           // Used for collision between groups
           // Increased spacing factor to prevent groups from overlapping too much
           const r = Math.sqrt(count) * (CAPSULE_WIDTH * 0.8) + 200
-          // Initialize with random positions to prevent stacking at (0,0) and explosion
+          // Initialize with deterministic pseudo-random positions to prevent stacking at (0,0).
+          const u1 = hash32(`${g}|x`) / 4294967296
+          const u2 = hash32(`${g}|y`) / 4294967296
           return { 
               id: g, 
               r, 
-              x: (Math.random() - 0.5) * 1000, 
-              y: (Math.random() - 0.5) * 1000 
+              x: (u1 - 0.5) * 1000,
+              y: (u2 - 0.5) * 1000
           }
       })
 
@@ -2160,23 +2184,25 @@ function render() {
           ctx.shadowColor = 'transparent'
           
           // Draw Label
-          ctx.save()
-          ctx.fillStyle = c.textDim
-          // Dynamic font size based on zoom
-          // Ensure readable on screen (approx 30px height) even when zoomed out
-          const minScreenFontSize = 10
-          const baseWorldFontSize = 40 
-          const fontSize = Math.max(baseWorldFontSize, minScreenFontSize / transform.k)
-          
-          ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`
-          ctx.textAlign = 'center'
-          ctx.textBaseline = 'bottom'
-          
-          // Place label above the group hull
-          const labelY = hullMinY - LABEL_PADDING
-          
-          ctx.fillText(groupKey, avgX, labelY)
-          ctx.restore()
+          if (showGroupLabels.value) {
+            ctx.save()
+            ctx.fillStyle = c.textDim
+            // Dynamic font size based on zoom
+            // Ensure readable on screen (approx 30px height) even when zoomed out
+            const minScreenFontSize = 10
+            const baseWorldFontSize = 40 
+            const fontSize = Math.max(baseWorldFontSize, minScreenFontSize / transform.k)
+            
+            ctx.font = `bold ${fontSize}px "Segoe UI", sans-serif`
+            ctx.textAlign = 'center'
+            ctx.textBaseline = 'bottom'
+            
+            // Place label above the group hull
+            const labelY = hullMinY - LABEL_PADDING
+            
+            ctx.fillText(groupKey, avgX, labelY)
+            ctx.restore()
+          }
       })
       
       // Reset styles
@@ -3204,6 +3230,31 @@ html[data-theme="dark"] .issue-context-menu__chip:hover {
   font-weight: 700;
   margin-bottom: 8px;
   opacity: 0.9;
+}
+
+.legend-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.legend-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.85;
+  cursor: pointer;
+  user-select: none;
+}
+
+.legend-toggle input {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  accent-color: #ffc107;
 }
 
 .legend-sort {
