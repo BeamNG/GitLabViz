@@ -18,5 +18,6 @@ describe('scopedLabels', () => {
     expect(getScopedLabelValue([], 'Component')).toBe(null)
     expect(getScopedLabelValue(['Component:foo'], '')).toBe(null)
   })
+
 })
 

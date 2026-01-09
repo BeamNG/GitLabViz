@@ -54,9 +54,9 @@
             size="small" 
             density="compact"
             :color="isDataStale ? 'error' : null"
-            @click.stop="loadData" 
+            @click.stop="handleRefreshClick"
             :loading="loading" 
-            title="Update Data"
+            title="Update Data (Ctrl+Click = full clean update)"
           >
             <v-icon icon="mdi-refresh"></v-icon>
           </v-btn>
@@ -213,141 +213,7 @@
               :link-mode-options="linkModeOptions"
               @reset-filters="resetFilters"
             />
-            <div class="d-flex align-center justify-space-between mb-2 cursor-pointer user-select-none" @click="settings.uiState.ui.showAdvancedSim = !settings.uiState.ui.showAdvancedSim">
-              <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis">Simulation</div>
-              <v-icon :icon="settings.uiState.ui.showAdvancedSim ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="small" color="medium-emphasis"></v-icon>
-            </div>
-
-            <v-expand-transition>
-            <div v-show="settings.uiState.ui.showAdvancedSim" class="px-1" style="overflow: visible;">
-                <div class="d-flex align-center justify-space-between text-caption text-medium-emphasis">
-                    <span>Group Gravity</span>
-                    <span>{{ settings.uiState.simulation.groupGravity }}</span>
-                    </div>
-                    <v-slider
-                    v-model="settings.uiState.simulation.groupGravity"
-                    :min="0"
-                    :max="1"
-                    :step="0.01"
-                    density="compact"
-                    thumb-size="12"
-                    track-size="2"
-                    hide-details
-                ></v-slider>
-
-                <div class="d-flex align-center justify-space-between text-caption text-medium-emphasis">
-                    <span>Repulsion</span>
-                    <span>{{ settings.uiState.simulation.repulsion }}</span>
-                    </div>
-                    <v-slider
-                    v-model="settings.uiState.simulation.repulsion"
-                    :min="50"
-                    :max="1000"
-                    :step="10"
-                    density="compact"
-                    thumb-size="12"
-                    track-size="2"
-                    hide-details
-                    class="mb-1"
-                ></v-slider>
-
-                <div class="d-flex align-center justify-space-between text-caption text-medium-emphasis">
-                    <span>Link Force</span>
-                    <span>{{ settings.uiState.simulation.linkStrength }}</span>
-                    </div>
-                    <v-slider
-                    v-model="settings.uiState.simulation.linkStrength"
-                    :min="0"
-                    :max="2"
-                    :step="0.1"
-                    density="compact"
-                    thumb-size="12"
-                    track-size="2"
-                    hide-details
-                    class="mb-1"
-                ></v-slider>
-
-                <div class="d-flex align-center justify-space-between text-caption text-medium-emphasis">
-                    <span>Link Distance</span>
-                    <span>{{ settings.uiState.simulation.linkDistance }}</span>
-                    </div>
-                    <v-slider
-                    v-model="settings.uiState.simulation.linkDistance"
-                    :min="50"
-                    :max="600"
-                    :step="10"
-                    density="compact"
-                    thumb-size="12"
-                    track-size="2"
-                    hide-details
-                    class="mb-1"
-                ></v-slider>
-
-                <div class="d-flex align-center justify-space-between text-caption text-medium-emphasis">
-                    <span>Friction</span>
-                    <span>{{ settings.uiState.simulation.friction }}</span>
-                    </div>
-                    <v-slider
-                    v-model="settings.uiState.simulation.friction"
-                    :min="0.1"
-                    :max="0.95"
-                    :step="0.05"
-                    density="compact"
-                    thumb-size="12"
-                    track-size="2"
-                    hide-details
-                    class="mb-1"
-                ></v-slider>
-                
-                <div class="d-flex align-center justify-space-between text-caption text-medium-emphasis">
-                    <span>Center Gravity</span>
-                    <span>{{ settings.uiState.simulation.centerGravity }}</span>
-                    </div>
-                    <v-slider
-                    v-model="settings.uiState.simulation.centerGravity"
-                    :min="0"
-                    :max="0.5"
-                    :step="0.01"
-                    density="compact"
-                    thumb-size="12"
-                    track-size="2"
-                    hide-details
-                ></v-slider>
-
-                <div class="mt-2">
-                  <div class="d-flex align-center justify-space-between text-caption text-medium-emphasis">
-                    <span>Grid Magnet Strength</span>
-                    <span>{{ settings.uiState.simulation.gridStrength }}</span>
-                  </div>
-                  <v-slider
-                    v-model="settings.uiState.simulation.gridStrength"
-                    :min="0"
-                    :max="0.3"
-                    :step="0.01"
-                    density="compact"
-                    thumb-size="12"
-                    track-size="2"
-                    hide-details
-                    class="mb-1"
-                  ></v-slider>
-
-                  <div class="d-flex align-center justify-space-between text-caption text-medium-emphasis">
-                    <span>Grid Spacing</span>
-                    <span>{{ settings.uiState.simulation.gridSpacing }}</span>
-                  </div>
-                  <v-slider
-                    v-model="settings.uiState.simulation.gridSpacing"
-                    :min="1.1"
-                    :max="3"
-                    :step="0.1"
-                    density="compact"
-                    thumb-size="12"
-                    track-size="2"
-                    hide-details
-                  ></v-slider>
-                </div>
-            </div>
-            </v-expand-transition>
+            <SidebarSimulationControls :state="settings.uiState" />
           </div>
         </div>
         
@@ -542,7 +408,8 @@ import ConfigPage from './components/ConfigPage.vue'
 import ChatToolsPage from './components/ChatToolsPage.vue'
 import SvnLogDialog from './components/SvnLogDialog.vue'
 import SidebarFilterControls from './components/SidebarFilterControls.vue'
-import { createGitLabClient, createGitLabGraphqlClient, fetchProjectIssues, fetchIssueLinks, fetchTokenScopes, normalizeGitLabApiBaseUrl, updateIssue } from './services/gitlab'
+import SidebarSimulationControls from './components/sidebar/SidebarSimulationControls.vue'
+import { createGitLabClient, createGitLabGraphqlClient, debugEpicGroupingStats, enrichIssuesFromGraphql, fetchProjectIssuesRest, fetchIssueLinks, fetchTokenScopes, normalizeGitLabApiBaseUrl, updateIssue } from './services/gitlab'
 import { createSvnClient, fetchSvnLog } from './services/svn'
 import { svnCacheGetMeta, svnCacheClear, normalizeRepoUrl } from './services/cache'
 import { useSettingsStore } from './composables/useSettingsStore'
@@ -847,7 +714,7 @@ const createPreset = async () => {
     const name = (prompt('Preset name?') || '').trim()
     if (!name) return
 
-    console.log('[App] Creating preset:', name)
+    //console.log('[App] Creating preset:', name)
     settings.uiState.presets = settings.uiState.presets || { custom: [] }
     const cur = Array.isArray(settings.uiState.presets.custom) ? settings.uiState.presets.custom : []
 
@@ -869,7 +736,7 @@ const createPreset = async () => {
     if (idx >= 0) list[idx] = next
     else list.push(next)
     
-    console.log('[App] Updating settings.uiState.presets.custom with list:', list)
+    //console.log('[App] Updating settings.uiState.presets.custom with list:', list)
     settings.uiState.presets.custom = list
 
     settings.uiState.ui.showTemplates = true
@@ -898,6 +765,13 @@ const dateFilterModes = [
 
 const nodes = reactive({})
 const edges = reactive({})
+
+// Dev-only: expose live graph data for debugging (call from devtools console)
+if (import.meta?.env?.DEV) {
+  window.__glvDebug = window.__glvDebug || {}
+  window.__glvDebug.getAppNodes = () => Object.values(nodes)
+  window.__glvDebug.debugEpicGroupingFromApp = (options) => debugEpicGroupingStats(Object.values(nodes), options)
+}
 
 const linkModeOptions = [
   { title: 'None (No Links)', value: 'none', icon: 'mdi-link-off' },
@@ -1060,25 +934,6 @@ const userStateByName = computed(() => {
   return map
 })
 
-// DEV helper: verify we actually receive user.state from GitLab GraphQL
-if (import.meta?.env?.DEV) {
-  watch(userStateByName, (m) => {
-    try {
-      const entries = Object.entries(m || {})
-      const nonActive = entries.filter(([, s]) => {
-        const st = s ? String(s).trim().toLowerCase() : ''
-        return !!st && st !== 'active'
-      })
-      if (nonActive.length) {
-        console.log('[GitLabViz] non-active users:', nonActive.slice(0, 50))
-      } else {
-        console.log('[GitLabViz] user states: none non-active (or state not provided)')
-      }
-    } catch (e) {
-      console.log('[GitLabViz] user state debug failed', e)
-    }
-  }, { immediate: true })
-}
 
 const allMilestones = computed(() => {
   const milestones = new Set()
@@ -1499,6 +1354,16 @@ const filteredEdges = computed(() => {
               else if (settings.uiState.view.groupingMode === 'milestone') key = n.milestone ? n.milestone.title : 'No Milestone'
               else if (settings.uiState.view.groupingMode === 'priority') key = getScopedLabelValue(n.labels, 'Priority') || 'No Priority'
               else if (settings.uiState.view.groupingMode === 'type') key = getScopedLabelValue(n.labels, 'Type') || 'No Type'
+              else if (settings.uiState.view.groupingMode === 'epic') {
+                const parentType = String(n.parent?.work_item_type || '').trim().toLowerCase()
+                key = (
+                  (n.epic ? n.epic.title : null) ||
+                  (parentType === 'epic' ? n.parent?.title : null) ||
+                  (n.epic_iid != null ? `Epic #${n.epic_iid}` : null) ||
+                  getScopedLabelValue(n.labels, 'Epic') ||
+                  'No Epic'
+                )
+              }
               else if (String(settings.uiState.view.groupingMode || '').startsWith('scoped:')) {
                 const prefix = String(settings.uiState.view.groupingMode || '').substring('scoped:'.length)
                 key = getScopedLabelValue(n.labels, prefix) || `No ${prefix}`
@@ -1590,6 +1455,16 @@ const groupStatsText = computed(() => {
          else if (settings.uiState.view.groupingMode === 'milestone') key = n.milestone ? n.milestone.title : 'No Milestone'
          else if (settings.uiState.view.groupingMode === 'priority') key = getScopedLabelValue(n.labels, 'Priority') || 'No Priority'
          else if (settings.uiState.view.groupingMode === 'type') key = getScopedLabelValue(n.labels, 'Type') || 'No Type'
+         else if (settings.uiState.view.groupingMode === 'epic') {
+           const parentType = String(n.parent?.work_item_type || '').trim().toLowerCase()
+           key = (
+             (n.epic ? n.epic.title : null) ||
+             (parentType === 'epic' ? n.parent?.title : null) ||
+             (n.epic_iid != null ? `Epic #${n.epic_iid}` : null) ||
+             getScopedLabelValue(n.labels, 'Epic') ||
+             'No Epic'
+           )
+         }
          else if (String(settings.uiState.view.groupingMode || '').startsWith('scoped:')) {
            const prefix = String(settings.uiState.view.groupingMode || '').substring('scoped:'.length)
            key = getScopedLabelValue(n.labels, prefix) || `No ${prefix}`
@@ -1853,10 +1728,12 @@ onMounted(async () => {
       Object.assign(issueGraphSnapshot.nodes, filteredCachedNodes)
       Object.assign(issueGraphSnapshot.edges, filteredCachedEdges)
 
+      /*
       console.log('--- Cached Data Loaded (First 3 Nodes) ---')
       const keys = Object.keys(nodes).slice(0, 3)
       keys.forEach(key => console.log(toRaw(nodes[key])))
       console.log('------------------------------------------')
+      */
     }
     // If no cached data exists at all, populate a small sample graph so the UI isn't empty.
     if (Object.keys(nodes).length === 0 && Object.keys(edges).length === 0) {
@@ -2086,6 +1963,7 @@ const loadData = async (opts = {}) => {
   } catch {}
 
   const only = opts.only || 'both' // 'gitlab' | 'svn' | 'mattermost' | 'both'
+  const forceFull = !!opts.forceFull
   const doGitLab = (only === 'both' || only === 'gitlab') && settings.config.enableGitLab
   const doSvn = isElectron.value && (only === 'both' || only === 'svn') && settings.config.enableSvn
   const doMattermost = isElectron.value && (only === 'both' || only === 'mattermost') && !!settings.config.mattermostUrl && !!settings.config.mattermostToken
@@ -2126,13 +2004,13 @@ const loadData = async (opts = {}) => {
     !!cachedApiBaseUrl &&
     cachedProjectId === String(settings.config.projectId || '').trim() &&
     cachedApiBaseUrl === String(gitlabApiBaseUrl || '').trim()
-  const canIncrementalGitLab = doGitLab && sameGitlabCacheIdentity && !!cachedCursor
+  let canIncrementalGitLab = doGitLab && sameGitlabCacheIdentity && !!cachedCursor
+  if (forceFull) canIncrementalGitLab = false
 
-  // Clear previous data only for a full GitLab rebuild (otherwise keep and merge).
-  if (doGitLab && !canIncrementalGitLab) {
-    for (const key in nodes) delete nodes[key]
-    for (const key in edges) delete edges[key]
-  }
+  // IMPORTANT: do NOT clear existing data up front.
+  // If the connection drops mid-sync, we want to keep whatever is already loaded,
+  // and merge partial results so the next refresh can resume.
+  const replaceGitLabDataOnSuccess = doGitLab && !canIncrementalGitLab
 
   const restClient = doGitLab ? createGitLabClient(gitlabApiBaseUrl, settings.config.token) : null
   const gqlClient = doGitLab ? createGitLabGraphqlClient(gitlabApiBaseUrl, settings.config.token) : null
@@ -2199,11 +2077,12 @@ const loadData = async (opts = {}) => {
               settings.meta.gitlabCanWrite = false
             }
 
-            // Fetch opened issues
-            issues = await fetchProjectIssues(gqlClient, settings.config.projectId, (msg) => {
+            // Fetch opened issues (REST: fast + includes epic_iid)
+            issues = await fetchProjectIssuesRest(restClient, settings.config.projectId, (msg) => {
                 loadingMessage.value = msg
                 updateStatus.value = { loading: true, source: 'gitlab', message: msg }
             }, updatedAfter ? { params: { updated_after: updatedAfter } } : {})
+            const partialOpened = !!issues?.__glvPartial
 
             // Fetch closed issues if requested
             if (settings.config.gitlabClosedDays > 0) {
@@ -2218,7 +2097,7 @@ const loadData = async (opts = {}) => {
                   return new Date(Math.max(closedAfterMs, updatedAfterMs)).toISOString()
                 })()
                 
-                const closedIssues = await fetchProjectIssues(gqlClient, settings.config.projectId, (msg) => {
+                const closedIssues = await fetchProjectIssuesRest(restClient, settings.config.projectId, (msg) => {
                     loadingMessage.value = msg
                     updateStatus.value = { loading: true, source: 'gitlab', message: msg }
                 }, { 
@@ -2227,10 +2106,23 @@ const loadData = async (opts = {}) => {
                         updated_after: closedUpdatedAfter
                     } 
                 });
+                const partialClosed = !!closedIssues?.__glvPartial
                 
                 // Filter to ensure they were actually closed after the date (updated_after is broader)
                 const actuallyClosed = closedIssues.filter(i => i.closed_at && new Date(i.closed_at) >= closedAfter);
                 issues = [...issues, ...actuallyClosed];
+                // propagate partial marker
+                if (partialOpened || partialClosed) {
+                  try { Object.defineProperty(issues, '__glvPartial', { value: true, enumerable: false }) } catch {}
+                }
+            }
+
+            // Optional GraphQL enrichment pass for fields REST doesn't provide (kept minimal).
+            if (gqlClient) {
+              await enrichIssuesFromGraphql(gqlClient, settings.config.projectId, issues, (msg) => {
+                loadingMessage.value = msg
+                updateStatus.value = { loading: true, source: 'gitlab', message: msg }
+              })
             }
 
             didGitLabFetch = true
@@ -2239,6 +2131,18 @@ const loadData = async (opts = {}) => {
             // Create nodes
             loadingMessage.value = 'Creating nodes...'
             
+            // Only replace the whole dataset when we got a full (non-partial) fetch.
+            // If partial, merge into existing nodes/edges instead (resume-friendly).
+            const isPartial = !!issues?.__glvPartial
+            // For Ctrl+Click (force full clean), never merge partial results into existing data.
+            if (forceFull && isPartial) {
+              throw new Error('GitLab fetch interrupted (partial). Retry (Ctrl+Click again) to complete the clean update.')
+            }
+            if (replaceGitLabDataOnSuccess && !isPartial) {
+              for (const key in nodes) delete nodes[key]
+              for (const key in edges) delete edges[key]
+            }
+
             issues.forEach(issue => {
                 const id = String(issue.iid)
                 
@@ -2527,6 +2431,11 @@ const loadData = async (opts = {}) => {
   }
 }
 
+const handleRefreshClick = (e) => {
+  const forceFull = !!(e && (e.ctrlKey || e.metaKey))
+  return loadData({ forceFull })
+}
+
 const onIssueStateChange = async ({ iid, state_event } = {}) => {
   const issueIid = String(iid || '').trim()
   const ev = String(state_event || '').trim()
@@ -2546,7 +2455,14 @@ const onIssueStateChange = async ({ iid, state_event } = {}) => {
 
   try {
     const client = createGitLabClient(baseUrl, settings.config.token)
+    const prev = nodes[issueIid]?._raw || null
     const updated = await updateIssue(client, settings.config.projectId, issueIid, { state_event: ev })
+    // REST update responses can omit fields we rely on for grouping (ex: epic/iteration).
+    if (updated && prev) {
+      if (updated.epic == null && prev.epic) updated.epic = prev.epic
+      if (updated.epic_iid == null && prev.epic_iid) updated.epic_iid = prev.epic_iid
+      if (updated.iteration == null && prev.iteration) updated.iteration = prev.iteration
+    }
     if (issueGraph.value && issueGraph.value.markDataOnlyUpdate) issueGraph.value.markDataOnlyUpdate()
     if (nodes[issueIid]) nodes[issueIid]._raw = updated
     nodes[issueIid]._uiForceShow = true
@@ -2578,12 +2494,20 @@ const onIssueAssigneeChange = async ({ iid, assignee_ids } = {}) => {
 
   try {
     const client = createGitLabClient(baseUrl, settings.config.token)
+    const prev = nodes[issueIid]?._raw || null
     const updated = await updateIssue(client, settings.config.projectId, issueIid, { assignee_ids: list })
 
     // Keep the rest of the app consistent (some parts use _raw.assignee directly).
     if (updated) {
       if (!updated.assignee && Array.isArray(updated.assignees) && updated.assignees.length) updated.assignee = updated.assignees[0]
       if (Array.isArray(updated.assignees) && updated.assignees.length === 0) updated.assignee = null
+    }
+
+    // REST update responses can omit fields we rely on for grouping (ex: epic/iteration).
+    if (updated && prev) {
+      if (updated.epic == null && prev.epic) updated.epic = prev.epic
+      if (updated.epic_iid == null && prev.epic_iid) updated.epic_iid = prev.epic_iid
+      if (updated.iteration == null && prev.iteration) updated.iteration = prev.iteration
     }
 
     if (issueGraph.value && issueGraph.value.markDataOnlyUpdate) issueGraph.value.markDataOnlyUpdate()

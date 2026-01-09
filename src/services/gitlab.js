@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { decodeGitLabTokenFromStorage } from '../utils/tokenObfuscation'
+import { getScopedLabelValue } from '../utils/scopedLabels'
 
 // Set to -1 to fetch all pages, or a positive integer (e.g. 3) for debugging/limit
 export const PAGE_LIMIT = -1;
@@ -129,6 +130,217 @@ export const createGitLabGraphqlClient = (apiBaseUrl, token) => {
       'PRIVATE-TOKEN': token,
     },
   })
+}
+
+// REST bulk issue fetch (fast). Keeps the raw REST shape as much as possible.
+export const fetchProjectIssuesRest = async (client, projectId, onProgress, options = {}) => {
+  const encodedProjectId = encodeURIComponent(String(projectId || '').trim())
+  if (!encodedProjectId) return []
+
+  const state = options.state || 'opened' // opened | closed | all
+  const updatedAfter = options?.params?.updated_after || null
+
+  const all = []
+  let partial = false
+  let page = 1
+  while (true) {
+    if (onProgress) {
+      const stateLabel = state === 'opened' ? '' : ` (${state})`
+      onProgress(`Fetching issues${stateLabel} page ${page}... (${all.length} fetched)`)
+    }
+
+    const params = {
+      per_page: PER_PAGE,
+      page,
+      scope: 'all',
+      state,
+      order_by: 'updated_at',
+      sort: 'desc',
+    }
+    if (updatedAfter) params.updated_after = updatedAfter
+
+    let resp
+    try {
+      resp = await gitlabGet(
+        client,
+        `/projects/${encodedProjectId}/issues`,
+        { params },
+        { maxRetries: DEFAULT_MAX_RETRIES }
+      )
+    } catch (e) {
+      partial = true
+      console.warn('[GitLab] REST issues fetch interrupted; keeping partial results for resume.', e?.message || e)
+      break
+    }
+
+    const items = Array.isArray(resp?.data) ? resp.data : []
+    items.forEach(i => {
+      if (!i) return
+      // Ensure required arrays/scalars exist for downstream code paths.
+      if (!Array.isArray(i.labels)) i.labels = []
+      if (i.time_stats == null) i.time_stats = { time_estimate: 0, total_time_spent: 0 }
+      if (i.task_completion_status == null) i.task_completion_status = { count: 0, completed_count: 0 }
+      if (i.merge_requests_count == null) i.merge_requests_count = 0
+      if (i.user_notes_count == null) i.user_notes_count = 0
+      if (i.upvotes == null) i.upvotes = 0
+      if (i.downvotes == null) i.downvotes = 0
+      // Normalize iid/id fields used by app.
+      if (i.iid != null) i.iid = Number(i.iid)
+      all.push(i)
+    })
+
+    const nextPage = String(resp?.headers?.['x-next-page'] || resp?.headers?.['X-Next-Page'] || '').trim()
+    if (!nextPage) break
+    page = Number(nextPage) || (page + 1)
+  }
+
+  try {
+    Object.defineProperty(all, '__glvPartial', { value: partial, enumerable: false })
+  } catch {}
+  return all
+}
+
+const ensureIssueCaps = async (client, fullPath) => {
+  let caps = await detectFeatures(client)
+  if (!caps?._introspectionFailed || caps._probeDone || !client) return caps
+
+  const keyCaps = '__glvIssueFieldCaps'
+  const probeIssueField = async (fieldSnippet) => {
+    try {
+      const q = `
+        query ProbeIssueFields($fullPath: ID!) {
+          project(fullPath: $fullPath) {
+            issues(first: 1) {
+              nodes {
+                id
+                ${fieldSnippet}
+              }
+            }
+          }
+        }
+      `
+      const r = await gitlabPost(client, '', { data: { query: q, variables: { fullPath } } }, { maxRetries: 1 })
+      const errs = Array.isArray(r?.data?.errors) ? r.data.errors : []
+      if (errs.some(e => String(e?.message || '').toLowerCase().includes('field') && String(e?.message || '').toLowerCase().includes("doesn't exist"))) {
+        return false
+      }
+      return errs.length === 0
+    } catch {
+      return false
+    }
+  }
+
+  const hasEpic = await probeIssueField('epic { id title }')
+  const hasParent = await probeIssueField('parent { id iid title }')
+  const hasParentWorkItemType = hasParent ? await probeIssueField('parent { workItemType { name } }') : false
+  const hasWorkItemType = await probeIssueField('workItemType { name }')
+
+  caps = {
+    ...caps,
+    hasEpic: !!hasEpic,
+    hasParent: !!hasParent,
+    hasWorkItemType: !!hasWorkItemType,
+    hasParentWorkItemType: !!hasParentWorkItemType,
+    _probeDone: true,
+  }
+  client[keyCaps] = caps
+  return caps
+}
+
+export const enrichIssuesFromGraphql = async (client, projectId, issues, onProgress, options = {}) => {
+  const fullPath = String(projectId || '').trim()
+  if (!client || !fullPath || !Array.isArray(issues) || issues.length === 0) return issues
+
+  const caps = await ensureIssueCaps(client, fullPath)
+  const wantEpic = !!caps?.hasEpic
+  const wantIteration = !!caps?.hasIteration
+  const wantParent = !!caps?.hasParent
+  if (!wantEpic && !wantIteration && !wantParent) return issues
+
+  const need = issues.filter(i => {
+    if (!i) return false
+    if (wantIteration && i.iteration == null) return true
+    if (wantParent && i.parent == null) return true
+    if (wantEpic && i.epic == null && i.epic_iid != null) return true
+    return false
+  })
+  if (need.length === 0) return issues
+
+  const epicField = wantEpic ? 'epic { id title }' : ''
+  const iterationField = wantIteration ? 'iteration { id title }' : ''
+  const parentField = wantParent
+    ? `parent { id iid title ${caps.hasParentWorkItemType ? 'workItemType { name }' : ''} }`
+    : ''
+
+  const byId = new Map()
+  issues.forEach(i => {
+    const id = i && i.id != null ? String(i.id) : ''
+    if (id) byId.set(id, i)
+  })
+
+  const batchSize = Math.max(10, Math.min(200, Number(options.batchSize) || 100))
+  for (let idx = 0; idx < need.length; idx += batchSize) {
+    const batch = need.slice(idx, idx + batchSize)
+    const ids = batch
+      .map(i => (i && i.id != null) ? `gid://gitlab/Issue/${i.id}` : null)
+      .filter(Boolean)
+
+    if (!ids.length) continue
+
+    if (onProgress) onProgress(`Enriching issue fields (GraphQL) ${Math.min(idx + batch.length, need.length)} / ${need.length}...`)
+
+    const q = `
+      query EnrichIssues($ids: [ID!]!) {
+        nodes(ids: $ids) {
+          __typename
+          ... on Issue {
+            id
+            iid
+            ${epicField}
+            ${iterationField}
+            ${parentField}
+          }
+        }
+      }
+    `
+
+    let resp
+    try {
+      resp = await gitlabPost(client, '', { data: { query: q, variables: { ids } } }, { maxRetries: 1 })
+    } catch {
+      return issues
+    }
+
+    const payload = resp?.data || {}
+    if (Array.isArray(payload?.errors) && payload.errors.length) {
+      return issues
+    }
+
+    const nodes = payload?.data?.nodes
+    if (!Array.isArray(nodes)) continue
+
+    nodes.forEach(n => {
+      if (!n || n.__typename !== 'Issue') return
+      const gid = String(n.id || '')
+      const m = gid.match(/\/Issue\/(\d+)$/)
+      const id = m ? m[1] : ''
+      const local = id ? byId.get(id) : null
+      if (!local) return
+
+      if (wantEpic && n.epic && local.epic == null) local.epic = { title: n.epic.title }
+      if (wantIteration && n.iteration && local.iteration == null) local.iteration = { title: n.iteration.title }
+      if (wantParent && n.parent && local.parent == null) {
+        local.parent = {
+          id: n.parent.id || null,
+          iid: n.parent.iid != null ? Number(n.parent.iid) : null,
+          title: n.parent.title || '',
+          work_item_type: (n.parent.workItemType && n.parent.workItemType.name) ? n.parent.workItemType.name : null,
+        }
+      }
+    })
+  }
+
+  return issues
 }
 
 const gitlabPost = (client, url, config = {}, retryOptions = {}) => {
@@ -314,6 +526,9 @@ const detectFeatures = async (client) => {
       hasEpic: has('epic'),
       hasWidgets: has('widgets'),
       hasWorkItemType: has('workItemType'),
+      // Parent is a different type; we assume workItemType exists there if it exists on Issue.
+      // (If introspection is blocked, we'll probe more carefully in fetchProjectIssues.)
+      hasParentWorkItemType: has('workItemType'),
 
       // Extra fields (vary by GitLab version/edition)
       hasDescriptionHtml: has('descriptionHtml'),
@@ -382,6 +597,7 @@ const detectFeatures = async (client) => {
       caps.hasProjectWorkItems = f.includes('workItems')
     } catch {}
 
+    caps._introspectionFailed = false
     if (client) client[key] = caps
     return caps
   } catch (e) {
@@ -394,6 +610,7 @@ const detectFeatures = async (client) => {
       hasEpic: false,
       hasWidgets: false,
       hasWorkItemType: false,
+      hasParentWorkItemType: false,
       hasWorkItemWidgetStatusType: false,
       hasDescriptionHtml: false,
       hasHidden: false,
@@ -421,6 +638,7 @@ const detectFeatures = async (client) => {
       hasProjectWorkItem: false,
       hasProjectWorkItems: false,
     }
+    caps._introspectionFailed = true
     if (client) client[key] = caps
     return caps
   }
@@ -431,7 +649,7 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
     const fullPath = String(projectId || '').trim()
     if (!fullPath) return []
 
-    const caps = await detectFeatures(client)
+    let caps = await ensureIssueCaps(client, fullPath)
     const issueArgs = await detectProjectIssuesArgs(client)
     const milestoneCaps = await detectMilestoneCaps(client)
     const userCaps = await detectUserCaps(client)
@@ -494,7 +712,9 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
     const participantsField = caps.hasParticipants ? `participants { nodes { username name ${userStateField} } }` : ''
     const userDiscussionsCountField = caps.hasUserDiscussionsCount ? 'userDiscussionsCount' : ''
     const subscribedField = caps.hasSubscribed ? 'subscribed' : ''
-    const parentField = caps.hasParent ? 'parent { id iid title }' : ''
+    const parentField = caps.hasParent
+      ? `parent { id iid title ${caps.hasParentWorkItemType ? 'workItemType { name }' : ''} }`
+      : ''
 
     const milestoneWebField = milestoneCaps.hasWebUrl ? 'webUrl' : (milestoneCaps.hasWebPath ? 'webPath' : '')
     const issuesCountField = issueArgs.issuesCountField ? issueArgs.issuesCountField : ''
@@ -726,7 +946,12 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
           epic_iid: null,
           epic: caps.hasEpic && n?.epic ? { title: n.epic.title } : null,
           iteration: caps.hasIteration && n?.iteration ? { title: n.iteration.title } : null,
-          parent: caps.hasParent && parent ? { id: parent.id, iid: parent.iid, title: parent.title } : null,
+          parent: caps.hasParent && parent ? {
+            id: parent.id,
+            iid: parent.iid,
+            title: parent.title,
+            work_item_type: (caps.hasWorkItemType && parent?.workItemType?.name) ? parent.workItemType.name : null,
+          } : null,
           participants: caps.hasParticipants ? participants.map(p => ({
             username: p?.username,
             name: p?.name,
@@ -816,4 +1041,164 @@ export const updateIssue = async (client, projectId, issueIid, payload) => {
     { maxRetries: 1 }
   )
   return resp.data
+}
+
+// Debug helper: summarize epic-related fields for grouping issues/nodes.
+// Accepts either:
+// - raw GitLab issue objects, or
+// - IssueGraph nodes (objects with a `_raw` field).
+export const debugEpicGroupingStats = (items, options = {}) => {
+  const {
+    top = 20,
+    sample = 10,
+    log = true,
+  } = options || {}
+
+  const arr = Array.isArray(items) ? items : []
+
+  const counts = {
+    total: arr.length,
+    rawHasEpicObj: 0,
+    rawHasEpicTitle: 0,
+    rawHasEpicIid: 0,
+    rawHasParent: 0,
+    rawParentIsEpic: 0,
+    rawParentHasTitle: 0,
+    labelsIsArray: 0,
+    labelsHasString: 0,
+    labelsHasEpicPrefix: 0, // any label starting with Epic:: or Epic:
+    labelsHasEpicScoped: 0,
+    computedFromApi: 0,
+    computedFromParent: 0,
+    computedFromEpicIid: 0,
+    computedFromLabel: 0,
+    computedNoEpic: 0,
+  }
+
+  const byEpicKey = new Map()
+  const byEpicTitle = new Map()
+  const byParentType = new Map()
+  const byParentEpicTitle = new Map()
+  const byEpicLabel = new Map()
+  const examples = {
+    fromApi: [],
+    fromParent: [],
+    fromLabel: [],
+    noEpic: [],
+  }
+
+  const safeStr = (v) => {
+    if (v == null) return ''
+    const s = String(v).trim()
+    return s
+  }
+
+  const getId = (item) => {
+    const raw = item && item._raw ? item._raw : item
+    return raw?.iid ?? raw?.id ?? item?.id ?? null
+  }
+
+  const getTitle = (item) => {
+    const raw = item && item._raw ? item._raw : item
+    return raw?.title ?? item?.title ?? ''
+  }
+
+  const pushExample = (bucket, item, extra) => {
+    if (!examples[bucket] || examples[bucket].length >= Math.max(0, Number(sample) || 0)) return
+    examples[bucket].push({
+      id: getId(item),
+      title: safeStr(getTitle(item)),
+      ...extra,
+    })
+  }
+
+  arr.forEach(item => {
+    const raw = item && item._raw ? item._raw : item
+    const labels = Array.isArray(raw?.labels) ? raw.labels : []
+
+    const epicObj = raw?.epic || null
+    const epicTitle = safeStr(epicObj?.title)
+    const epicIid = raw?.epic_iid
+    const parent = raw?.parent || null
+    const parentType = safeStr(parent?.work_item_type).toLowerCase()
+    const parentTitle = safeStr(parent?.title)
+    const epicFromLabel = safeStr(getScopedLabelValue(labels, 'Epic'))
+
+    if (epicObj) counts.rawHasEpicObj++
+    if (epicTitle) counts.rawHasEpicTitle++
+    if (epicIid != null) counts.rawHasEpicIid++
+    if (parent) counts.rawHasParent++
+    if (parentType === 'epic') counts.rawParentIsEpic++
+    if (parentType === 'epic' && parentTitle) counts.rawParentHasTitle++
+
+    if (Array.isArray(raw?.labels)) {
+      counts.labelsIsArray++
+      if (raw.labels.some(l => typeof l === 'string' && l.trim())) counts.labelsHasString++
+      if (raw.labels.some(l => typeof l === 'string' && (l.startsWith('Epic::') || l.startsWith('Epic:')))) counts.labelsHasEpicPrefix++
+    }
+    if (epicFromLabel) counts.labelsHasEpicScoped++
+
+    // Mirror the actual grouping precedence in IssueGraph.vue
+    const epicKey = epicTitle || (parentType === 'epic' ? parentTitle : '') || (epicIid != null ? `Epic #${epicIid}` : '') || epicFromLabel || 'No Epic'
+
+    if (epicTitle) {
+      counts.computedFromApi++
+      pushExample('fromApi', item, { epicTitle })
+      byEpicTitle.set(epicTitle, (byEpicTitle.get(epicTitle) || 0) + 1)
+    } else if (parentType === 'epic' && parentTitle) {
+      counts.computedFromParent++
+      pushExample('fromParent', item, { parentTitle, parentType })
+      byParentEpicTitle.set(parentTitle, (byParentEpicTitle.get(parentTitle) || 0) + 1)
+    } else if (epicIid != null) {
+      counts.computedFromEpicIid++
+      pushExample('noEpic', item, { epicTitle: '', parentType, parentTitle, epicFromLabel: '', epicIid, labelsSample: labels.slice(0, 15) })
+    } else if (epicFromLabel) {
+      counts.computedFromLabel++
+      pushExample('fromLabel', item, { epicFromLabel })
+      byEpicLabel.set(epicFromLabel, (byEpicLabel.get(epicFromLabel) || 0) + 1)
+    } else {
+      counts.computedNoEpic++
+      pushExample('noEpic', item, {
+        epicTitle: '',
+        parentType,
+        parentTitle,
+        epicFromLabel: '',
+        labelsSample: labels.slice(0, 15),
+      })
+    }
+
+    if (parentType) byParentType.set(parentType, (byParentType.get(parentType) || 0) + 1)
+    byEpicKey.set(epicKey, (byEpicKey.get(epicKey) || 0) + 1)
+  })
+
+  const toTop = (m) => Array.from(m.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, Math.max(0, Number(top) || 0))
+    .map(([key, count]) => ({ key, count }))
+
+  const topEpicKeys = Array.from(byEpicKey.entries())
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, Math.max(0, Number(top) || 0))
+    .map(([key, count]) => ({ key, count }))
+
+  const result = {
+    counts,
+    topEpicKeys,
+    topEpicTitles: toTop(byEpicTitle),
+    topParentTypes: toTop(byParentType),
+    topParentEpicTitles: toTop(byParentEpicTitle),
+    topEpicLabels: toTop(byEpicLabel),
+    examples,
+  }
+
+  if (log && typeof console !== 'undefined') {
+    try {
+      console.log('[glv] debugEpicGroupingStats:', result)
+      if (console.table) console.table(topEpicKeys)
+    } catch {
+      // ignore
+    }
+  }
+
+  return result
 }

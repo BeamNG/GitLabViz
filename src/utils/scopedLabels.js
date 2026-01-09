@@ -14,4 +14,3 @@ export function getScopedLabelValue (labels, prefix) {
 
   return matches.length ? matches[matches.length - 1] : null
 }
-

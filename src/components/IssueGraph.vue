@@ -1182,7 +1182,16 @@ function updateGraph() {
     node.priority = getScopedLabelValue(labels, 'Priority') || 'No Priority'
     node.type = getScopedLabelValue(labels, 'Type') || 'No Type'
     node.weight = node._raw.weight != null ? String(node._raw.weight) : 'No Weight'
-    node.epic = node._raw.epic ? node._raw.epic.title : 'No Epic'
+    // Epic can come from:
+    // - GitLab "epic" field (if available)
+    // - a scoped label like Epic::Something (common in setups without Epics)
+    const epicFromApi = node._raw?.epic?.title
+    // Newer GitLab: epics can show up as parent work items.
+    const parentType = String(node._raw?.parent?.work_item_type || '').trim().toLowerCase()
+    const epicFromParent = parentType === 'epic' ? node._raw?.parent?.title : null
+    const epicFromIid = node._raw?.epic_iid != null ? `Epic #${node._raw.epic_iid}` : null
+    const epicFromLabel = getScopedLabelValue(labels, 'Epic')
+    node.epic = epicFromApi || epicFromParent || epicFromIid || epicFromLabel || 'No Epic'
     node.iteration = node._raw.iteration ? node._raw.iteration.title : 'No Iteration'
     
     // Calculate staleness (days since last update)
