@@ -25,7 +25,7 @@
         </div>
         
         <!-- Config & Update buttons in title bar -->
-        <div v-if="settings.uiState.ui.isDrawerExpanded" class="d-flex gap-1 flex-shrink-0">
+        <div v-if="settings.uiState.ui.isDrawerExpanded" class="d-flex ga-1 flex-shrink-0">
           <v-btn
             id="glv-toggle-physics-btn"
             icon
@@ -133,7 +133,7 @@
 
           <!-- Scrollable Content -->
           <div style="overflow-y: auto; overflow-x: hidden;" class="flex-grow-1 pr-1">
-            <div v-if="isElectron && vizMode === 'svn'" class="px-1 mb-2">
+            <div v-if="canUseSvn && vizMode === 'svn'" class="px-1 mb-2">
               <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis mb-1">SVN Tree</div>
               <v-select
                 v-model="svnVizLimit"
@@ -153,7 +153,7 @@
             
             <!-- Presets Section -->
             <div class="d-flex align-center justify-space-between mb-2 cursor-pointer user-select-none" @click="settings.uiState.ui.showTemplates = !settings.uiState.ui.showTemplates">
-              <div class="d-flex align-center gap-2">
+              <div class="d-flex align-center ga-2">
                   <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis">Presets</div>
                   <v-chip v-if="settings.uiState.ui.currentTemplateName" size="x-small" color="medium-emphasis" variant="tonal" class="px-2 ml-2">{{ settings.uiState.ui.currentTemplateName }}</v-chip>
               </div>
@@ -231,6 +231,12 @@
                 {{ svnCommitCountLabel.toLocaleString() }} commits
               </v-btn>
             </div>
+            <div v-else-if="canUseSvn && svnRecentCommits.length" class="d-flex justify-space-between align-center mb-1">
+              <div class="text-caption text-medium-emphasis">SVN</div>
+              <div class="text-caption text-medium-emphasis">
+                Loaded: {{ svnRecentCommits.length.toLocaleString() }}
+              </div>
+            </div>
             <div v-if="loading" class="text-caption text-medium-emphasis text-truncate">
               {{ loadingMessage }}
             </div>
@@ -251,7 +257,7 @@
             </div>
         </div>
       </div>
-      <div v-else class="d-flex flex-column align-center mt-2 gap-2">
+      <div v-else class="d-flex flex-column align-center mt-2 ga-2">
          <!-- Mini Toolbar -->
          <v-tooltip :text="physicsPaused ? 'Resume physics (unlock positions)' : 'Pause physics (freeze positions)'" location="right">
            <template v-slot:activator="{ props }">
@@ -426,6 +432,8 @@ localforage.config({
 const { settings, init: initSettings } = useSettingsStore()
 
 const isElectron = computed(() => !!window.electronAPI)
+const hasSvnProxy = computed(() => !!String(import.meta.env.VITE_SVN_PROXY_TARGET || '').trim())
+const canUseSvn = computed(() => isElectron.value || hasSvnProxy.value)
 
 const vuetifyTheme = useTheme()
 const systemPrefersDark = ref(false)
@@ -833,7 +841,7 @@ const groupingModeOptions = computed(() => {
     { title: 'Timeline (Closed)', value: 'timeline_closed', icon: 'mdi-timeline-check-outline' }
   ]
 
-  if (isElectron.value) {
+  if (canUseSvn.value) {
     standard.splice(12, 0, { title: 'SVN Revision (Old → New)', value: 'svn_revision', icon: 'mdi-source-repository' })
   }
 
@@ -1559,10 +1567,8 @@ const vizModeOptions = computed(() => {
   const base = [
     { title: 'Git tickets', value: 'issues' }
   ]
-  if (isElectron.value) {
-    base.push({ title: 'SVN rev tree', value: 'svn' })
-    base.push({ title: 'Chat tools', value: 'chattools' })
-  }
+  if (canUseSvn.value) base.push({ title: 'SVN rev tree', value: 'svn' })
+  if (isElectron.value) base.push({ title: 'Chat tools', value: 'chattools' })
   return base
 })
 
@@ -1891,6 +1897,9 @@ const handleConfigSave = () => {
 }
 
 const updateAllSvnCaches = async (override) => {
+  if (!isElectron.value) {
+    throw new Error('SVN disk cache updates require Electron (browser mode has no disk cache).')
+  }
   const repos = Array.isArray(settings.config.svnRepos) ? settings.config.svnRepos : []
   const urlsFromSettings = repos.map(r => normalizeRepoUrl(r && r.url)).filter(Boolean)
   const urlsFromOverride = override && Array.isArray(override.urls) ? override.urls.map(u => normalizeRepoUrl(u)).filter(Boolean) : []
@@ -2018,7 +2027,7 @@ const loadData = async (opts = {}) => {
   const only = opts.only || 'both' // 'gitlab' | 'svn' | 'mattermost' | 'both'
   const forceFull = !!opts.forceFull
   const doGitLab = (only === 'both' || only === 'gitlab') && settings.config.enableGitLab
-  const doSvn = isElectron.value && (only === 'both' || only === 'svn') && settings.config.enableSvn
+  const doSvn = canUseSvn.value && (only === 'both' || only === 'svn') && settings.config.enableSvn
   const doMattermost = isElectron.value && (only === 'both' || only === 'mattermost') && !!settings.config.mattermostUrl && !!settings.config.mattermostToken
 
   const gitlabApiBaseUrl = resolveGitLabApiBaseUrl()
@@ -2271,7 +2280,7 @@ const loadData = async (opts = {}) => {
             
             // Adjust URL to use proxy in DEV mode if it matches our configured proxy target
             let targetUrl = svnUrl.value
-            if (!window.electronAPI && import.meta.env.DEV) {
+            if (!window.electronAPI) {
                 const proxyTarget = String(import.meta.env.VITE_SVN_PROXY_TARGET || '').trim().replace(/\/+$/, '')
                 if (proxyTarget && targetUrl.startsWith(proxyTarget)) {
                     // Proxy: /svn -> VITE_SVN_PROXY_TARGET

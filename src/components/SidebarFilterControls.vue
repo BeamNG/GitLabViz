@@ -2,7 +2,7 @@
   <!-- Filters Section -->
   <div class="d-flex align-center justify-space-between mb-2 cursor-pointer user-select-none" @click="state.ui.showFilters = !state.ui.showFilters">
     <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis">Filters</div>
-    <div class="d-flex align-center gap-1">
+    <div class="d-flex align-center ga-1">
       <v-tooltip text="Clear filters" location="right">
         <template v-slot:activator="{ props }">
           <v-btn
@@ -451,7 +451,7 @@
 
       <!-- Dates -->
       <div class="text-caption text-medium-emphasis mb-1 mt-2">Created</div>
-      <div class="d-flex flex-column gap-1 mb-1">
+      <div class="d-flex flex-column ga-1 mb-1">
         <v-select
           v-model="state.filters.dateFilters.createdMode"
           :items="dateFilterModes"
@@ -476,7 +476,7 @@
       </div>
 
       <div class="text-caption text-medium-emphasis mb-1">Updated</div>
-      <div class="d-flex flex-column gap-1 mb-1">
+      <div class="d-flex flex-column ga-1 mb-1">
         <v-select
           v-model="state.filters.dateFilters.updatedMode"
           :items="dateFilterModes"
@@ -501,7 +501,7 @@
       </div>
 
       <div class="text-caption text-medium-emphasis mb-1">Due Date</div>
-      <div class="d-flex flex-column gap-1">
+      <div class="d-flex flex-column ga-1">
         <v-select
           v-model="state.filters.dateFilters.dueDateMode"
           :items="dateFilterModes"
@@ -544,7 +544,7 @@
   </div>
 
   <v-expand-transition><div v-show="state.ui.showDisplay" class="px-1">
-      <div class="d-flex flex-column gap-2 mb-2">
+      <div class="d-flex flex-column ga-2 mb-2">
         <v-autocomplete
           v-model="state.view.groupingMode"
           :items="groupingModeOptions"

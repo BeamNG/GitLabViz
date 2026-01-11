@@ -8,7 +8,7 @@
       </v-card-title>
       <v-divider></v-divider>
       <v-card-text class="pt-4">
-        <div class="d-flex gap-2 flex-wrap align-center mb-3">
+        <div class="d-flex ga-2 flex-wrap align-center mb-3">
           <v-text-field
             v-model="search"
             label="Search (min 3 chars)"

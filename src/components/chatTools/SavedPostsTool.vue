@@ -2,7 +2,7 @@
   <v-card variant="outlined">
     <v-card-title class="text-subtitle-1">Saved Posts</v-card-title>
     <v-card-text>
-      <div class="d-flex align-center gap-2 mb-2" style="gap: 8px;">
+      <div class="d-flex align-center ga-2 mb-2">
         <v-btn color="primary" :loading="loading" @click="run">Load saved posts</v-btn>
         <div class="text-caption text-medium-emphasis">{{ status }}</div>
       </div>

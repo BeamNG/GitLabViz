@@ -11,7 +11,7 @@
         <v-tab value="display" prepend-icon="mdi-theme-light-dark">Display</v-tab>
         <v-tab value="presets" prepend-icon="mdi-tune-variant">Presets</v-tab>
         <v-tab value="gitlab" prepend-icon="mdi-gitlab">GitLab</v-tab>
-        <v-tab v-if="isElectron" value="svn" prepend-icon="mdi-folder-network">SVN</v-tab>
+        <v-tab v-if="canUseSvn" value="svn" prepend-icon="mdi-folder-network">SVN</v-tab>
         <v-tab v-if="isElectron" value="mattermost" prepend-icon="mdi-message-text">Mattermost</v-tab>
         <v-tab value="cache" prepend-icon="mdi-database">Cache</v-tab>
         <v-tab value="about" prepend-icon="mdi-information-outline">About</v-tab>
@@ -324,30 +324,30 @@
       </v-window-item>
 
       <!-- SVN -->
-      <v-window-item v-if="isElectron" value="svn">
+      <v-window-item v-if="canUseSvn" value="svn">
         <v-container class="py-6 config-max">
           <div class="d-flex align-center justify-space-between mb-4">
             <div>
               <div class="text-h6 font-weight-bold">Subversion (SVN)</div>
-              <div class="text-caption text-medium-emphasis">Configure SVN log ingestion and disk cache.</div>
+              <div class="text-caption text-medium-emphasis">Configure SVN log ingestion (disk cache only in Electron).</div>
             </div>
             <v-switch v-model="settings.config.enableSvn" color="success" hide-details inset />
           </div>
 
           <v-alert
-            v-if="!isElectron && !isDev"
-            type="warning"
+            v-if="!isElectron && hasSvnProxy"
+            type="info"
             variant="tonal"
             density="compact"
             class="mb-4"
-            icon="mdi-alert"
+            icon="mdi-information"
           >
-            SVN integration requires running in Electron mode to bypass CORS restrictions.
+            Browser mode: SVN requests go through a same-origin proxy (<code>/svn</code>). Disk cache is disabled.
           </v-alert>
 
           <div class="d-flex align-center justify-space-between mb-3">
             <div class="text-subtitle-2 font-weight-bold">Repositories</div>
-            <div class="d-flex gap-2">
+            <div class="d-flex ga-2">
               <v-btn
                 variant="tonal"
                 class="text-none"
@@ -400,7 +400,7 @@
 
           <v-card v-for="repo in (settings.config.svnRepos || [])" :key="repo.id" class="mb-3" variant="outlined">
             <v-card-text>
-              <div class="d-flex flex-wrap gap-2 align-center">
+              <div class="d-flex flex-wrap ga-2 align-center">
                 <v-text-field
                   v-model="repo.url"
                   label="Repository URL"
@@ -459,7 +459,7 @@
           </v-alert>
 
           <v-card class="mb-4" variant="tonal">
-            <v-card-text class="d-flex flex-wrap gap-4 align-center">
+            <v-card-text class="d-flex flex-wrap ga-4 align-center">
               <div class="flex-grow-1">
                 <div class="text-subtitle-2 font-weight-bold">Status</div>
                 <div class="text-caption text-medium-emphasis">
@@ -477,7 +477,7 @@
                 </div>
                 <div v-if="mmError" class="text-caption text-error mt-2">{{ mmError }}</div>
               </div>
-              <div class="d-flex gap-2">
+              <div class="d-flex ga-2">
                 <v-btn
                   variant="tonal"
                   class="text-none"
@@ -558,7 +558,7 @@
           </div>
 
           <v-card class="mb-4" variant="outlined" v-if="isElectron">
-            <v-card-text class="d-flex align-center flex-wrap gap-4">
+            <v-card-text class="d-flex align-center flex-wrap ga-4">
               <div class="flex-grow-1">
                 <div class="text-subtitle-2 font-weight-bold">Disk cache (SVN + settings)</div>
                 <div class="text-caption text-medium-emphasis" style="word-break: break-all;">
@@ -568,7 +568,7 @@
                   Backup: copy this folder to another machine/drive.
                 </div>
               </div>
-              <div class="d-flex gap-2">
+              <div class="d-flex ga-2">
                 <v-btn variant="tonal" class="text-none" prepend-icon="mdi-folder-open" @click="openCacheFolder">
                   Open
                 </v-btn>
@@ -638,7 +638,7 @@
           </v-card>
 
           <v-card class="mt-6" variant="tonal">
-            <v-card-text class="d-flex gap-2 flex-wrap justify-end">
+            <v-card-text class="d-flex ga-2 flex-wrap justify-end">
               <v-btn
                 variant="tonal"
                 class="text-none"
@@ -676,81 +676,128 @@
       <!-- About -->
       <v-window-item value="about">
         <v-container class="py-6 config-max">
-          <v-card v-if="!isElectron && !isDev" class="mb-4" variant="outlined">
-            <v-card-title class="text-subtitle-1">Offline Use</v-card-title>
-            <v-card-text>
-              <div class="d-flex align-center justify-space-between">
-                 <div class="text-body-2">
-                   Want to run this offline or on your own machine?<br/>
-                   Just download this html and open it in your browser locally.
-                 </div>
-                 <br/>
-                 <v-btn
-                  variant="outlined"
-                  size="small"
-                  color="primary"
-                  class="text-none"
-                  prepend-icon="mdi-download"
-                  @click="downloadSpa"
-                 >
-                   Download this app (.html)
-                 </v-btn>
-              </div>
-            </v-card-text>
-          </v-card>
-
-          <v-card class="mb-4" variant="outlined">
-            <v-card-title class="text-subtitle-1">Version</v-card-title>
-            <v-card-text>
-              <div class="d-flex flex-column gap-1">
-                <div><strong>App</strong>: GitLab Viz v{{ appVersion }}</div>
-                <div><strong>Homepage</strong>: <a :href="homepageUrl" target="_blank" rel="noreferrer" class="text-decoration-none font-weight-bold">{{ homepageUrl }}</a></div>
-                <div><strong>Runtime</strong>: {{ runtimeLabel }}</div>
-                <div><strong>Mode</strong>: {{ buildMode }}</div>
-                <div><strong>Build</strong>: {{ isDev ? 'development' : 'production' }}</div>
-                <div v-if="buildTime"><strong>Built</strong>: {{ new Date(buildTime).toLocaleString() }}</div>
-                <div v-if="gitCommit"><strong>Commit</strong>: {{ gitCommit }}<span v-if="gitDirty"> (dirty)</span></div>
-                <div v-if="gitBranch"><strong>Branch</strong>: {{ gitBranch }}</div>
-                <div v-if="gitRepo"><strong>Repo</strong>: <span style="word-break: break-word;">{{ gitRepo }}</span></div>
-                <div v-if="ciProvider === 'github'">
-                  <strong>CI</strong>:
-                  <a
-                    v-if="githubRunUrl"
-                    :href="githubRunUrl"
-                    target="_blank"
-                    rel="noreferrer"
-                    class="text-decoration-none font-weight-bold"
-                  >GitHub Actions</a>
-                  <span v-else>GitHub Actions</span>
-                  <span v-if="githubRunLabel"> — {{ githubRunLabel }}</span>
+          <v-card v-if="!isElectron && !isDev" class="mb-4 about-card" variant="flat">
+            <v-card-title class="d-flex align-center text-subtitle-1 about-title">
+              <v-icon start icon="mdi-download" size="small" class="text-medium-emphasis" />
+              Offline use
+            </v-card-title>
+            <v-divider />
+            <v-card-text class="pt-4">
+              <v-alert variant="tonal" type="info" density="compact" icon="mdi-information-outline">
+                <div class="d-flex flex-wrap align-center justify-space-between ga-3">
+                  <div class="text-body-2">
+                    Want to run this offline or on your own machine?
+                    <div class="text-caption text-medium-emphasis mt-1">
+                      Download a single HTML file and open it locally.
+                    </div>
+                  </div>
+                  <v-btn
+                    variant="outlined"
+                    size="small"
+                    color="primary"
+                    class="text-none"
+                    prepend-icon="mdi-download"
+                    @click="downloadSpa"
+                  >
+                    Download app (.html)
+                  </v-btn>
                 </div>
-              </div>
+              </v-alert>
             </v-card-text>
           </v-card>
 
-          <v-card class="mb-4" variant="outlined">
-            <v-card-title class="text-subtitle-1">Environment</v-card-title>
-            <v-card-text>
-              <div class="d-flex flex-column gap-1">
-                <div><strong>Platform</strong>: {{ platform }}</div>
-                <div><strong>User Agent</strong>: <span style="word-break: break-word;">{{ userAgent }}</span></div>
-                <div><strong>Settings storage</strong>: {{ settingsStorage }}</div>
-              </div>
+          <v-card class="mb-4 about-card" variant="flat">
+            <v-card-title class="d-flex align-center text-subtitle-1 about-title">
+              <v-icon start icon="mdi-tag-outline" size="small" class="text-medium-emphasis" />
+              Version
+            </v-card-title>
+            <v-divider />
+            <v-card-text class="pt-3">
+              <v-table density="compact" class="about-table">
+                <tbody>
+                  <tr v-for="row in aboutVersionRows" :key="row.key">
+                    <td class="about-k">
+                      <div class="d-flex align-center">
+                        <v-tooltip v-if="row.tip" :text="row.tip" location="top">
+                          <template #activator="{ props }">
+                            <v-icon v-bind="props" :icon="row.icon" size="small" class="text-medium-emphasis me-2" />
+                          </template>
+                        </v-tooltip>
+                        <v-icon v-else :icon="row.icon" size="small" class="text-medium-emphasis me-2" />
+                        <strong>{{ row.label }}</strong>
+                      </div>
+                    </td>
+                    <td class="about-v">
+                      <a
+                        v-if="row.href"
+                        :href="row.href"
+                        target="_blank"
+                        rel="noreferrer"
+                        class="text-decoration-none font-weight-bold"
+                      >{{ row.value }}</a>
+                      <span v-else class="about-break">{{ row.value }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </v-table>
             </v-card-text>
           </v-card>
 
-          <v-card variant="outlined">
-            <v-card-title class="text-subtitle-1">Support</v-card-title>
-            <v-card-text>
-              <div class="text-body-2">
-                If you need help, open an issue on the project repository and include the <strong>Copy diagnostics</strong> output above plus a short description of:
+          <v-card class="mb-4 about-card" variant="flat">
+            <v-card-title class="d-flex align-center text-subtitle-1 about-title">
+              <v-icon start icon="mdi-laptop" size="small" class="text-medium-emphasis" />
+              Environment
+            </v-card-title>
+            <v-divider />
+            <v-card-text class="pt-3">
+              <v-table density="compact" class="about-table">
+                <tbody>
+                  <tr v-for="row in aboutEnvRows" :key="row.key">
+                    <td class="about-k">
+                      <div class="d-flex align-center">
+                        <v-tooltip v-if="row.tip" :text="row.tip" location="top">
+                          <template #activator="{ props }">
+                            <v-icon v-bind="props" :icon="row.icon" size="small" class="text-medium-emphasis me-2" />
+                          </template>
+                        </v-tooltip>
+                        <v-icon v-else :icon="row.icon" size="small" class="text-medium-emphasis me-2" />
+                        <strong>{{ row.label }}</strong>
+                      </div>
+                    </td>
+                    <td class="about-v">
+                      <span class="about-break">{{ row.value }}</span>
+                    </td>
+                  </tr>
+                </tbody>
+              </v-table>
+            </v-card-text>
+          </v-card>
+
+          <v-card class="about-card" variant="flat">
+            <v-card-title class="d-flex align-center text-subtitle-1 about-title">
+              <v-icon start icon="mdi-lifebuoy" size="small" class="text-medium-emphasis" />
+              Support
+            </v-card-title>
+            <v-divider />
+            <v-card-text class="pt-4">
+              <div class="text-body-2 mb-2">
+                If you need help, open an issue and include the <strong>Copy diagnostics</strong> output plus:
               </div>
-              <ul class="pl-5 mt-2 text-body-2">
-                <li>What you expected vs what happened</li>
-                <li>Steps to reproduce</li>
-                <li>Screenshot/video if it’s UI-related</li>
-              </ul>
-              <div class="text-body-2 mt-2">
+              <v-list density="compact" class="py-0">
+                <v-list-item
+                  prepend-icon="mdi-compare"
+                  title="What you expected vs what happened"
+                />
+                <v-list-item
+                  prepend-icon="mdi-format-list-numbered"
+                  title="Steps to reproduce"
+                />
+                <v-list-item
+                  prepend-icon="mdi-image-outline"
+                  title="Screenshot/video (if UI-related)"
+                />
+              </v-list>
+              <div class="text-body-2 mt-3">
                 <a
                   :href="issuesUrl"
                   target="_blank"
@@ -758,28 +805,36 @@
                   class="text-decoration-none font-weight-bold"
                 >Open GitHub Issues</a>
               </div>
-
             </v-card-text>
           </v-card>
 
-          <div class="d-flex gap-2 mt-4 justify-end">
-            <v-btn
-              v-if="isElectron"
-              variant="tonal"
-              class="text-none"
-              prepend-icon="mdi-bug-outline"
-              @click="openDevTools"
-            >
-              Open DevTools
-            </v-btn>
-            <v-btn
-              variant="tonal"
-              class="text-none"
-              prepend-icon="mdi-content-copy"
-              @click="copyDiagnostics"
-            >
-              Copy diagnostics
-            </v-btn>
+          <div class="d-flex ga-2 mt-4 justify-end">
+            <v-tooltip v-if="isElectron" text="Open Chromium DevTools (Electron only)" location="top">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  variant="tonal"
+                  class="text-none"
+                  prepend-icon="mdi-bug-outline"
+                  @click="openDevTools"
+                >
+                  Open DevTools
+                </v-btn>
+              </template>
+            </v-tooltip>
+            <v-tooltip text="Copy version + environment + recent JS warnings/errors" location="top">
+              <template #activator="{ props }">
+                <v-btn
+                  v-bind="props"
+                  variant="tonal"
+                  class="text-none"
+                  prepend-icon="mdi-content-copy"
+                  @click="copyDiagnostics"
+                >
+                  Copy diagnostics
+                </v-btn>
+              </template>
+            </v-tooltip>
           </div>
         </v-container>
       </v-window-item>
@@ -856,6 +911,8 @@ const themeSetting = computed({
 })
 
 const isElectron = computed(() => !!window.electronAPI)
+const hasSvnProxy = computed(() => !!String(import.meta.env.VITE_SVN_PROXY_TARGET || '').trim())
+const canUseSvn = computed(() => isElectron.value || hasSvnProxy.value)
 const isDev = import.meta.env.DEV
 const buildMode = import.meta.env.MODE || (isDev ? 'development' : 'production')
 
@@ -1090,6 +1147,39 @@ const userAgent = computed(() => {
   }
 })
 const settingsStorage = computed(() => (window.electronAPI?.settingsGet && window.electronAPI?.settingsSet) ? 'disk (Electron)' : 'localforage (browser)')
+
+const aboutVersionRows = computed(() => {
+  const rows = [
+    { key: 'app', label: 'App', value: `GitLab Viz v${appVersion.value}`, icon: 'mdi-application', tip: 'App name and version' },
+    { key: 'homepage', label: 'Homepage', value: homepageUrl.value, href: homepageUrl.value, icon: 'mdi-home-outline', tip: 'Project homepage' },
+    { key: 'runtime', label: 'Runtime', value: runtimeLabel.value, icon: 'mdi-monitor', tip: 'Where the app is running (Web vs Electron)' },
+    { key: 'mode', label: 'Mode', value: buildMode, icon: 'mdi-cog-outline', tip: 'Vite build mode' },
+    { key: 'build', label: 'Build', value: isDev ? 'development' : 'production', icon: 'mdi-hammer-wrench', tip: 'Development vs production build' },
+    ...(buildTime.value ? [{ key: 'built', label: 'Built', value: new Date(buildTime.value).toLocaleString(), icon: 'mdi-clock-outline', tip: 'Build timestamp' }] : []),
+    ...(gitCommit.value ? [{ key: 'commit', label: 'Commit', value: `${gitCommit.value}${gitDirty.value ? ' (dirty)' : ''}`, icon: 'mdi-source-commit', tip: 'Git commit hash (dirty means local changes)' }] : []),
+    ...(gitBranch.value ? [{ key: 'branch', label: 'Branch', value: gitBranch.value, icon: 'mdi-source-branch', tip: 'Git branch name' }] : []),
+    ...(gitRepo.value ? [{ key: 'repo', label: 'Repo', value: gitRepo.value, icon: 'mdi-source-repository', tip: 'Git remote URL' }] : []),
+    ...((ciProvider.value === 'github')
+      ? [{
+        key: 'ci',
+        label: 'CI',
+        value: githubRunLabel.value ? `GitHub Actions — ${githubRunLabel.value}` : 'GitHub Actions',
+        href: githubRunUrl.value || '',
+        icon: 'mdi-robot-outline',
+        tip: 'Build metadata from CI'
+      }]
+      : [])
+  ]
+  return rows.filter(r => r && r.value)
+})
+
+const aboutEnvRows = computed(() => {
+  return [
+    { key: 'platform', label: 'Platform', value: platform.value, icon: 'mdi-microsoft-windows', tip: 'navigator.platform' },
+    { key: 'ua', label: 'User Agent', value: userAgent.value, icon: 'mdi-web', tip: 'Browser user agent string' },
+    { key: 'storage', label: 'Settings storage', value: settingsStorage.value, icon: 'mdi-database', tip: 'Where settings are persisted' }
+  ].filter(r => r && r.value)
+})
 
 const diagnosticsText = computed(() => {
   const lines = []
@@ -1569,10 +1659,6 @@ const logoutMattermost = () => {
   max-width: 980px;
   width: 100%;
   margin: 0 auto;
-}
-
-.gap-4 {
-    gap: 16px;
 }
 
 .changelog-markdown {
