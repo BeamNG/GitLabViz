@@ -30,7 +30,8 @@ The output will be in the `dist/` directory.
 
 ### CI / Deployment
 
-This repo builds the SPA in **GitHub Actions**.
+This repo builds and deploys the SPA to **GitHub Pages** via **GitHub Actions**.
+- Deploy trigger: **push a version tag** like `v0.3.20` (or run the workflow manually)
 - Build command: `npm run build`
-- Output directory: `dist/` (publish this directory to your static host of choice)
+- Output directory: `dist/`
 
