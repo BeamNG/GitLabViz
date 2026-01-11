@@ -1132,6 +1132,59 @@ const githubRunLabel = computed(() => {
 })
 
 const runtimeLabel = computed(() => (isElectron.value ? 'Electron' : 'Web'))
+const hasHmr = computed(() => {
+  try {
+    return !!import.meta.hot
+  } catch {
+    return false
+  }
+})
+
+const repoWebBaseUrl = computed(() => {
+  const raw = String(gitRepo.value || '').trim()
+  if (!raw) return ''
+
+  // Examples:
+  // - https://github.com/user/repo.git
+  // - git@github.com:user/repo.git
+  // - https://gitlab.example.com/group/repo.git
+  let host = ''
+  let path = ''
+
+  const https = raw.match(/^https?:\/\/([^/]+)\/(.+)$/i)
+  if (https) {
+    host = https[1]
+    path = https[2]
+  } else {
+    const ssh = raw.match(/^(?:git@|ssh:\/\/git@)([^:/]+)[:/](.+)$/i)
+    if (ssh) {
+      host = ssh[1]
+      path = ssh[2]
+    }
+  }
+
+  path = String(path || '').replace(/\.git$/i, '').replace(/^\/+/, '')
+  if (!host || !path) return ''
+  return `https://${host}/${path}`
+})
+
+const repoCommitUrl = computed(() => {
+  const base = repoWebBaseUrl.value
+  const sha = String(gitCommit.value || '').trim()
+  if (!base || !sha) return ''
+  if (base.includes('github.com/')) return `${base}/commit/${sha}`
+  // GitLab (including self-hosted)
+  return `${base}/-/commit/${sha}`
+})
+
+const repoBranchUrl = computed(() => {
+  const base = repoWebBaseUrl.value
+  const br = String(gitBranch.value || '').trim()
+  if (!base || !br) return ''
+  if (base.includes('github.com/')) return `${base}/tree/${encodeURIComponent(br)}`
+  // GitLab (including self-hosted)
+  return `${base}/-/tree/${encodeURIComponent(br)}`
+})
 const platform = computed(() => {
   try {
     return navigator.platform || 'unknown'
@@ -1156,9 +1209,30 @@ const aboutVersionRows = computed(() => {
     { key: 'mode', label: 'Mode', value: buildMode, icon: 'mdi-cog-outline', tip: 'Vite build mode' },
     { key: 'build', label: 'Build', value: isDev ? 'development' : 'production', icon: 'mdi-hammer-wrench', tip: 'Development vs production build' },
     ...(buildTime.value ? [{ key: 'built', label: 'Built', value: new Date(buildTime.value).toLocaleString(), icon: 'mdi-clock-outline', tip: 'Build timestamp' }] : []),
-    ...(gitCommit.value ? [{ key: 'commit', label: 'Commit', value: `${gitCommit.value}${gitDirty.value ? ' (dirty)' : ''}`, icon: 'mdi-source-commit', tip: 'Git commit hash (dirty means local changes)' }] : []),
-    ...(gitBranch.value ? [{ key: 'branch', label: 'Branch', value: gitBranch.value, icon: 'mdi-source-branch', tip: 'Git branch name' }] : []),
-    ...(gitRepo.value ? [{ key: 'repo', label: 'Repo', value: gitRepo.value, icon: 'mdi-source-repository', tip: 'Git remote URL' }] : []),
+    ...(gitCommit.value ? [{
+      key: 'commit',
+      label: 'Commit',
+      value: `${gitCommit.value}${gitDirty.value ? ' (dirty)' : ''}`,
+      href: repoCommitUrl.value || '',
+      icon: 'mdi-source-commit',
+      tip: 'Git commit hash (dirty means local changes)'
+    }] : []),
+    ...(gitBranch.value ? [{
+      key: 'branch',
+      label: 'Branch',
+      value: gitBranch.value,
+      href: repoBranchUrl.value || '',
+      icon: 'mdi-source-branch',
+      tip: 'Git branch name'
+    }] : []),
+    ...(gitRepo.value ? [{
+      key: 'repo',
+      label: 'Repo',
+      value: gitRepo.value,
+      href: repoWebBaseUrl.value || '',
+      icon: 'mdi-source-repository',
+      tip: 'Git remote URL'
+    }] : []),
     ...((ciProvider.value === 'github')
       ? [{
         key: 'ci',
@@ -1177,7 +1251,9 @@ const aboutEnvRows = computed(() => {
   return [
     { key: 'platform', label: 'Platform', value: platform.value, icon: 'mdi-microsoft-windows', tip: 'navigator.platform' },
     { key: 'ua', label: 'User Agent', value: userAgent.value, icon: 'mdi-web', tip: 'Browser user agent string' },
-    { key: 'storage', label: 'Settings storage', value: settingsStorage.value, icon: 'mdi-database', tip: 'Where settings are persisted' }
+    { key: 'storage', label: 'Settings storage', value: settingsStorage.value, icon: 'mdi-database', tip: 'Where settings are persisted' },
+    { key: 'devserver', label: 'Dev server', value: isDev ? 'running (Vite dev)' : 'not running', icon: 'mdi-server-outline', tip: 'Indicates if this build is running under npm run dev' },
+    { key: 'hmr', label: 'Live updates', value: (isDev && hasHmr.value) ? 'enabled (HMR)' : (isDev ? 'disabled' : 'n/a'), icon: 'mdi-refresh-auto', tip: 'Hot Module Reloading status (Vite)' }
   ].filter(r => r && r.value)
 })
 
