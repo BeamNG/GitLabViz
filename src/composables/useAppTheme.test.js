@@ -53,5 +53,36 @@ describe('useAppTheme', () => {
 
     window.matchMedia = prevMatchMedia
   })
+
+  it('removes matchMedia listener on unmount', async () => {
+    const prevMatchMedia = window.matchMedia
+    const removeSpy = vi.fn()
+
+    window.matchMedia = vi.fn(() => ({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: removeSpy
+    }))
+
+    const settings = reactive({
+      uiState: { ui: { theme: 'system' } }
+    })
+    const themeName = ref('light')
+    const vuetifyTheme = { global: { name: themeName } }
+
+    const Cmp = defineComponent({
+      setup () {
+        useAppTheme({ settings, vuetifyTheme })
+        return {}
+      },
+      template: '<div />'
+    })
+
+    const wrapper = mount(Cmp)
+    wrapper.unmount()
+
+    expect(removeSpy).toHaveBeenCalled()
+    window.matchMedia = prevMatchMedia
+  })
 })
 

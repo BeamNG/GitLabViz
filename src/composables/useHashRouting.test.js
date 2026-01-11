@@ -45,5 +45,34 @@ describe('useHashRouting', () => {
     expect(replaceSpy).toHaveBeenCalled()
     replaceSpy.mockRestore()
   })
+
+  it('updates hash when navigating to config + switching tabs (replace)', async () => {
+    const replaceSpy = vi.spyOn(history, 'replaceState')
+
+    window.location.hash = ''
+    const activePage = ref('main')
+    const configInitialTab = ref('gitlab')
+
+    const Cmp = defineComponent({
+      setup () {
+        useHashRouting({ activePage, configInitialTab })
+        return { activePage, configInitialTab }
+      },
+      template: '<div />'
+    })
+
+    mount(Cmp)
+    await nextTick()
+
+    activePage.value = 'config'
+    await nextTick()
+    expect(window.location.hash).toBe('#/config/gitlab')
+
+    configInitialTab.value = 'display'
+    await nextTick()
+    expect(replaceSpy).toHaveBeenCalled()
+
+    replaceSpy.mockRestore()
+  })
 })
 
