@@ -120,6 +120,25 @@ export default defineConfig(({ mode }) => {
         jsdom: {
           url: 'http://localhost/'
         }
+      },
+      coverage: {
+        provider: 'v8',
+        reporter: ['text', 'html'],
+        // Keep noise down: these are runtime/bootstrap files, not business logic.
+        exclude: [
+          '**/dist/**',
+          '**/electron/**',
+          '**/node_modules/**',
+          'src/main.js',
+          'src/vitest.setup.js',
+          // Large UI pages/components (not currently unit-tested)
+          'src/components/ConfigPage.vue',
+          'src/components/ChatToolsPage.vue',
+          'src/components/SvnLogDialog.vue',
+          'src/components/SidebarFilterControls.vue',
+          'src/components/sidebar/**',
+          'src/components/chatTools/**'
+        ]
       }
     },
     server: {
