@@ -113,7 +113,14 @@ export default defineConfig(({ mode }) => {
     },
     test: {
       environment: 'jsdom',
-      globals: true
+      globals: true,
+      setupFiles: ['src/vitest.setup.js'],
+      // Ensure jsdom has an origin so localStorage is available (localforage fallback driver).
+      environmentOptions: {
+        jsdom: {
+          url: 'http://localhost/'
+        }
+      }
     },
     server: {
       proxy

@@ -1,304 +1,53 @@
 <template>
   <v-app>
-    <v-navigation-drawer
+    <AppSidebar
       v-if="activePage === 'main'"
-      width="300"
-      :rail="!settings.uiState.ui.isDrawerExpanded"
-      permanent
-      location="left"
-      @click="settings.uiState.ui.isDrawerExpanded = true"
-    >
-      <div class="d-flex align-center pl-4 pr-3 py-2 font-weight-bold app-titlebar" @click.stop="settings.uiState.ui.isDrawerExpanded = !settings.uiState.ui.isDrawerExpanded" style="cursor: pointer; height: 48px;">
-        <div class="d-flex align-center flex-grow-1" style="min-width: 0;">
-            <v-icon icon="mdi-gitlab" class="mr-2 flex-shrink-0" v-if="settings.uiState.ui.isDrawerExpanded"></v-icon>
-            <v-icon icon="mdi-menu" v-else class="flex-shrink-0"></v-icon>
-            <span
-              class="text-h6 d-none d-sm-block mr-2 text-truncate"
-              v-if="settings.uiState.ui.isDrawerExpanded"
-              style="opacity: 1; transition: opacity 0.2s;"
-              :title="buildTitle"
-            >GitLab Viz <span 
-                class="app-version" 
-                style="cursor: pointer" 
-                @click.stop="configInitialTab = 'changelog'; activePage = 'config'"
-              >v{{ appVersion }}</span></span>
-        </div>
-        
-        <!-- Config & Update buttons in title bar -->
-        <div v-if="settings.uiState.ui.isDrawerExpanded" class="d-flex ga-1 flex-shrink-0">
-          <v-btn
-            id="glv-toggle-physics-btn"
-            icon
-            variant="text"
-            size="small"
-            density="compact"
-            @click.stop="physicsPaused = !physicsPaused"
-            :title="physicsPaused ? 'Resume physics (unlock positions)' : 'Pause physics (freeze positions)'"
-          >
-            <v-icon :icon="physicsPaused ? 'mdi-play' : 'mdi-stop'"></v-icon>
-          </v-btn>
-          <v-btn 
-            icon 
-            variant="text" 
-            size="small" 
-            density="compact"
-            @click.stop="configInitialTab = 'gitlab'; activePage = 'config'"
-            title="Configuration"
-          >
-            <v-icon icon="mdi-cog"></v-icon>
-          </v-btn>
-           <v-btn
-            id="glv-refresh-data-btn"
-            icon 
-            variant="text" 
-            size="small" 
-            density="compact"
-            :color="isDataStale ? 'error' : null"
-            @click.stop="handleRefreshClick"
-            :loading="loading" 
-            title="Update Data (Ctrl+Click = full clean update)"
-          >
-            <v-icon icon="mdi-refresh"></v-icon>
-          </v-btn>
-        </div>
-      </div>
-
-      <div class="pa-2 d-flex flex-column h-100" v-if="settings.uiState.ui.isDrawerExpanded" style="overflow: hidden; max-height: 100vh;">
-        
-        <!-- Scrollable Filters Section -->
-        <div class="d-flex flex-column flex-grow-1" style="min-height: 0; overflow: hidden; position: relative;">
-          
-          <!-- Fixed Header -->
-          <div class="d-flex align-center justify-space-between mb-2 flex-shrink-0">
-             <div class="d-flex flex-grow-1 justify-end">
-                 <v-select
-                  v-if="vizModeOptions.length > 1"
-                  v-model="vizMode"
-                  :items="vizModeOptions"
-                  item-title="title"
-                  item-value="value"
-                  density="compact"
-                  variant="outlined"
-                  hide-details
-                  class="compact-input mr-2"
-                  style="max-width: 170px; font-size: 12px"
-                  title="Visualization mode"
-                ></v-select>
-                <v-btn 
-                  icon 
-                  variant="text" 
-                  size="x-small" 
-                  color="medium-emphasis"
-                  @click="createPreset"
-                  title="Create preset"
-                  class="mr-1"
-                >
-                  <v-icon icon="mdi-plus" size="small"></v-icon>
-                </v-btn>
-                 <v-btn 
-                  icon 
-                  variant="text" 
-                  size="x-small" 
-                  color="medium-emphasis"
-                  @click="refocusGraph"
-                  title="Recenter Graph"
-                  class="mr-1"
-                >
-                  <v-icon icon="mdi-crosshairs-gps" size="small"></v-icon>
-                </v-btn>
-                <v-btn 
-                  icon 
-                  variant="text" 
-                  size="x-small" 
-                  color="medium-emphasis"
-                  @click="fitGraph"
-                  title="Fit Graph to Screen"
-                  class="mr-1"
-                >
-                  <v-icon icon="mdi-fit-to-screen" size="small"></v-icon>
-                </v-btn>
-                <v-btn 
-                  icon 
-                  variant="text" 
-                  size="x-small" 
-                  color="medium-emphasis"
-                  @click="reflowGraph"
-                  title="Reflow Graph"
-                  class="mr-1"
-                >
-                  <v-icon icon="mdi-refresh" size="small"></v-icon>
-                </v-btn>
-            </div>
-          </div>
-
-          <!-- Scrollable Content -->
-          <div style="overflow-y: auto; overflow-x: hidden;" class="flex-grow-1 pr-1">
-            <div v-if="canUseSvn && vizMode === 'svn'" class="px-1 mb-2">
-              <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis mb-1">SVN Tree</div>
-              <v-select
-                v-model="svnVizLimit"
-                :items="[500, 1000, 2000, 3000, 5000]"
-                label="Revisions (most recent)"
-                density="compact"
-                variant="outlined"
-                hide-details
-                class="compact-input"
-                style="font-size: 12px"
-              ></v-select>
-              <div class="text-caption text-medium-emphasis mt-1">
-                Shows a revision chain + copy-from links (if present). Uses full SVN log as source.
-              </div>
-              <v-divider class="my-2"></v-divider>
-            </div>
-            
-            <!-- Presets Section -->
-            <div class="d-flex align-center justify-space-between mb-2 cursor-pointer user-select-none" @click="settings.uiState.ui.showTemplates = !settings.uiState.ui.showTemplates">
-              <div class="d-flex align-center ga-2">
-                  <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis">Presets</div>
-                  <v-chip v-if="settings.uiState.ui.currentTemplateName" size="x-small" color="medium-emphasis" variant="tonal" class="px-2 ml-2">{{ settings.uiState.ui.currentTemplateName }}</v-chip>
-              </div>
-              <v-icon :icon="settings.uiState.ui.showTemplates ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="small" color="medium-emphasis"></v-icon>
-            </div>
-             <v-expand-transition>
-               <div v-show="settings.uiState.ui.showTemplates" class="px-1 mb-2">
-                 <div v-if="GLOBAL_PRESETS.length === 0" class="text-caption text-medium-emphasis">No presets available.</div>
-                 <div v-else class="d-grid mb-2" style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
-                    <v-btn
-                        v-for="preset in GLOBAL_PRESETS"
-                        :key="preset.name"
-                        variant="tonal"
-                        density="compact"
-                        size="small"
-                        color="secondary"
-                        class="justify-start text-none px-2"
-                        style="min-width: 0;"
-                        @click="applyPreset(preset)"
-                    >
-                        <div class="text-truncate w-100 text-left">{{ preset.name }}</div>
-                    </v-btn>
-                 </div>
-                 <div v-if="customPresets.length" class="d-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 4px;">
-                   <v-btn
-                     v-for="preset in customPresets"
-                     :key="preset.name"
-                     variant="tonal"
-                     density="compact"
-                     size="small"
-                     color="primary"
-                     class="justify-start text-none px-2 custom-preset-btn"
-                     style="min-width: 0;"
-                     @click="applyPreset(preset)"
-                   >
-                     <div class="text-truncate w-100 text-left">{{ preset.name }}</div>
-                   </v-btn>
-                 </div>
-               </div>
-            </v-expand-transition>
-            <v-divider class="mb-2"></v-divider>
-
-            <SidebarFilterControls
-              :state="settings.uiState"
-              :all-labels="allLabels"
-              :all-authors="allAuthors"
-              :all-assignees="allAssignees"
-              :all-participants="allParticipants"
-              :user-state-by-name="userStateByName"
-              :me-name="settings.meta.gitlabMeName"
-              :all-milestones="allMilestones"
-              :all-priorities="allPriorities"
-              :all-types="allTypes"
-              :date-filter-modes="dateFilterModes"
-              :grouping-mode-options="groupingModeOptions"
-              :view-mode-options="viewModeOptions"
-              :link-mode-options="linkModeOptions"
-              @reset-filters="resetFilters"
-            />
-            <SidebarSimulationControls :state="settings.uiState" />
-          </div>
-        </div>
-        
-        <!-- Stats Footer -->
-        <div class="mt-auto pt-2 border-t flex-shrink-0">
-            <div v-if="isElectron && svnCommitCountLabel" class="d-flex justify-space-between align-center mb-1">
-              <div class="text-caption text-medium-emphasis">SVN</div>
-              <v-btn
-                size="x-small"
-                variant="text"
-                class="text-none px-1"
-                @click="showSvnLog = true"
-                title="Show SVN log"
-              >
-                {{ svnCommitCountLabel.toLocaleString() }} commits
-              </v-btn>
-            </div>
-            <div v-else-if="canUseSvn && svnRecentCommits.length" class="d-flex justify-space-between align-center mb-1">
-              <div class="text-caption text-medium-emphasis">SVN</div>
-              <div class="text-caption text-medium-emphasis">
-                Loaded: {{ svnRecentCommits.length.toLocaleString() }}
-              </div>
-            </div>
-            <div v-if="loading" class="text-caption text-medium-emphasis text-truncate">
-              {{ loadingMessage }}
-            </div>
-            <div v-else-if="hasData" class="d-flex flex-column text-caption text-medium-emphasis">
-               <div class="d-flex justify-space-between align-baseline">
-                   <div class="font-weight-bold text-truncate mr-2">{{ statsText }}</div>
-                   <div 
-                     v-if="dataAge" 
-                     class="flex-shrink-0" 
-                     style="font-size: 10px; cursor: help;" 
-                     :class="{'text-error font-weight-bold': isDataStale}"
-                     :title="lastUpdatedDate"
-                   >
-                     {{ dataAge }}
-                   </div>
-               </div>
-               <div v-if="groupStatsText">{{ groupStatsText }}</div>
-            </div>
-        </div>
-      </div>
-      <div v-else class="d-flex flex-column align-center mt-2 ga-2">
-         <!-- Mini Toolbar -->
-         <v-tooltip :text="physicsPaused ? 'Resume physics (unlock positions)' : 'Pause physics (freeze positions)'" location="right">
-           <template v-slot:activator="{ props }">
-             <v-btn
-               id="glv-toggle-physics-btn-mini"
-               :icon="physicsPaused ? 'mdi-play' : 'mdi-stop'"
-               variant="text"
-               size="small"
-               v-bind="props"
-               @click.stop="physicsPaused = !physicsPaused"
-             ></v-btn>
-           </template>
-         </v-tooltip>
-
-         <v-tooltip text="Recenter Graph" location="right">
-           <template v-slot:activator="{ props }">
-             <v-btn icon="mdi-crosshairs-gps" variant="text" size="small" v-bind="props" @click.stop="refocusGraph"></v-btn>
-           </template>
-         </v-tooltip>
-
-         <v-tooltip text="Fit Graph to Screen" location="right">
-           <template v-slot:activator="{ props }">
-             <v-btn icon="mdi-fit-to-screen" variant="text" size="small" v-bind="props" @click.stop="fitGraph"></v-btn>
-           </template>
-         </v-tooltip>
-
-         <v-tooltip text="Reset Filters" location="right">
-           <template v-slot:activator="{ props }">
-             <v-btn icon="mdi-filter-off" variant="text" size="small" color="medium-emphasis" v-bind="props" @click.stop="resetFilters"></v-btn>
-           </template>
-         </v-tooltip>
-         
-         <v-divider class="w-75 my-2"></v-divider>
-
-         <v-tooltip text="Update Issues" location="right">
-            <template v-slot:activator="{ props }">
-               <v-btn icon="mdi-refresh" variant="text" size="small" :color="isDataStale ? 'error' : 'secondary'" v-bind="props" @click.stop="loadData" :loading="loading"></v-btn>
-            </template>
-         </v-tooltip>
-      </div>
-    </v-navigation-drawer>
+      v-model:vizMode="vizMode"
+      v-model:svnVizLimit="svnVizLimit"
+      :settings="settings"
+      :build-title="buildTitle"
+      :app-version="appVersion"
+      :physics-paused="physicsPaused"
+      :loading="loading"
+      :loading-message="loadingMessage"
+      :is-data-stale="isDataStale"
+      :can-use-svn="canUseSvn"
+      :is-electron="isElectron"
+      :viz-mode-options="vizModeOptions"
+      :GLOBAL_PRESETS="GLOBAL_PRESETS"
+      :custom-presets="customPresets"
+      :all-labels="allLabels"
+      :all-authors="allAuthors"
+      :all-assignees="allAssignees"
+      :all-participants="allParticipants"
+      :user-state-by-name="userStateByName"
+      :me-name="settings.meta.gitlabMeName"
+      :all-milestones="allMilestones"
+      :all-priorities="allPriorities"
+      :all-types="allTypes"
+      :date-filter-modes="dateFilterModes"
+      :grouping-mode-options="groupingModeOptions"
+      :view-mode-options="viewModeOptions"
+      :link-mode-options="linkModeOptions"
+      :svn-recent-commits="svnRecentCommits"
+      :svn-commit-count-label="svnCommitCountLabel"
+      :has-data="hasData"
+      :stats-text="statsText"
+      :data-age="dataAge"
+      :last-updated-date="lastUpdatedDate"
+      :group-stats-text="groupStatsText"
+      :on-toggle-physics="togglePhysics"
+      :on-open-config="openConfig"
+      :on-open-changelog="openChangelog"
+      :on-refresh-click="handleRefreshClick"
+      :on-create-preset="createPreset"
+      :on-apply-preset="applyPreset"
+      :on-refocus-graph="refocusGraph"
+      :on-fit-graph="fitGraph"
+      :on-reflow-graph="reflowGraph"
+      :on-reset-filters="resetFilters"
+      :on-show-svn-log="openSvnLog"
+    />
 
     <!-- <v-app-bar color="primary" density="compact" elevation="1">
       <v-app-bar-title>GitLab Viz</v-app-bar-title>
@@ -407,27 +156,22 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, watch, toRaw, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, toRaw } from 'vue'
 import { useTheme } from 'vuetify'
 import IssueGraph from './components/IssueGraph.vue'
+import AppSidebar from './components/AppSidebar.vue'
 import ConfigPage from './components/ConfigPage.vue'
 import ChatToolsPage from './components/ChatToolsPage.vue'
 import SvnLogDialog from './components/SvnLogDialog.vue'
-import SidebarFilterControls from './components/SidebarFilterControls.vue'
-import SidebarSimulationControls from './components/sidebar/SidebarSimulationControls.vue'
-import { createGitLabClient, createGitLabGraphqlClient, enrichEpicTitlesFromRest, enrichIssuesFromGraphql, fetchProjectIssuesRest, fetchIssueLinks, fetchTokenScopes, normalizeGitLabApiBaseUrl, updateIssue } from './services/gitlab'
-import { createSvnClient, fetchSvnLog } from './services/svn'
-import { svnCacheGetMeta, svnCacheClear, normalizeRepoUrl } from './services/cache'
+import { useAppTheme } from './composables/useAppTheme'
+import { useHashRouting } from './composables/useHashRouting'
+import { useDataLoader } from './composables/useDataLoader'
+import { useGraphDerivedState } from './composables/useGraphDerivedState'
+import { useSvnVizMode } from './composables/useSvnVizMode'
+import { useGitLabIssueMutations } from './composables/useGitLabIssueMutations'
 import { useSettingsStore } from './composables/useSettingsStore'
-import { MattermostClient } from './chatTools/mmClient'
 import { GLOBAL_PRESETS } from './presets'
 import { getScopedLabelValue, getScopedLabelValues } from './utils/scopedLabels'
-import localforage from 'localforage'
-
-// Configure localforage
-localforage.config({
-  name: 'gitlab-viz'
-})
 
 const { settings, init: initSettings } = useSettingsStore()
 
@@ -436,23 +180,7 @@ const hasSvnProxy = computed(() => !!String(import.meta.env.VITE_SVN_PROXY_TARGE
 const canUseSvn = computed(() => isElectron.value || hasSvnProxy.value)
 
 const vuetifyTheme = useTheme()
-const systemPrefersDark = ref(false)
-let systemMql = null
-
-const getEffectiveThemeName = () => {
-  const pref = (settings.uiState && settings.uiState.ui && settings.uiState.ui.theme) ? settings.uiState.ui.theme : 'system'
-  if (pref === 'dark') return 'dark'
-  if (pref === 'light') return 'light'
-  return systemPrefersDark.value ? 'dark' : 'light'
-}
-
-const applyTheme = () => {
-  const name = getEffectiveThemeName()
-  if (vuetifyTheme && typeof vuetifyTheme.change === 'function') vuetifyTheme.change(name)
-  else vuetifyTheme.global.name.value = name
-  document.documentElement.dataset.theme = name
-  window.dispatchEvent(new CustomEvent('app-theme-changed', { detail: { theme: name } }))
-}
+useAppTheme({ settings, vuetifyTheme })
 
 // Core settings (multi-repo SVN aware)
 const primarySvnRepo = computed(() => {
@@ -467,75 +195,10 @@ const svnUrl = computed({
 
 const activePage = ref('main') // 'main' | 'config' | 'chattools'
 const configInitialTab = ref('gitlab')
+useHashRouting({ activePage, configInitialTab })
 const loading = ref(false)
 const loadingMessage = ref('')
 const error = ref('')
-
-// Hash routing (works for hosted + file://):
-// Examples:
-// - (no hash)            -> main
-// - #/config/gitlab
-// - #/config/display
-// - #/config             -> config (default tab)
-// - #/chattools
-let isApplyingHash = false
-
-const parseHash = () => {
-  const raw = String(window.location.hash || '')
-  const h = raw.startsWith('#') ? raw.slice(1) : raw
-  const [pathRaw] = h.split('?')
-  const path = (pathRaw || '').replace(/^\/+/, '')
-  const parts = path.split('/').filter(Boolean)
-
-  const page = (parts[0] === 'config' || parts[0] === 'chattools') ? parts[0] : 'main'
-  const tab = page === 'config' && parts[1] ? String(parts[1]).trim() : ''
-  return { page, tab }
-}
-
-const syncStateFromHash = () => {
-  const { page, tab } = parseHash()
-  isApplyingHash = true
-  try {
-    if (page === 'config') {
-      if (tab) configInitialTab.value = tab
-      activePage.value = 'config'
-    } else if (page === 'chattools') {
-      activePage.value = 'chattools'
-    } else {
-      activePage.value = 'main'
-    }
-  } finally {
-    isApplyingHash = false
-  }
-
-  // KISS: don't keep "#/main" in the URL.
-  if (page === 'main') {
-    const raw = String(window.location.hash || '')
-    if (raw === '#/main' || raw === '#main' || raw === '#/') {
-      history.replaceState(null, '', window.location.pathname + window.location.search)
-    }
-  }
-}
-
-const setHash = (page, tab, { replace } = {}) => {
-  const p = page === 'config' ? 'config' : (page === 'chattools' ? 'chattools' : 'main')
-  const t = String(tab || '').trim()
-  if (p === 'main') {
-    // Main view: no hash at all.
-    const nextUrl = window.location.pathname + window.location.search
-    if (replace) history.replaceState(null, '', nextUrl)
-    else history.pushState(null, '', nextUrl)
-    return
-  }
-
-  const next = p === 'config'
-    ? `#/config${t ? `/${encodeURIComponent(t)}` : ''}`
-    : `#/${p}`
-
-  if (window.location.hash === next) return
-  if (replace) history.replaceState(null, '', next)
-  else window.location.hash = next
-}
 
 const customPresets = computed(() => {
   const p = settings.uiState && settings.uiState.presets ? settings.uiState.presets : null
@@ -621,15 +284,16 @@ const buildTitle = computed(() => {
   return lines.join('\n')
 })
 
-const vizMode = ref('issues') // 'issues' | 'svn' | 'chattools' (action)
-const lastGraphVizMode = ref('issues')
-const svnVizLimit = ref(2000)
-
 const showSvnLog = ref(false)
 const svnRecentCommits = ref([])
 const svnCommitCount = ref(0)
 
 const physicsPaused = ref(false)
+
+const togglePhysics = () => { physicsPaused.value = !physicsPaused.value }
+const openConfig = () => { configInitialTab.value = 'gitlab'; activePage.value = 'config' }
+const openChangelog = () => { configInitialTab.value = 'changelog'; activePage.value = 'config' }
+const openSvnLog = () => { showSvnLog.value = true }
 
 const gitlabCacheMeta = ref({ nodes: 0, edges: 0, updatedAt: null })
 const updateStatus = ref({ loading: false, source: '', message: '' })
@@ -657,17 +321,7 @@ const configStats = computed(() => ({
   }
 }))
 
-// Snapshot of the "issues" graph so we can switch modes without refetching
-const issueGraphSnapshot = reactive({
-  nodes: {},
-  edges: {}
-})
-
-const issueModePrefs = reactive({
-  viewMode: 'state',
-  groupingMode: 'none',
-  linkMode: 'none'
-})
+// SVN viz state is handled by useSvnVizMode
 
 // simulation + persistence handled by settings
 
@@ -774,6 +428,16 @@ const dateFilterModes = [
 const nodes = reactive({})
 const edges = reactive({})
 
+const { vizMode, svnVizLimit, issueGraphSnapshot, vizModeOptions, buildSvnVizGraph } = useSvnVizMode({
+  settings,
+  nodes,
+  edges,
+  svnRecentCommits,
+  canUseSvn,
+  isElectron,
+  activePage
+})
+
 const linkModeOptions = [
   { title: 'None (No Links)', value: 'none', icon: 'mdi-link-off' },
   { title: 'Issue Dependency', value: 'dependency', icon: 'mdi-link-variant' },
@@ -859,683 +523,22 @@ const groupingModeOptions = computed(() => {
   return items
 })
 
-const allLabels = computed(() => {
-  const labels = new Set()
-  Object.values(nodes).forEach(node => {
-    if (node._raw.labels) {
-      node._raw.labels.forEach(l => labels.add(l))
-    }
-  })
-  return Array.from(labels).sort()
-})
-
-const allAuthors = computed(() => {
-  const authors = new Set()
-  Object.values(nodes).forEach(node => {
-    const name = node._raw.author?.name
-    if (name) authors.add(name)
-  })
-  return Array.from(authors).sort()
-})
-
-const allAssignees = computed(() => {
-  const assignees = new Set()
-  Object.values(nodes).forEach(node => {
-    if (node._raw.assignee) {
-      assignees.add(node._raw.assignee.name)
-    }
-  })
-  return Array.from(assignees).sort()
-})
-
-const allParticipants = computed(() => {
-  const people = new Set()
-  Object.values(nodes).forEach(node => {
-    const raw = node?._raw || {}
-    const parts = Array.isArray(raw.participants) ? raw.participants : []
-    parts.forEach(p => {
-      const n = p?.name || p?.username
-      if (n) people.add(n)
-    })
-    if (raw.author?.name) people.add(raw.author.name)
-    if (raw.assignee?.name) people.add(raw.assignee.name)
-    if (Array.isArray(raw.assignees)) {
-      raw.assignees.forEach(a => {
-        if (a?.name) people.add(a.name)
-      })
-    }
-  })
-  return Array.from(people).sort()
-})
-
-const userStateByName = computed(() => {
-  const map = {}
-  const setState = (name, state) => {
-    const n = String(name || '').trim()
-    if (!n) return
-    const s = String(state || '').trim().toLowerCase()
-    if (!s) return
-    // prefer non-active if we see it anywhere
-    const prev = map[n]
-    if (!prev || prev === 'active') map[n] = s
-  }
-
-  Object.values(nodes).forEach(node => {
-    const raw = node?._raw || {}
-    if (raw.author?.name) setState(raw.author.name, raw.author.state)
-    if (raw.assignee?.name) setState(raw.assignee.name, raw.assignee.state)
-    if (Array.isArray(raw.assignees)) {
-      raw.assignees.forEach(a => setState(a?.name, a?.state))
-    }
-    if (Array.isArray(raw.participants)) {
-      raw.participants.forEach(p => setState(p?.name || p?.username, p?.state))
-    }
-  })
-
-  return map
-})
-
-
-const allMilestones = computed(() => {
-  const milestones = new Set()
-  Object.values(nodes).forEach(node => {
-    if (node._raw.milestone) {
-      milestones.add(node._raw.milestone.title)
-    }
-  })
-  return Array.from(milestones).sort()
-})
-
-const allPriorities = computed(() => {
-  const priorities = new Set()
-  Object.values(nodes).forEach(node => {
-    const p = getScopedLabelValue(node._raw.labels, 'Priority')
-    if (p) priorities.add(p)
-  })
-  return Array.from(priorities).sort()
-})
-
-const allTypes = computed(() => {
-  const types = new Set()
-  Object.values(nodes).forEach(node => {
-    const t = getScopedLabelValue(node._raw.labels, 'Type')
-    if (t) types.add(t)
-  })
-  return Array.from(types).sort()
-})
-
-const filteredNodes = computed(() => {
-  if (settings.uiState.filters.selectedLabels?.length === 0 && 
-      settings.uiState.filters.excludedLabels?.length === 0 && 
-      settings.uiState.filters.selectedAuthors?.length === 0 &&
-      (settings.uiState.filters.selectedAssignees?.length || 0) === 0 && 
-      (settings.uiState.filters.selectedMilestones?.length || 0) === 0 &&
-      (settings.uiState.filters.selectedPriorities?.length || 0) === 0 &&
-      (settings.uiState.filters.selectedTypes?.length || 0) === 0 &&
-      (settings.uiState.filters.selectedStatuses?.length || 0) === 0 &&
-      !settings.uiState.filters.selectedSubscription &&
-      !settings.uiState.filters.mrMode &&
-      (settings.uiState.filters.selectedParticipants?.length || 0) === 0 &&
-      !settings.uiState.filters.dueStatus &&
-      !settings.uiState.filters.spentMode &&
-      !settings.uiState.filters.budgetMode &&
-      !settings.uiState.filters.estimateBucket &&
-      !settings.uiState.filters.taskMode &&
-      settings.uiState.filters.includeClosed &&
-      !settings.uiState.filters.searchQuery &&
-      settings.uiState.filters.dateFilters.createdMode === 'none' &&
-      settings.uiState.filters.dateFilters.updatedMode === 'none' &&
-      settings.uiState.filters.dateFilters.dueDateMode === 'none'
-  ) return nodes
-  
-  const result = {}
-  const stateMap = userStateByName.value || {}
-  Object.values(nodes).forEach(node => {
-    // Keep user-updated issues visible even if filters would exclude them.
-    if (node && node._uiForceShow) {
-      result[node.id] = node
-      return
-    }
-
-    const nodeLabels = node._raw.labels || []
-    const meName = settings.meta.gitlabMeName || ''
-    const authorName = node._raw.author ? node._raw.author.name : null
-    const assigneeName = node._raw.assignee ? node._raw.assignee.name : null
-    const milestoneTitle = node._raw.milestone ? node._raw.milestone.title : null
-    const priority = getScopedLabelValue(nodeLabels, 'Priority')
-    const type = getScopedLabelValue(nodeLabels, 'Type')
-
-    // -1. Closed Filter (separate from Status labels)
-    if (!settings.uiState.filters.includeClosed && node._raw?.state === 'closed') return false
-
-    // 0. Status Filter
-    let statusMatch = true
-    if (settings.uiState.filters.selectedStatuses?.length > 0) {
-        // Map common GitLab states to our status list if the specific label is missing
-        let currentStatus = (node && node._raw && typeof node._raw.status_display === 'string') ? String(node._raw.status_display).trim() : ''
-        if (!currentStatus) currentStatus = (node && node._raw && node._raw.work_item_status) ? String(node._raw.work_item_status).trim() : ''
-        if (!currentStatus) currentStatus = getScopedLabelValue(nodeLabels, 'Status')
-        if (!currentStatus) {
-            currentStatus = 'To do'
-        }
-        
-        statusMatch = settings.uiState.filters.selectedStatuses.includes(currentStatus)
-    }
-
-    if (!statusMatch) return false
-
-    // 0b. Subscription Filter
-    if (settings.uiState.filters.selectedSubscription) {
-        const isSubscribed = !!node._raw?.subscribed
-        if (settings.uiState.filters.selectedSubscription === 'subscribed' && !isSubscribed) return false
-        if (settings.uiState.filters.selectedSubscription === 'unsubscribed' && isSubscribed) return false
-    }
-    
-    // 1. Label Filter
-    let labelMatch = true
-    if (settings.uiState.filters.selectedLabels?.length > 0) {
-        labelMatch = settings.uiState.filters.selectedLabels.some(tag => nodeLabels.includes(tag))
-    }
-    
-    // 1b. Exclude Labels
-    if (settings.uiState.filters.excludedLabels?.length > 0) {
-        if (settings.uiState.filters.excludedLabels.some(tag => nodeLabels.includes(tag))) {
-            labelMatch = false
-        }
-    }
-
-    // 1c. Author Filter
-    let authorMatch = true
-    if (settings.uiState.filters.selectedAuthors?.length > 0) {
-        const rawWant = settings.uiState.filters.selectedAuthors
-        const wantsDeactivated = rawWant.includes('@deactivated')
-        const want = rawWant.includes('@me')
-          ? (meName ? rawWant.map(v => (v === '@me' ? meName : v)) : [])
-          : rawWant
-        const wantNames = want.filter(v => v && v !== '@deactivated')
-        const isDeactivated = authorName && (() => {
-          const s = stateMap[authorName]
-          const st = s ? String(s).trim().toLowerCase() : ''
-          return !!st && st !== 'active'
-        })()
-        authorMatch = !!authorName && (wantNames.includes(authorName) || (wantsDeactivated && isDeactivated))
-    }
-
-    // 2. Assignee Filter
-    let assigneeMatch = true
-    if ((settings.uiState.filters.selectedAssignees?.length || 0) > 0) {
-        const rawWant = settings.uiState.filters.selectedAssignees
-        const want = rawWant.includes('@me')
-          ? (meName ? rawWant.map(v => (v === '@me' ? meName : v)) : [])
-          : rawWant
-        const wantsDeactivated = want.includes('@deactivated')
-        const wantsUnassigned = want.includes('@unassigned')
-        const wantNames = want.filter(v => v && v !== '@deactivated' && v !== '@unassigned')
-        const isDeactivated = assigneeName && (() => {
-          const s = stateMap[assigneeName]
-          const st = s ? String(s).trim().toLowerCase() : ''
-          return !!st && st !== 'active'
-        })()
-        const matchUnassigned = wantsUnassigned && !assigneeName
-        const matchNamed = !!assigneeName && (wantNames.includes(assigneeName) || (wantsDeactivated && isDeactivated))
-        assigneeMatch = matchNamed || matchUnassigned
-    }
-
-    // Logic: AND between different filters
-    if (!labelMatch || !authorMatch || !assigneeMatch) return false
-
-    // 3. Milestone Filter
-    let milestoneMatch = true
-    if ((settings.uiState.filters.selectedMilestones?.length || 0) > 0) {
-        milestoneMatch = milestoneTitle && settings.uiState.filters.selectedMilestones.includes(milestoneTitle)
-    }
-
-    // 4. Priority Filter
-    let priorityMatch = true
-    if ((settings.uiState.filters.selectedPriorities?.length || 0) > 0) {
-        priorityMatch = priority && settings.uiState.filters.selectedPriorities.includes(priority)
-    }
-
-    // 5. Type Filter
-    let typeMatch = true
-    if ((settings.uiState.filters.selectedTypes?.length || 0) > 0) {
-        typeMatch = type && settings.uiState.filters.selectedTypes.includes(type)
-    }
-
-    // 5b. Merge Requests Filter
-    if (settings.uiState.filters.mrMode) {
-        const mrCount = Number(node.mergeRequestsCount) || 0
-        if (settings.uiState.filters.mrMode === 'has' && mrCount <= 0) return false
-        if (settings.uiState.filters.mrMode === 'none' && mrCount > 0) return false
-    }
-
-    // 5c. Participants Filter
-    const rawParticipants = Array.isArray(node._raw?.participants) ? node._raw.participants : []
-    const participantNames = rawParticipants
-      .map(p => (p && (p.name || p.username)) ? String(p.name || p.username) : '')
-      .filter(Boolean)
-    if ((settings.uiState.filters.selectedParticipants?.length || 0) > 0) {
-        const rawWant = settings.uiState.filters.selectedParticipants
-        const wantsDeactivated = rawWant.includes('@deactivated')
-        const want = rawWant.includes('@me')
-          ? (meName ? rawWant.map(v => (v === '@me' ? meName : v)) : [])
-          : rawWant
-        const wantNames = want.filter(v => v && v !== '@deactivated')
-        const hitName = wantNames.some(n => participantNames.includes(n))
-        const hitDeactivated = wantsDeactivated && participantNames.some(n => {
-          const s = stateMap[n]
-          const st = s ? String(s).trim().toLowerCase() : ''
-          return !!st && st !== 'active'
-        })
-        if (!hitName && !hitDeactivated) return false
-    }
-
-    // 5d. Due Status Filter
-    if (settings.uiState.filters.dueStatus) {
-        const dueRaw = node.dueDate || node._raw?.due_date || node._raw?.dueDate || null
-        const due = dueRaw ? new Date(dueRaw) : null
-        const dueMs = due && Number.isFinite(due.getTime()) ? due.getTime() : null
-        const nowMs = Date.now()
-        const soonDays = Math.max(1, Number(settings.uiState.view.dueSoonDays) || 7)
-        const soonMs = soonDays * 24 * 60 * 60 * 1000
-        const mode = settings.uiState.filters.dueStatus
-        if (mode === 'none') {
-            if (dueMs != null) return false
-        } else if (mode === 'overdue') {
-            if (dueMs == null || dueMs >= nowMs) return false
-        } else if (mode === 'soon') {
-            if (dueMs == null || dueMs < nowMs || (dueMs - nowMs) > soonMs) return false
-        } else if (mode === 'later') {
-            if (dueMs == null || (dueMs - nowMs) <= soonMs) return false
-        }
-    }
-
-    // 5e. Time Spent Filter
-    if (settings.uiState.filters.spentMode) {
-        const spent = Number(node.timeSpent) || 0
-        if (settings.uiState.filters.spentMode === 'has' && spent <= 0) return false
-        if (settings.uiState.filters.spentMode === 'none' && spent > 0) return false
-    }
-
-    // 5f. Budget Filter
-    if (settings.uiState.filters.budgetMode) {
-        const est = Number(node.timeEstimate) || 0
-        const spent = Number(node.timeSpent) || 0
-        const mode = settings.uiState.filters.budgetMode
-        if (mode === 'no_est') {
-            if (est > 0) return false
-        } else if (mode === 'over') {
-            if (est <= 0 || spent <= est) return false
-        } else if (mode === 'within') {
-            if (est <= 0 || spent > est) return false
-        }
-    }
-
-    // 5g. Estimate Bucket Filter
-    if (settings.uiState.filters.estimateBucket) {
-        const est = Number(node.timeEstimate) || 0
-        const h = est / 3600
-        const b = settings.uiState.filters.estimateBucket
-        if (b === 'none') {
-            if (est > 0) return false
-        } else if (est <= 0) {
-            return false
-        } else if (b === 'lt1h' && !(h < 1)) return false
-        else if (b === '1_4h' && !(h >= 1 && h < 4)) return false
-        else if (b === '4_8h' && !(h >= 4 && h < 8)) return false
-        else if (b === '1_3d' && !(h >= 8 && h < 24)) return false
-        else if (b === '3dplus' && !(h >= 24)) return false
-    }
-
-    // 5h. Task Completion Filter
-    if (settings.uiState.filters.taskMode) {
-        const tcs = node._raw?.task_completion_status || node._raw?.taskCompletionStatus || null
-        const count = Number(tcs?.count) || 0
-        const done = Number(tcs?.completed_count ?? tcs?.completedCount) || 0
-        const mode = settings.uiState.filters.taskMode
-        if (mode === 'no_tasks' && count > 0) return false
-        if (mode === 'none_done' && !(count > 0 && done === 0)) return false
-        if (mode === 'in_progress' && !(count > 0 && done > 0 && done < count)) return false
-        if (mode === 'done' && !(count > 0 && done >= count)) return false
-    }
-
-    // 6. Search Filter
-    let searchMatch = true
-    if (settings.uiState.filters.searchQuery) {
-        const query = String(settings.uiState.filters.searchQuery || '').trim().toLowerCase()
-        const raw = node._raw || {}
-
-        // Exact issue-id shortcut:
-        // - "#123" or "123" matches ONLY that issue iid (prevents accidental matches on references in descriptions).
-        const m = query.match(/^#?(\d+)$/)
-        if (m && m[1]) {
-          searchMatch = String(node.id) === String(m[1])
-        } else {
-          // Extract JIRA ID if present in title
-          const jiraMatch = raw.title ? raw.title.match(/^\[([A-Z]+-\d+)\]/) : null
-          const jiraId = jiraMatch ? jiraMatch[1] : ''
-
-          const searchableText = [
-              raw.title,
-              raw.description,
-              String(node.id),
-              `#${node.id}`,
-              jiraId,
-              raw.author?.name,
-              raw.assignee?.name,
-              ...(raw.assignees || []).map(a => a.name),
-              raw.milestone?.title,
-              ...(raw.labels || [])
-          ].filter(Boolean).join(' ').toLowerCase()
-
-          searchMatch = searchableText.includes(query)
-        }
-    }
-
-    // 7. Date Filters
-    let dateMatch = true
-    const raw = node._raw || {}
-    
-    // SVN date normalize
-    let createdAt = raw.created_at || raw.date; // SVN uses date
-    let updatedAt = raw.updated_at || raw.date;
-    
-    if (settings.uiState.filters.dateFilters.createdMode !== 'none') {
-        if (settings.uiState.filters.dateFilters.createdMode === 'after' || settings.uiState.filters.dateFilters.createdMode === 'between') {
-             if (settings.uiState.filters.dateFilters.createdAfter && (!createdAt || new Date(createdAt) < new Date(settings.uiState.filters.dateFilters.createdAfter))) dateMatch = false
-        }
-        if (dateMatch && (settings.uiState.filters.dateFilters.createdMode === 'before' || settings.uiState.filters.dateFilters.createdMode === 'between')) {
-             if (settings.uiState.filters.dateFilters.createdBefore) {
-                const d = new Date(settings.uiState.filters.dateFilters.createdBefore)
-                d.setDate(d.getDate() + 1)
-                if (!createdAt || new Date(createdAt) >= d) dateMatch = false
-             }
-        }
-        if (dateMatch && settings.uiState.filters.dateFilters.createdMode === 'last_x_days') {
-             if (settings.uiState.filters.dateFilters.createdDays && settings.uiState.filters.dateFilters.createdDays > 0) {
-                 const cutoff = new Date()
-                 cutoff.setDate(cutoff.getDate() - settings.uiState.filters.dateFilters.createdDays)
-                 if (!createdAt || new Date(createdAt) < cutoff) dateMatch = false
-             }
-        }
-    }
-
-    if (dateMatch && settings.uiState.filters.dateFilters.updatedMode !== 'none') {
-        if (settings.uiState.filters.dateFilters.updatedMode === 'after' || settings.uiState.filters.dateFilters.updatedMode === 'between') {
-            if (settings.uiState.filters.dateFilters.updatedAfter && (!updatedAt || new Date(updatedAt) < new Date(settings.uiState.filters.dateFilters.updatedAfter))) dateMatch = false
-        }
-        if (dateMatch && (settings.uiState.filters.dateFilters.updatedMode === 'before' || settings.uiState.filters.dateFilters.updatedMode === 'between')) {
-            if (settings.uiState.filters.dateFilters.updatedBefore) {
-                const d = new Date(settings.uiState.filters.dateFilters.updatedBefore)
-                d.setDate(d.getDate() + 1)
-                if (!updatedAt || new Date(updatedAt) >= d) dateMatch = false
-            }
-        }
-        if (dateMatch && settings.uiState.filters.dateFilters.updatedMode === 'last_x_days') {
-             if (settings.uiState.filters.dateFilters.updatedDays && settings.uiState.filters.dateFilters.updatedDays > 0) {
-                 const cutoff = new Date()
-                 cutoff.setDate(cutoff.getDate() - settings.uiState.filters.dateFilters.updatedDays)
-                 if (!updatedAt || new Date(updatedAt) < cutoff) dateMatch = false
-             }
-        }
-    }
-
-    if (dateMatch && settings.uiState.filters.dateFilters.dueDateMode !== 'none') {
-        if (settings.uiState.filters.dateFilters.dueDateMode === 'after' || settings.uiState.filters.dateFilters.dueDateMode === 'between') {
-            if (settings.uiState.filters.dateFilters.dueDateAfter && (!raw.due_date || raw.due_date < settings.uiState.filters.dateFilters.dueDateAfter)) dateMatch = false
-        }
-        if (dateMatch && (settings.uiState.filters.dateFilters.dueDateMode === 'before' || settings.uiState.filters.dateFilters.dueDateMode === 'between')) {
-            if (settings.uiState.filters.dateFilters.dueDateBefore && (!raw.due_date || raw.due_date > settings.uiState.filters.dateFilters.dueDateBefore)) dateMatch = false
-        }
-        if (dateMatch && settings.uiState.filters.dateFilters.dueDateMode === 'last_x_days') {
-             if (settings.uiState.filters.dateFilters.dueDateDays && settings.uiState.filters.dateFilters.dueDateDays > 0) {
-                 // due_date is YYYY-MM-DD
-                 const cutoff = new Date()
-                 cutoff.setDate(cutoff.getDate() - settings.uiState.filters.dateFilters.dueDateDays)
-                 const cutoffStr = cutoff.toISOString().split('T')[0]
-                 if (!raw.due_date || raw.due_date < cutoffStr) dateMatch = false
-             }
-        }
-    }
-
-    if (labelMatch && assigneeMatch && milestoneMatch && priorityMatch && typeMatch && searchMatch && dateMatch) {
-      result[node.id] = node
-    }
-  })
-  return result
-})
-
-const filteredEdges = computed(() => {
-  // If links are hidden (none), return empty object to "kill" them from graph
-  if (settings.uiState.view.linkMode === 'none') return {}
-
-  const result = {}
-  const nodeIds = new Set(Object.keys(filteredNodes.value))
-  
-  if (settings.uiState.view.linkMode === 'dependency') {
-      // Standard dependency links
-      Object.entries(edges).forEach(([key, edge]) => {
-        if (nodeIds.has(edge.source) && nodeIds.has(edge.target)) {
-          result[key] = edge
-        }
-      })
-  } else if (settings.uiState.view.linkMode === 'group') {
-      // Group links: Create edges between nodes that share the same group value
-      // This is dynamic based on current groupingMode
-      // WARNING: This can create N^2 edges if groups are large!
-      // To prevent explosion, maybe only link adjacent nodes in sort order or some MST?
-      // Or literally all-to-all?
-      
-      // Let's implement a "Sequence" style link or just simple chain for now to avoid mess?
-      // Or maybe the user means "Show links ONLY if they are within the same group"?
-      // "allow link mode as in : issue dependency, and group that is selected"
-      
-      // Interpretation A: Link nodes that belong to the same group (e.g. same Assignee)
-      // Interpretation B: Filter dependency links to only those within same group
-      
-      // Given "recreate the nodes without links", user likely wants DIFFERENT links.
-      // Let's assume Interpretation A: Artificial links based on grouping.
-      
-      // Actually, "group that is selected" might mean the groupingMode.
-      
-      if (settings.uiState.view.groupingMode === 'none') return {} // No groups to link
-      
-      // We need to generate edges on the fly
-      // 1. Group nodes
-      const groups = {}
-      Object.values(filteredNodes.value).forEach(node => {
-          let key = 'default'
-          const n = node._raw
-          if (node.type === 'svn_commit') {
-              // Special grouping for SVN?
-              if (settings.uiState.view.groupingMode === 'author') key = n.author || 'Unknown'
-              else key = 'SVN Commits' // Default for other groupings
-          } else {
-              if (settings.uiState.view.groupingMode === 'tag') key = node.tag || '_no_tag_'
-              else if (settings.uiState.view.groupingMode === 'author') key = n.author ? n.author.name : 'Unknown'
-              else if (settings.uiState.view.groupingMode === 'state') key = n.state
-              else if (settings.uiState.view.groupingMode === 'assignee') key = n.assignee ? n.assignee.name : 'Unassigned'
-              else if (settings.uiState.view.groupingMode === 'milestone') key = n.milestone ? n.milestone.title : 'No Milestone'
-              else if (settings.uiState.view.groupingMode === 'priority') key = getScopedLabelValue(n.labels, 'Priority') || 'No Priority'
-              else if (settings.uiState.view.groupingMode === 'type') key = getScopedLabelValue(n.labels, 'Type') || 'No Type'
-              else if (settings.uiState.view.groupingMode === 'epic') {
-                const parentType = String(n.parent?.work_item_type || '').trim().toLowerCase()
-                key = (
-                  (n.epic ? n.epic.title : null) ||
-                  (parentType === 'epic' ? n.parent?.title : null) ||
-                  (n.epic_iid != null ? `Epic #${n.epic_iid}` : null) ||
-                  getScopedLabelValue(n.labels, 'Epic') ||
-                  'No Epic'
-                )
-              }
-              else if (String(settings.uiState.view.groupingMode || '').startsWith('scoped:')) {
-                const prefix = String(settings.uiState.view.groupingMode || '').substring('scoped:'.length)
-                key = getScopedLabelValue(n.labels, prefix) || `No ${prefix}`
-              }
-          }
-          
-          if (!groups[key]) groups[key] = []
-          groups[key].push(node.id)
-      })
-      
-      // 2. Create chain links within groups to keep them together visually
-      // (Full mesh is too heavy, chain is enough for force directed)
-      let edgeCount = 0
-      Object.values(groups).forEach(ids => {
-          if (ids.length < 2) return
-          // Sort by ID to be deterministic
-          ids.sort()
-          for (let i = 0; i < ids.length - 1; i++) {
-             const source = ids[i]
-             const target = ids[i+1]
-             const key = `group-${source}-${target}`
-             result[key] = { source, target, label: 'group' }
-             edgeCount++
-          }
-          // Close the loop for better clustering?
-          if (ids.length > 2) {
-              const source = ids[ids.length-1]
-              const target = ids[0]
-              const key = `group-${source}-${target}`
-              result[key] = { source, target, label: 'group' }
-          }
-      })
-  }
-
-  return result
-})
-
-// Auto-set grouping when switching color mode (optional, maybe better not to enforce)
-watch(() => settings.uiState.view.viewMode, (v) => {
-  if (v === 'state' && settings.uiState.view.groupingMode === 'none') {
-      // Do nothing, let user decide
-  }
-})
-
-// Dependency mode: default to hiding unlinked nodes when switching into it.
-watch(() => settings.uiState.view.linkMode, (v, old) => {
-  if (v === 'dependency' && old !== 'dependency' && settings.uiState.view.hideUnlinked !== true) {
-    settings.uiState.view.hideUnlinked = true
-  }
-})
-
-const hasData = computed(() => Object.keys(nodes).length > 0)
-const isMockGraph = computed(() => {
-  try {
-    return Object.values(nodes).some(n => n && n._raw && n._raw.__mock)
-  } catch {
-    return false
-  }
-})
-const statsText = computed(() => {
-  const nodesArr = Object.values(filteredNodes.value)
-  const openCount = nodesArr.filter(n => n._raw?.state === 'opened').length
-  const closedCount = nodesArr.filter(n => n._raw?.state === 'closed').length
-  const edgeCount = Object.keys(filteredEdges.value).length
-  
-  const parts = []
-  if (openCount > 0) parts.push(`${openCount} Open`)
-  if (closedCount > 0) parts.push(`${closedCount} Closed`)
-  if (edgeCount > 0) parts.push(`${edgeCount} Link${edgeCount === 1 ? '' : 's'}`)
-  
-  return parts.join(', ') || 'No issues found'
-})
-
-const groupStatsText = computed(() => {
-  const mode = String(settings.uiState.view.groupingMode || '')
-  if (!mode || mode === 'none') return null
-  // Special layout mode (SVN) doesn't meaningfully have groups.
-  if (mode === 'svn_revision') return null
-
-  const getWeekYear = (dateStr) => {
-    if (!dateStr) return 'No Date'
-    const d = new Date(dateStr)
-    if (!Number.isFinite(d.getTime())) return 'No Date'
-    const onejan = new Date(d.getFullYear(), 0, 1)
-    const week = Math.ceil((((d - onejan) / 86400000) + onejan.getDay() + 1) / 7)
-    return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`
-  }
-
-  const groups = new Set()
-  let multiGroupIssues = 0
-
-  Object.values(filteredNodes.value).forEach(node => {
-    const raw = node?._raw || {}
-    const labelsRaw = raw.labels || []
-    const labels = Array.isArray(labelsRaw)
-      ? labelsRaw.filter(l => typeof l === 'string' && l.trim()).map(l => l.trim())
-      : []
-
-    let keys = null
-    if (mode === 'tag') {
-      keys = labels.length ? labels : ['_no_tag_']
-    } else if (mode === 'state') {
-      const statusKeys = getScopedLabelValues(labels, 'Status')
-      keys = statusKeys.length ? statusKeys : [String(raw.state || '').toLowerCase() === 'closed' ? 'Done' : 'To do']
-    } else if (mode === 'priority') {
-      const ks = getScopedLabelValues(labels, 'Priority')
-      keys = ks.length ? ks : ['No Priority']
-    } else if (mode === 'type') {
-      const ks = getScopedLabelValues(labels, 'Type')
-      keys = ks.length ? ks : ['No Type']
-    } else if (mode.startsWith('scoped:')) {
-      const prefix = mode.substring('scoped:'.length)
-      const ks = getScopedLabelValues(labels, prefix)
-      keys = ks.length ? ks : [`No ${prefix}`]
-    } else if (mode === 'author') {
-      keys = [raw.author ? raw.author.name : 'Unknown']
-    } else if (mode === 'assignee') {
-      keys = [raw.assignee ? raw.assignee.name : 'Unassigned']
-    } else if (mode === 'milestone') {
-      keys = [raw.milestone ? raw.milestone.title : 'No Milestone']
-    } else if (mode === 'weight') {
-      keys = [raw.weight != null ? String(raw.weight) : 'No Weight']
-    } else if (mode === 'epic') {
-      const parentType = String(raw.parent?.work_item_type || '').trim().toLowerCase()
-      keys = [(
-        (raw.epic ? raw.epic.title : null) ||
-        (parentType === 'epic' ? raw.parent?.title : null) ||
-        (raw.epic_iid != null ? `Epic #${raw.epic_iid}` : null) ||
-        getScopedLabelValue(labels, 'Epic') ||
-        'No Epic'
-      )]
-    } else if (mode === 'iteration') {
-      keys = [raw.iteration ? raw.iteration.title : 'No Iteration']
-    } else if (mode === 'stale') {
-      const now = new Date()
-      const updated = raw.updated_at ? new Date(raw.updated_at) : null
-      const diffTime = updated && Number.isFinite(updated.getTime()) ? Math.abs(now - updated) : 0
-      const diffDays = updated && Number.isFinite(updated.getTime()) ? Math.ceil(diffTime / (1000 * 60 * 60 * 24)) : 0
-      if (diffDays > 90) keys = ['> 90 Days Stale']
-      else if (diffDays > 60) keys = ['> 60 Days Stale']
-      else if (diffDays > 30) keys = ['> 30 Days Stale']
-      else keys = ['Active (< 30 Days)']
-    } else if (mode === 'timeline_created') {
-      keys = [getWeekYear(raw.created_at)]
-    } else if (mode === 'timeline_updated') {
-      keys = [getWeekYear(raw.updated_at)]
-    } else if (mode === 'timeline_closed') {
-      keys = [getWeekYear(raw.closed_at)]
-    } else {
-      keys = ['default']
-    }
-
-    // De-dupe while preserving order (matches graph behavior)
-    const seen = new Set()
-    keys = (Array.isArray(keys) ? keys : [keys]).map(k => String(k == null ? '' : k).trim() || 'Unknown').filter(k => {
-      if (seen.has(k)) return false
-      seen.add(k)
-      return true
-    })
-
-    if (keys.length > 1) multiGroupIssues += 1
-    keys.forEach(k => groups.add(k))
-  })
-
-  let text = `${groups.size} Groups`
-  if (multiGroupIssues > 0) text += ` • ${multiGroupIssues} in multiple groups`
-  return text
-})
+const {
+  allLabels,
+  allAuthors,
+  allAssignees,
+  allParticipants,
+  userStateByName,
+  allMilestones,
+  allPriorities,
+  allTypes,
+  filteredNodes,
+  filteredEdges,
+  hasData,
+  isMockGraph,
+  statsText,
+  groupStatsText
+} = useGraphDerivedState({ settings, nodes, edges })
 
 const dataAge = computed(() => {
   if (!lastUpdated.value) return null
@@ -1562,141 +565,45 @@ const isDataStale = computed(() => {
 
 const svnCommitCountLabel = computed(() => svnCommitCount.value)
 
-
-const vizModeOptions = computed(() => {
-  const base = [
-    { title: 'Git tickets', value: 'issues' }
-  ]
-  if (canUseSvn.value) base.push({ title: 'SVN rev tree', value: 'svn' })
-  if (isElectron.value) base.push({ title: 'Chat tools', value: 'chattools' })
-  return base
+const {
+  resolveGitLabApiBaseUrl,
+  initCachedData,
+  loadData,
+  handleRefreshClick,
+  handleUpdateSource,
+  handleClearSource,
+  clearData
+} = useDataLoader({
+  settings,
+  nodes,
+  edges,
+  issueGraphSnapshot,
+  svnUrl,
+  svnVizLimit,
+  svnRecentCommits,
+  svnCommitCount,
+  gitlabCacheMeta,
+  mattermostMeta,
+  lastUpdated,
+  loading,
+  loadingMessage,
+  updateStatus,
+  error,
+  isElectron,
+  canUseSvn,
+  vizMode,
+  buildSvnVizGraph,
+  resetFilters,
+  createMockIssuesGraph
 })
 
-const buildSvnVizGraph = () => {
-  // Clear current graph data
-  for (const k in nodes) delete nodes[k]
-  for (const k in edges) delete edges[k]
-
-  const limit = Math.max(100, Math.min(Number(svnVizLimit.value) || 2000, 5000))
-  // Use most recent N revisions (svnRecentCommits is newest-first), but order them old -> new for left-to-right layout.
-  let list = (svnRecentCommits.value || [])
-    .slice(0, limit)
-    .slice()
-    .sort((a, b) => Number(a.revision) - Number(b.revision))
-
-  // If no SVN data is present, show a small sample timeline.
-  if (!list.length) {
-    const baseRev = 1000
-    list = Array.from({ length: 12 }).map((_, i) => {
-      const rev = baseRev + i
-      return {
-        revision: rev,
-        author: i % 3 === 0 ? 'alice' : (i % 3 === 1 ? 'bob' : 'carol'),
-        date: new Date(Date.now() - (12 - i) * 3600 * 1000).toISOString(),
-        message: `Sample commit r${rev} (mock)`,
-        paths: [],
-        __mock: true
-      }
-    })
-  }
-
-  // Build nodes
-  list.forEach(commit => {
-    const rev = String(commit.revision)
-    const id = `svn-${rev}`
-    const raw = {
-      ...commit,
-      title: commit.message || `r${rev}`,
-      author: { name: commit.author || 'Unknown' },
-      created_at: commit.date,
-      updated_at: commit.date,
-      state: 'svn',
-      labels: [],
-      __mock: !!commit.__mock
-    }
-
-    nodes[id] = {
-      id,
-      name: `r${rev} ${commit.author || 'Unknown'}`,
-      color: '#6f42c1',
-      updatedAt: commit.date,
-      createdAt: commit.date,
-      author: { name: commit.author || 'Unknown' },
-      webUrl: '',
-      type: 'svn_commit',
-      _raw: raw
-    }
-  })
-
-  // Build edges: sequential chain + copy-from edges if available
-  for (let i = 0; i < list.length - 1; i++) {
-    const a = `svn-${list[i].revision}`
-    const b = `svn-${list[i + 1].revision}`
-    edges[`rev-${a}-${b}`] = { source: a, target: b, label: 'prev' }
-  }
-
-  list.forEach(commit => {
-    const to = `svn-${commit.revision}`
-    ;(commit.paths || []).forEach(p => {
-      if (!p || !p.copyFromRev) return
-      const from = `svn-${p.copyFromRev}`
-      if (nodes[from]) {
-        const key = `copy-${from}-${to}-${p.path || ''}`
-        edges[key] = { source: from, target: to, label: 'copy' }
-      }
-    })
-  })
-}
-
-const applyVizMode = () => {
-  if (vizMode.value === 'svn') {
-    // Save current issues-mode prefs
-    issueModePrefs.viewMode = settings.uiState.view.viewMode
-    issueModePrefs.groupingMode = settings.uiState.view.groupingMode
-    issueModePrefs.linkMode = settings.uiState.view.linkMode
-
-    // Defaults for SVN tree
-    settings.uiState.view.viewMode = 'author'
-    settings.uiState.view.groupingMode = 'svn_revision'
-    settings.uiState.view.linkMode = 'none'
-
-    buildSvnVizGraph()
-    return
-  }
-
-  // issues mode: restore snapshot
-  for (const k in nodes) delete nodes[k]
-  for (const k in edges) delete edges[k]
-  Object.assign(nodes, issueGraphSnapshot.nodes)
-  Object.assign(edges, issueGraphSnapshot.edges)
-
-  // Restore user prefs for issues mode
-  settings.uiState.view.viewMode = issueModePrefs.viewMode
-  settings.uiState.view.groupingMode = issueModePrefs.groupingMode
-  settings.uiState.view.linkMode = issueModePrefs.linkMode
-}
-
-watch(vizMode, async (v, old) => {
-  // Special-case: "chattools" is a navigation action, not a persistent graph mode.
-  if (v === 'chattools') {
-    if (!isElectron.value) {
-      await nextTick()
-      vizMode.value = lastGraphVizMode.value || 'issues'
-      return
-    }
-    activePage.value = 'chattools'
-    // Snap back to the last graph mode so returning from ChatTools doesn't immediately re-open it.
-    await nextTick()
-    vizMode.value = lastGraphVizMode.value || 'issues'
-    return
-  }
-
-  if (v === 'issues' || v === 'svn') lastGraphVizMode.value = v
-  applyVizMode()
-})
-
-watch(svnVizLimit, () => {
-  if (vizMode.value === 'svn') buildSvnVizGraph()
+const { onIssueStateChange, onIssueAssigneeChange } = useGitLabIssueMutations({
+  settings,
+  nodes,
+  issueGraph,
+  resolveGitLabApiBaseUrl,
+  snackbarText,
+  snackbar
 })
 
 onMounted(async () => {
@@ -1710,107 +617,16 @@ onMounted(async () => {
   // Ensure settings are loaded (disk-backed)
   await initSettings()
 
-  // Restore page/tab from hash (supports refresh + back/forward).
-  syncStateFromHash()
-  window.addEventListener('hashchange', syncStateFromHash)
-
-  // Keep URL hash in sync with UI state.
-  watch(activePage, (p) => {
-    if (isApplyingHash) return
-    setHash(p, configInitialTab.value, { replace: false })
-  })
-  watch(configInitialTab, (t) => {
-    if (isApplyingHash) return
-    if (activePage.value !== 'config') return
-    // Tab switching shouldn't spam browser history.
-    setHash('config', t, { replace: true })
-  })
-
   // Keep sidebar "data age" fresh.
   nowTick.value = Date.now()
   nowTickInterval = setInterval(() => { nowTick.value = Date.now() }, 10 * 60 * 1000)
 
-  // Theme (system/dark/light)
-  systemMql = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null
-  systemPrefersDark.value = !!(systemMql && systemMql.matches)
-  if (systemMql && systemMql.addEventListener) {
-    systemMql.addEventListener('change', (e) => {
-      systemPrefersDark.value = !!e.matches
-    })
-  }
-  applyTheme()
-  watch(() => settings.uiState.ui.theme, () => applyTheme())
-  watch(systemPrefersDark, () => applyTheme())
-
-  // Try to load cached data
-  try {
-    const cachedMeta = await localforage.getItem('gitlab_meta')
-    if (cachedMeta && typeof cachedMeta === 'object') {
-      gitlabCacheMeta.value = {
-        nodes: cachedMeta.nodes || 0,
-        edges: cachedMeta.edges || 0,
-        updatedAt: cachedMeta.updatedAt || null,
-        // incremental sync cursor + cache identity (backward compatible)
-        syncCursor: cachedMeta.syncCursor || null,
-        projectId: cachedMeta.projectId || null,
-        apiBaseUrl: cachedMeta.apiBaseUrl || null
-      }
-    }
-    const cachedNodes = await localforage.getItem('gitlab_nodes')
-    const cachedEdges = await localforage.getItem('gitlab_edges')
-    
-    // Load lastUpdated from settings
-    if (settings.meta && settings.meta.lastUpdated) lastUpdated.value = settings.meta.lastUpdated
-
-    if (cachedNodes && cachedEdges) {
-      // localforage handles JSON parsing automatically
-      // Important: Do NOT load massive SVN commit nodes into the graph on startup.
-      // The force-directed graph cannot handle tens/hundreds of thousands of nodes and will freeze the UI.
-      const filteredCachedNodes = {}
-      Object.entries(cachedNodes).forEach(([id, n]) => {
-        const isSvn = (n && (n.type === 'svn_commit' || String(id).startsWith('svn-')))
-        if (!isSvn) filteredCachedNodes[id] = n
-      })
-
-      const filteredCachedEdges = {}
-      Object.entries(cachedEdges).forEach(([id, e]) => {
-        const source = e && e.source ? String(e.source) : ''
-        const target = e && e.target ? String(e.target) : ''
-        const isSvnEdge = source.startsWith('svn-') || target.startsWith('svn-')
-        if (!isSvnEdge) filteredCachedEdges[id] = e
-      })
-
-      Object.assign(nodes, filteredCachedNodes)
-      Object.assign(edges, filteredCachedEdges)
-
-      // Keep a snapshot so mode switching works without refetch
-      Object.assign(issueGraphSnapshot.nodes, filteredCachedNodes)
-      Object.assign(issueGraphSnapshot.edges, filteredCachedEdges)
-
-      /*
-      console.log('--- Cached Data Loaded (First 3 Nodes) ---')
-      const keys = Object.keys(nodes).slice(0, 3)
-      keys.forEach(key => console.log(toRaw(nodes[key])))
-      console.log('------------------------------------------')
-      */
-    }
-    // If no cached data exists at all, populate a small sample graph so the UI isn't empty.
-    if (Object.keys(nodes).length === 0 && Object.keys(edges).length === 0) {
-      const mock = createMockIssuesGraph()
-      Object.assign(nodes, mock.nodes)
-      Object.assign(edges, mock.edges)
-      Object.assign(issueGraphSnapshot.nodes, mock.nodes)
-      Object.assign(issueGraphSnapshot.edges, mock.edges)
-    }
-  } catch (e) {
-    console.error('Failed to load cached data:', e)
-  }
+  await initCachedData()
 })
 
 onUnmounted(() => {
   if (nowTickInterval) clearInterval(nowTickInterval)
   nowTickInterval = null
-  window.removeEventListener('hashchange', syncStateFromHash)
 })
 
 function createMockIssuesGraph () {
@@ -1896,714 +712,7 @@ const handleConfigSave = () => {
     loadData()
 }
 
-const updateAllSvnCaches = async (override) => {
-  if (!isElectron.value) {
-    throw new Error('SVN disk cache updates require Electron (browser mode has no disk cache).')
-  }
-  const repos = Array.isArray(settings.config.svnRepos) ? settings.config.svnRepos : []
-  const urlsFromSettings = repos.map(r => normalizeRepoUrl(r && r.url)).filter(Boolean)
-  const urlsFromOverride = override && Array.isArray(override.urls) ? override.urls.map(u => normalizeRepoUrl(u)).filter(Boolean) : []
-  const urls = urlsFromOverride.length ? urlsFromOverride : urlsFromSettings
-  if (urls.length === 0) return
-
-  const username = (override && typeof override.username === 'string') ? override.username : (settings.config.svnUsername || '')
-  const password = (override && typeof override.password === 'string') ? override.password : (settings.config.svnPassword || '')
-
-  updateStatus.value = { loading: true, source: 'svn', message: `Updating ${urls.length} repos...` }
-  loadingMessage.value = `SVN: updating ${urls.length} repos...`
-
-  for (let i = 0; i < urls.length; i++) {
-    const url = urls[i]
-    const prefix = `SVN (${i + 1}/${urls.length})`
-    updateStatus.value = { loading: true, source: 'svn', message: `${prefix}: starting...` }
-    loadingMessage.value = `${prefix}: starting...`
-
-    const svnClient = createSvnClient(url, username, password)
-    await fetchSvnLog(svnClient, 0, {
-      pageSize: 2000,
-      cacheRepoUrl: url,
-      onProgress: (msg) => {
-        loadingMessage.value = `${prefix}: ${msg}`
-        updateStatus.value = { loading: true, source: 'svn', message: `${prefix}: ${msg}` }
-      }
-    })
-  }
-
-  // Update footer counter based on the first repo (keeps existing UI semantics)
-  const meta = await svnCacheGetMeta(urls[0])
-  if (meta && meta.totalCount != null) svnCommitCount.value = meta.totalCount
-}
-
-const handleUpdateSource = async (payload) => {
-  // run update without leaving the config page
-  if (typeof payload === 'string') {
-    if (payload === 'svn') {
-      try {
-        error.value = ''
-        loading.value = true
-        await updateAllSvnCaches()
-      } catch (e) {
-        error.value = `SVN Error: ${e?.message || String(e)}`
-      } finally {
-        loading.value = false
-        updateStatus.value = { loading: false, source: 'svn', message: 'Done' }
-      }
-      return
-    }
-    await loadData({ only: payload })
-    return
-  }
-  if (payload && typeof payload === 'object' && payload.source === 'svn' && payload.mode === 'all') {
-    try {
-      error.value = ''
-      loading.value = true
-      await updateAllSvnCaches(payload)
-    } catch (e) {
-      error.value = `SVN Error: ${e?.message || String(e)}`
-    } finally {
-      loading.value = false
-      updateStatus.value = { loading: false, source: 'svn', message: 'Done' }
-    }
-    return
-  }
-}
-
-const handleClearSource = async (payload) => {
-  if (payload === 'svn' || (payload && typeof payload === 'object' && payload.source === 'svn' && payload.mode === 'all')) {
-    const urls = (payload && typeof payload === 'object' && Array.isArray(payload.urls))
-      ? payload.urls.map(u => normalizeRepoUrl(u)).filter(Boolean)
-      : (Array.isArray(settings.config.svnRepos) ? settings.config.svnRepos.map(r => normalizeRepoUrl(r && r.url)).filter(Boolean) : [])
-    if (urls.length === 0) return
-    if (!confirm(`Delete SVN cache for ALL repos (${urls.length})?`)) return
-    for (const url of urls) {
-      await svnCacheClear(url)
-    }
-    svnCommitCount.value = 0
-    svnRecentCommits.value = []
-    return
-  }
-
-  const source = payload
-  if (source === 'gitlab') {
-    if (!confirm('Delete GitLab cache (nodes/edges)?')) return
-    await localforage.removeItem('gitlab_nodes')
-    await localforage.removeItem('gitlab_edges')
-    await localforage.removeItem('gitlab_meta')
-    gitlabCacheMeta.value = { nodes: 0, edges: 0, updatedAt: null }
-    for (const k in nodes) delete nodes[k]
-    for (const k in edges) delete edges[k]
-  }
-}
-
-const resolveGitLabApiBaseUrl = () => {
-  const raw = String(settings.config.gitlabApiBaseUrl || '').trim()
-  if (!raw) return ''
-
-  const direct = normalizeGitLabApiBaseUrl(raw)
-  if (!direct) return ''
-
-  // In dev (web), use Vite proxy if configured and the URL matches that proxy target.
-  if (!window.electronAPI && import.meta.env.DEV) {
-    const proxyTarget = String(import.meta.env.VITE_GITLAB_PROXY_TARGET || '').trim().replace(/\/+$/, '')
-    const host = String(raw || '').trim().replace(/\/+$/, '')
-    if (proxyTarget && host.startsWith(proxyTarget)) return '/gitlab/api/v4'
-  }
-
-  return direct
-}
-
-const loadData = async (opts = {}) => {
-  // Do not start another fetch while one is already running (no queueing).
-  if (loading.value) return
-
-  // Check for app updates (hosted builds) before re-fetching data.
-  try {
-    if (typeof window.__glvCheckForUpdate === 'function') {
-      const didReload = await window.__glvCheckForUpdate()
-      if (didReload) return
-    }
-  } catch {}
-
-  const only = opts.only || 'both' // 'gitlab' | 'svn' | 'mattermost' | 'both'
-  const forceFull = !!opts.forceFull
-  const doGitLab = (only === 'both' || only === 'gitlab') && settings.config.enableGitLab
-  const doSvn = canUseSvn.value && (only === 'both' || only === 'svn') && settings.config.enableSvn
-  const doMattermost = isElectron.value && (only === 'both' || only === 'mattermost') && !!settings.config.mattermostUrl && !!settings.config.mattermostToken
-
-  const gitlabApiBaseUrl = resolveGitLabApiBaseUrl()
-
-  if (doGitLab && (!settings.config.token || !settings.config.projectId || !gitlabApiBaseUrl)) {
-    error.value = 'Please provide GitLab URL, Token, and Project ID'
-    return
-  }
-  
-  if (doSvn && !svnUrl.value) {
-    error.value = 'Please provide SVN URL'
-    return
-  }
-
-  if (only === 'mattermost' && (!settings.config.mattermostUrl || !settings.config.mattermostToken)) {
-    error.value = 'Please configure Mattermost URL and login token in Configuration → Mattermost'
-    return
-  }
-
-  if (!doGitLab && !doSvn && !doMattermost) {
-    error.value = 'Please enable at least one data source (GitLab / SVN) or log into Mattermost'
-    return
-  }
-  
-  loading.value = true
-  error.value = ''
-  loadingMessage.value = 'Starting...'
-  updateStatus.value = { loading: true, source: only === 'both' ? '' : only, message: 'Starting...' }
-
-  // Incremental GitLab sync (skip existing data) if cache matches this project.
-  const cachedProjectId = String(gitlabCacheMeta.value?.projectId || '').trim()
-  const cachedApiBaseUrl = String(gitlabCacheMeta.value?.apiBaseUrl || '').trim()
-  const cachedCursor = String(gitlabCacheMeta.value?.syncCursor || gitlabCacheMeta.value?.updatedAt || '').trim()
-  const sameGitlabCacheIdentity =
-    !!cachedProjectId &&
-    !!cachedApiBaseUrl &&
-    cachedProjectId === String(settings.config.projectId || '').trim() &&
-    cachedApiBaseUrl === String(gitlabApiBaseUrl || '').trim()
-  let canIncrementalGitLab = doGitLab && sameGitlabCacheIdentity && !!cachedCursor
-  if (forceFull) canIncrementalGitLab = false
-
-  // IMPORTANT: do NOT clear existing data up front.
-  // If the connection drops mid-sync, we want to keep whatever is already loaded,
-  // and merge partial results so the next refresh can resume.
-  const replaceGitLabDataOnSuccess = doGitLab && !canIncrementalGitLab
-
-  const restClient = doGitLab ? createGitLabClient(gitlabApiBaseUrl, settings.config.token) : null
-  const gqlClient = doGitLab ? createGitLabGraphqlClient(gitlabApiBaseUrl, settings.config.token) : null
-  let didGitLabFetch = false
-  let gitlabSyncCursorForSave = null
-
-  try {
-    // 0. Refresh Mattermost (ChatTools) session data (lightweight)
-    if (doMattermost) {
-      loadingMessage.value = 'Mattermost: validating login...'
-      updateStatus.value = { loading: true, source: 'mattermost', message: 'Validating login...' }
-      try {
-        const api = new MattermostClient({ baseUrl: settings.config.mattermostUrl, token: settings.config.mattermostToken })
-        const me = await api.me()
-        settings.config.mattermostUser = me || null
-        updateStatus.value = { loading: true, source: 'mattermost', message: 'Fetching teams...' }
-        const teams = await api.teams()
-        const now = Date.now()
-        mattermostMeta.value = { teams: Array.isArray(teams) ? teams.length : 0, updatedAt: now }
-      } catch (mmErr) {
-        // Do not hard-fail GitLab/SVN updates if Mattermost refresh fails.
-        if (only === 'mattermost') throw mmErr
-        console.error('Mattermost update failed:', mmErr)
-      }
-    }
-
-    // 1. Fetch GitLab Data
-    let issues = []
-    if (doGitLab) {
-        const startedCursor = new Date().toISOString()
-        // Safety overlap: tolerate clock/timezone drift.
-        const cursorBufferMs = 2 * 60 * 60 * 1000
-        const parseCursorMs = (v) => {
-          const t = Date.parse(String(v || ''))
-          return Number.isFinite(t) ? t : null
-        }
-        const cursorMs = canIncrementalGitLab ? parseCursorMs(cachedCursor) : null
-        const updatedAfter = (canIncrementalGitLab && cursorMs != null)
-          ? new Date(Math.max(0, cursorMs - cursorBufferMs)).toISOString()
-          : null
-
-        loadingMessage.value = canIncrementalGitLab ? 'Fetching updated issues...' : 'Fetching issues...'
-        updateStatus.value = { loading: true, source: 'gitlab', message: 'Fetching issues...' }
-        try {
-            // Cache "me" for dynamic presets (By me / Assigned to me)
-            try {
-                const me = await restClient.get('/user')
-                settings.meta.gitlabMeName = me?.data?.name || ''
-                settings.meta.gitlabMeId = me?.data?.id || null
-            } catch (e) {
-                console.warn('[GitLab] Failed to fetch /user for presets:', e)
-                settings.meta.gitlabMeName = ''
-                settings.meta.gitlabMeId = null
-            }
-
-            // Best-effort: detect scopes to enable/disable write features in UI.
-            try {
-              const scopes = await fetchTokenScopes(restClient)
-              settings.meta.gitlabTokenScopes = scopes
-              settings.meta.gitlabCanWrite = Array.isArray(scopes) ? scopes.includes('api') : false
-            } catch (e) {
-              console.warn('[GitLab] Failed to detect token scopes:', e)
-              settings.meta.gitlabTokenScopes = null
-              settings.meta.gitlabCanWrite = false
-            }
-
-            // Fetch opened issues (REST: fast + includes epic_iid)
-            issues = await fetchProjectIssuesRest(restClient, settings.config.projectId, (msg) => {
-                loadingMessage.value = msg
-                updateStatus.value = { loading: true, source: 'gitlab', message: msg }
-            }, updatedAfter ? { params: { updated_after: updatedAfter } } : {})
-            const partialOpened = !!issues?.__glvPartial
-
-            // Fetch closed issues if requested
-            if (settings.config.gitlabClosedDays > 0) {
-                const closedAfter = new Date();
-                closedAfter.setDate(closedAfter.getDate() - settings.config.gitlabClosedDays);
-
-                const closedAfterMs = closedAfter.getTime()
-                const closedUpdatedAfter = (() => {
-                  if (!updatedAfter) return closedAfter.toISOString()
-                  const updatedAfterMs = parseCursorMs(updatedAfter)
-                  if (updatedAfterMs == null) return closedAfter.toISOString()
-                  return new Date(Math.max(closedAfterMs, updatedAfterMs)).toISOString()
-                })()
-                
-                const closedIssues = await fetchProjectIssuesRest(restClient, settings.config.projectId, (msg) => {
-                    loadingMessage.value = msg
-                    updateStatus.value = { loading: true, source: 'gitlab', message: msg }
-                }, { 
-                    state: 'closed', 
-                    params: { 
-                        updated_after: closedUpdatedAfter
-                    } 
-                });
-                const partialClosed = !!closedIssues?.__glvPartial
-                
-                // Filter to ensure they were actually closed after the date (updated_after is broader)
-                const actuallyClosed = closedIssues.filter(i => i.closed_at && new Date(i.closed_at) >= closedAfter);
-                issues = [...issues, ...actuallyClosed];
-                // propagate partial marker
-                if (partialOpened || partialClosed) {
-                  try { Object.defineProperty(issues, '__glvPartial', { value: true, enumerable: false }) } catch {}
-                }
-            }
-
-            // Optional GraphQL enrichment pass for fields REST doesn't provide (kept minimal).
-            if (gqlClient) {
-              await enrichIssuesFromGraphql(gqlClient, settings.config.projectId, issues, (msg) => {
-                loadingMessage.value = msg
-                updateStatus.value = { loading: true, source: 'gitlab', message: msg }
-              })
-            }
-            if (restClient) {
-              await enrichEpicTitlesFromRest(restClient, settings.config.projectId, issues, (msg) => {
-                loadingMessage.value = msg
-                updateStatus.value = { loading: true, source: 'gitlab', message: msg }
-              })
-            }
-
-            didGitLabFetch = true
-            gitlabSyncCursorForSave = startedCursor
-            
-            // Create nodes
-            loadingMessage.value = 'Creating nodes...'
-            
-            // Only replace the whole dataset when we got a full (non-partial) fetch.
-            // If partial, merge into existing nodes/edges instead (resume-friendly).
-            const isPartial = !!issues?.__glvPartial
-            // For Ctrl+Click (force full clean), never merge partial results into existing data.
-            if (forceFull && isPartial) {
-              throw new Error('GitLab fetch interrupted (partial). Retry (Ctrl+Click again) to complete the clean update.')
-            }
-            if (replaceGitLabDataOnSuccess && !isPartial) {
-              for (const key in nodes) delete nodes[key]
-              for (const key in edges) delete edges[key]
-            }
-
-            issues.forEach(issue => {
-                const id = String(issue.iid)
-                
-                // Calculate time spent ratio if available
-                let timeSpentRatio = 0
-                if (issue.time_stats && issue.time_stats.time_estimate > 0) {
-                    timeSpentRatio = issue.time_stats.total_time_spent / issue.time_stats.time_estimate
-                }
-                
-                // Determine color based on status label or state
-                const status = (typeof issue.status_display === 'string' && issue.status_display.trim())
-                  ? issue.status_display.trim()
-                  : getScopedLabelValue(issue.labels, 'Status')
-                let color = issue.state === 'opened' ? '#28a745' : '#dc3545' // defaults
-                
-                if (status === 'To do') color = '#6c757d'
-                else if (status === 'In progress') color = '#007bff'
-                else if (status === 'Ready for Review') color = '#fd7e14'
-                else if (status === 'Done') color = '#28a745'
-                else if (status === 'Won\'t do' || status === 'Duplicate') color = '#dc3545'
-
-                nodes[id] = {
-                    id,
-                    name: `#${id} ${issue.title.length > 20 ? issue.title.substring(0, 20) + '...' : issue.title}`,
-                    color,
-                    commentsCount: issue.user_notes_count,
-                    updatedAt: issue.updated_at,
-                    createdAt: issue.created_at,
-                    closedAt: issue.closed_at,
-                    dueDate: issue.due_date,
-                    confidential: issue.confidential,
-                    webUrl: issue.web_url,
-                    weight: issue.weight,
-                    timeEstimate: issue.time_stats ? issue.time_stats.time_estimate : 0,
-                    timeSpent: issue.time_stats ? issue.time_stats.total_time_spent : 0,
-                    timeSpentRatio,
-                    upvotes: issue.upvotes,
-                    downvotes: issue.downvotes,
-                    mergeRequestsCount: issue.merge_requests_count,
-                    hasTasks: issue.has_tasks,
-                    taskStatus: issue.task_status,
-                    type: 'gitlab_issue',
-                    _raw: issue,
-                    // preserve UI-only flags if present
-                    _uiForceShow: nodes[id]?._uiForceShow
-                }
-            })
-
-            // Persist sync cursor (conservative watermark) for next incremental run
-            settings.meta.gitlabSyncCursor = startedCursor
-        } catch (e) {
-            console.error(e)
-            error.value = `GitLab Error: ${e.message}`
-            // If SVN is enabled, continue?
-            if (!settings.config.enableSvn) throw e;
-        }
-    }
-
-    // Update snapshot after GitLab (and before SVN potentially adds edges)
-    // We'll finalize snapshot at end of loadData.
-
-    // 2. Fetch SVN Data if configured
-    if (doSvn && svnUrl.value) {
-        try {
-            loadingMessage.value = 'Fetching SVN log...'
-            updateStatus.value = { loading: true, source: 'svn', message: 'Fetching SVN log...' }
-            
-            // Adjust URL to use proxy in DEV mode if it matches our configured proxy target
-            let targetUrl = svnUrl.value
-            if (!window.electronAPI) {
-                const proxyTarget = String(import.meta.env.VITE_SVN_PROXY_TARGET || '').trim().replace(/\/+$/, '')
-                if (proxyTarget && targetUrl.startsWith(proxyTarget)) {
-                    // Proxy: /svn -> VITE_SVN_PROXY_TARGET
-                    targetUrl = targetUrl.replace(proxyTarget, '/svn')
-                }
-            }
-
-            const svnClient = createSvnClient(targetUrl, settings.config.svnUsername, settings.config.svnPassword)
-
-            // Stream SVN log into disk cache (chunked) and only keep a small in-memory slice.
-            svnRecentCommits.value = []
-            const maxKeep = Math.max(5000, Math.max(100, Math.min(Number(svnVizLimit.value) || 2000, 5000)))
-
-            // IMPORTANT: Do not create a node for every SVN revision (can be 100k+ and will freeze graph).
-            // Only create SVN nodes that actually reference existing GitLab issues (high-signal + keeps graph small).
-            const MAX_SVN_NODES = 5000
-            let svnNodeCount = 0
-
-            const cacheKeyUrl = normalizeRepoUrl(svnUrl.value)
-            await fetchSvnLog(svnClient, 0, {
-              pageSize: 2000,
-              cacheRepoUrl: cacheKeyUrl,
-              onProgress: (msg) => { loadingMessage.value = msg },
-              onPage: async (pageCommits) => {
-                // keep a small slice in memory for SVN tree
-                for (const c of pageCommits) {
-                  if (svnRecentCommits.value.length >= maxKeep) break
-                  svnRecentCommits.value.push(c)
-                }
-
-                // issue linking (bounded)
-                if (svnNodeCount >= MAX_SVN_NODES) return
-                for (const commit of pageCommits) {
-                  if (!commit || !commit.message) continue
-                  const issueMatches = commit.message.matchAll(/(?:refs?|issues?|tickets?|^)?\s*#(\d+)/gim)
-
-                  let shouldCreateNode = false
-                  const matchedIssueIds = []
-                  for (const match of issueMatches) {
-                    const issueId = match[1]
-                    if (nodes[issueId]) {
-                      shouldCreateNode = true
-                      matchedIssueIds.push(issueId)
-                    }
-                  }
-
-                  if (!shouldCreateNode) continue
-                  if (svnNodeCount >= MAX_SVN_NODES) break
-
-                  const id = `svn-${commit.revision}`
-                  if (!nodes[id]) {
-                    nodes[id] = {
-                      id,
-                      name: `r${commit.revision} ${commit.author}`,
-                      color: '#6f42c1',
-                      updatedAt: commit.date,
-                      createdAt: commit.date,
-                      author: { name: commit.author },
-                      webUrl: '',
-                      type: 'svn_commit',
-                      _raw: commit
-                    }
-                    svnNodeCount++
-                  }
-
-                  for (const issueId of matchedIssueIds) {
-                    const edgeId = `${id}-${issueId}`
-                    edges[edgeId] = {
-                      source: id,
-                      target: issueId,
-                      label: 'referenced'
-                    }
-                  }
-                }
-              }
-            })
-
-            const meta = await svnCacheGetMeta(cacheKeyUrl)
-            if (meta && meta.totalCount != null) svnCommitCount.value = meta.totalCount
-            updateStatus.value = { loading: true, source: 'svn', message: `SVN: cached ${svnCommitCount.value.toLocaleString()} commits` }
-
-        } catch (svnErr) {
-            console.error('SVN Error:', svnErr)
-            // Don't fail completely if SVN fails
-            error.value = `GitLab loaded, but SVN failed: ${svnErr.message}`
-            // Keep going to show GitLab data
-        }
-    }
-
-    // Fetch links for each issue with concurrency limit
-    if (settings.config.enableGitLab && issues.length > 0) {
-        loadingMessage.value = 'Fetching issue links...'
-        let completedLinks = 0;
-        const CONCURRENCY_LIMIT = 20;
-        const linksResults = new Array(issues.length);
-        let nextIssueIndex = 0;
-
-        // Incremental sync: remove old GitLab issue-link edges for updated issues only.
-        if (doGitLab && canIncrementalGitLab) {
-          const touched = new Set(issues.map(i => String(i?.iid || '')).filter(Boolean))
-          const isIssueId = (v) => /^\d+$/.test(String(v || ''))
-          for (const k in edges) {
-            const e = edges[k]
-            if (!e) continue
-            const a = String(e.source || '')
-            const b = String(e.target || '')
-            if (!isIssueId(a) || !isIssueId(b)) continue // keep SVN edges, etc.
-            if (touched.has(a) || touched.has(b)) delete edges[k]
-          }
-        }
-
-        const fetchWorker = async () => {
-        while (nextIssueIndex < issues.length) {
-            const index = nextIssueIndex++;
-            const issue = issues[index];
-            try {
-            linksResults[index] = await fetchIssueLinks(restClient, settings.config.projectId, issue.iid);
-            } catch (e) {
-            linksResults[index] = [];
-            }
-            completedLinks++;
-            if (completedLinks % 10 === 0 || completedLinks === issues.length) {
-            loadingMessage.value = `Fetching links: ${completedLinks} / ${issues.length}`;
-            }
-        }
-        };
-
-        await Promise.all(Array.from({ length: CONCURRENCY_LIMIT }, fetchWorker));
-
-        loadingMessage.value = 'Processing links...'
-        linksResults.forEach((links, index) => {
-        const sourceIssue = issues[index]
-        const sourceId = String(sourceIssue.iid)
-        
-        if (links && links.length > 0) {
-            links.forEach(link => {
-                const targetId = String(link.iid)
-                
-                // Avoid duplicate edges (A->B and B->A)
-                const rawType = String(link.link_type || 'related')
-                const t = rawType.toLowerCase()
-                let a = sourceId
-                let b = targetId
-                let label = rawType
-
-                // Normalize direction so arrows can be meaningful:
-                // - blocks: blocker -> blocked
-                // - is_blocked_by: flip to blocker -> blocked, but keep a readable label
-                if (t === 'is_blocked_by' || t === 'blocked_by') {
-                  a = targetId
-                  b = sourceId
-                  label = 'blocks'
-                } else if (t === 'blocks') {
-                  a = sourceId
-                  b = targetId
-                  label = 'blocks'
-                } else if (t === 'relates' || t === 'relates_to' || t === 'related') {
-                  // undirected-ish: keep stable ordering
-                  if (a > b) { const tmp = a; a = b; b = tmp }
-                  label = 'relates'
-                }
-
-                const edgeId = `${a}-${b}-${label}`
-
-                if (nodes[b] && !edges[edgeId]) {
-                  edges[edgeId] = { source: a, target: b, label }
-                }
-            })
-        }
-        })
-    }
-    
-    // Save to cache (IndexedDB via localforage)
-    try {
-      // Persist current "issues" view snapshot (never persist SVN rev-tree)
-      for (const k in issueGraphSnapshot.nodes) delete issueGraphSnapshot.nodes[k]
-      for (const k in issueGraphSnapshot.edges) delete issueGraphSnapshot.edges[k]
-      Object.assign(issueGraphSnapshot.nodes, toRaw(nodes))
-      Object.assign(issueGraphSnapshot.edges, toRaw(edges))
-
-      if (doGitLab && didGitLabFetch) {
-        await localforage.setItem('gitlab_nodes', toRaw(nodes))
-        await localforage.setItem('gitlab_edges', toRaw(edges))
-        const now = Date.now()
-        const syncCursor = String(gitlabSyncCursorForSave || settings.meta.gitlabSyncCursor || '') || new Date(now).toISOString()
-        const meta = {
-          nodes: Object.keys(nodes).length,
-          edges: Object.keys(edges).length,
-          updatedAt: now,
-          syncCursor,
-          projectId: String(settings.config.projectId || '').trim(),
-          apiBaseUrl: String(gitlabApiBaseUrl || '').trim()
-        }
-        await localforage.setItem('gitlab_meta', meta)
-        gitlabCacheMeta.value = meta
-      }
-      const now = Date.now()
-      lastUpdated.value = now
-      settings.meta.lastUpdated = now
-    } catch (e) {
-      console.error('Failed to save to cache:', e)
-      error.value = 'Failed to save to cache: ' + e.message
-    }
-
-  } catch (err) {
-    error.value = err.message || 'Failed to load data'
-    console.error(err)
-  } finally {
-    loading.value = false
-    updateStatus.value = { loading: false, source: updateStatus.value.source || '', message: loadingMessage.value }
-  }
-
-  // If user is currently in SVN mode, rebuild SVN graph now that we have commits.
-  if (vizMode.value === 'svn') {
-    buildSvnVizGraph()
-  }
-}
-
-const handleRefreshClick = (e) => {
-  const forceFull = !!(e && (e.ctrlKey || e.metaKey))
-  return loadData({ forceFull })
-}
-
-const onIssueStateChange = async ({ iid, state_event } = {}) => {
-  const issueIid = String(iid || '').trim()
-  const ev = String(state_event || '').trim()
-  if (!issueIid || (ev !== 'close' && ev !== 'reopen')) return
-
-  if (!settings.meta.gitlabCanWrite) {
-    alert('Write is disabled for this token (needs api scope).')
-    return
-  }
-  if (!settings.config.enableGitLab) return
-
-  const baseUrl = resolveGitLabApiBaseUrl()
-  if (!baseUrl || !settings.config.projectId || !settings.config.token) {
-    alert('Missing GitLab URL / Project / Token.')
-    return
-  }
-
-  try {
-    const client = createGitLabClient(baseUrl, settings.config.token)
-    const prev = nodes[issueIid]?._raw || null
-    const updated = await updateIssue(client, settings.config.projectId, issueIid, { state_event: ev })
-    // REST update responses can omit fields we rely on for grouping (ex: epic/iteration).
-    if (updated && prev) {
-      if (updated.epic == null && prev.epic) updated.epic = prev.epic
-      if (updated.epic_iid == null && prev.epic_iid) updated.epic_iid = prev.epic_iid
-      if (updated.iteration == null && prev.iteration) updated.iteration = prev.iteration
-    }
-    if (issueGraph.value && issueGraph.value.markDataOnlyUpdate) issueGraph.value.markDataOnlyUpdate()
-    if (nodes[issueIid]) nodes[issueIid]._raw = updated
-    nodes[issueIid]._uiForceShow = true
-    snackbarText.value = ev === 'close' ? `Closed #${issueIid}` : `Reopened #${issueIid}`
-    snackbar.value = true
-  } catch (e) {
-    const status = e?.response?.status
-    const msg = status ? `GitLab error ${status}: ${e?.message || String(e)}` : (e?.message || String(e))
-    alert(msg)
-  }
-}
-
-const onIssueAssigneeChange = async ({ iid, assignee_ids } = {}) => {
-  const issueIid = String(iid || '').trim()
-  const list = Array.isArray(assignee_ids) ? assignee_ids : null
-  if (!issueIid || !list) return
-
-  if (!settings.meta.gitlabCanWrite) {
-    alert('Write is disabled for this token (needs api scope).')
-    return
-  }
-  if (!settings.config.enableGitLab) return
-
-  const baseUrl = resolveGitLabApiBaseUrl()
-  if (!baseUrl || !settings.config.projectId || !settings.config.token) {
-    alert('Missing GitLab URL / Project / Token.')
-    return
-  }
-
-  try {
-    const client = createGitLabClient(baseUrl, settings.config.token)
-    const prev = nodes[issueIid]?._raw || null
-    const updated = await updateIssue(client, settings.config.projectId, issueIid, { assignee_ids: list })
-
-    // Keep the rest of the app consistent (some parts use _raw.assignee directly).
-    if (updated) {
-      if (!updated.assignee && Array.isArray(updated.assignees) && updated.assignees.length) updated.assignee = updated.assignees[0]
-      if (Array.isArray(updated.assignees) && updated.assignees.length === 0) updated.assignee = null
-    }
-
-    // REST update responses can omit fields we rely on for grouping (ex: epic/iteration).
-    if (updated && prev) {
-      if (updated.epic == null && prev.epic) updated.epic = prev.epic
-      if (updated.epic_iid == null && prev.epic_iid) updated.epic_iid = prev.epic_iid
-      if (updated.iteration == null && prev.iteration) updated.iteration = prev.iteration
-    }
-
-    if (issueGraph.value && issueGraph.value.markDataOnlyUpdate) issueGraph.value.markDataOnlyUpdate()
-    if (nodes[issueIid]) nodes[issueIid]._raw = updated
-    nodes[issueIid]._uiForceShow = true
-    snackbarText.value = list.length ? `Assigned #${issueIid}` : `Unassigned #${issueIid}`
-    snackbar.value = true
-  } catch (e) {
-    const status = e?.response?.status
-    const msg = status ? `GitLab error ${status}: ${e?.message || String(e)}` : (e?.message || String(e))
-    alert(msg)
-  }
-}
-
-const clearData = async () => {
-  if (confirm('Are you sure you want to clear all data and cache?')) {
-    // Clear in-memory
-    for (const key in nodes) delete nodes[key]
-    for (const key in edges) delete edges[key]
-    svnRecentCommits.value = []
-    svnCommitCount.value = 0
-    
-    // Clear storage
-    await localforage.clear()
-    
-    resetFilters()
-  }
-}
+// GitLab mutations are handled by useGitLabIssueMutations
 
 // resetFilters provided locally (settings-backed)
 

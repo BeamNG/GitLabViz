@@ -2,6 +2,7 @@ import { createApp } from 'vue'
 import { createVuetify } from 'vuetify'
 import 'vuetify/styles'
 import '@mdi/font/css/materialdesignicons.css'
+import './services/localforageConfig'
 import App from './App.vue'
 
 // Capture JS warnings/errors for diagnostics (small ring buffer)
