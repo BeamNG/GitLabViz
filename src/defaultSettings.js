@@ -5,13 +5,13 @@ export const defaultSettings = () => ({
     // (the app will append /api/v4 automatically; in dev you can also use Vite proxy)
     // (leave empty and configure in-app; in dev you can also use Vite proxy)
     gitlabApiBaseUrl: '',
-    projectId: 'group/project',
+    projectId: '',
     enableGitLab: true,
     enableSvn: false,
     svnUsername: '',
     svnPassword: '',
     svnRepos: [{ id: 'default', url: '', enabled: true }],
-    gitlabClosedDays: 0,
+    gitlabClosedDays: 7,
 
     // ChatTools (Mattermost) assimilation
     mattermostUrl: '',
