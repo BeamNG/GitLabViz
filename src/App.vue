@@ -693,7 +693,7 @@ function createMockIssuesGraph () {
     mk(102, 'Mock: Fix crash on startup', ['Type::Bug', 'Priority::0 - Blocking'], 'carol', 'alice'),
     mk(103, 'Mock: Improve rendering perf', ['Type::Performance', 'Priority::High'], 'bob', 'carol'),
     mk(104, 'Mock: Add settings screen', ['Type::Feature', 'Priority::Medium'], 'alice', null),
-    mk(105, 'Mock: Refactor networking', ['Type::Chore', 'Priority::Low'], 'dan', 'alice')
+    mk(105, 'Mock: Refactor color', ['Type::Chore', 'Priority::Low'], 'dan', 'alice')
   ]
   for (const [id, n] of samples) nodesOut[id] = n
 
