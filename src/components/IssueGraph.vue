@@ -290,6 +290,15 @@ const props = defineProps({
   gridSpacing: { type: Number, default: 1.5 }
 })
 
+// Defensive: Vuetify can sometimes push item objects into v-model; normalize to a string.
+const groupByValue = computed(() => {
+  const v = props.groupBy
+  const s = typeof v === 'string'
+    ? v
+    : (v && typeof v === 'object' && typeof v.value === 'string' ? v.value : '')
+  return s || 'none'
+})
+
 const container = ref(null)
 const canvas = ref(null)
 const contextMenuEl = ref(null)
@@ -1153,9 +1162,10 @@ function updateGraph() {
   if (!props.nodes) return
 
   const neutralNode = colors.value.neutralNode
-  const isSvnRevisionMode = props.groupBy === 'svn_revision'
-  const layoutModeChanged = lastGroupBy !== props.groupBy
-  lastGroupBy = props.groupBy
+  const groupBy = groupByValue.value
+  const isSvnRevisionMode = groupBy === 'svn_revision'
+  const layoutModeChanged = lastGroupBy !== groupBy
+  lastGroupBy = groupBy
 
   const formatSecondsShort = (secs) => {
     const s = Number(secs) || 0
@@ -1382,7 +1392,6 @@ function updateGraph() {
       : []
 
     // Compute all group keys up front so we can duplicate nodes (and preserve positions by clone id).
-    const groupBy = props.groupBy
     let groupKeys = null
 
     if (groupBy === 'tag') {
@@ -1718,7 +1727,7 @@ function updateGraph() {
   // Note: using the module-level groupCenters variable, clearing it first
   for (const key in groupCenters) delete groupCenters[key]
   
-  if (props.groupBy !== 'none' && !isSvnRevisionMode) {
+  if (groupBy !== 'none' && !isSvnRevisionMode) {
     // Timeline Helper
     const getWeekYear = (dateStr) => {
         if (!dateStr) return 'No Date'
@@ -1730,38 +1739,38 @@ function updateGraph() {
 
     // Determine group key for each node
     nodesData.forEach(d => {
-        if (props.groupBy === 'tag') d._groupKey = d.tag
-        else if (props.groupBy === 'author') d._groupKey = d.authorName
-        else if (props.groupBy === 'state') {
+        if (groupBy === 'tag') d._groupKey = d.tag
+        else if (groupBy === 'author') d._groupKey = d.authorName
+        else if (groupBy === 'state') {
           // "Status" grouping: prefer Status scoped label, fallback to a simple state bucket.
           const s = typeof d.statusLabel === 'string' ? d.statusLabel.trim() : ''
           d._groupKey = s || (d.state === 'closed' ? 'Done' : 'To do')
         }
-        else if (props.groupBy === 'assignee') d._groupKey = d.assigneeName
-        else if (props.groupBy === 'milestone') d._groupKey = d.milestoneTitle
-        else if (props.groupBy === 'priority') d._groupKey = d.priority
-        else if (props.groupBy === 'type') d._groupKey = d.type
-        else if (props.groupBy === 'weight') d._groupKey = d.weight
-        else if (props.groupBy === 'epic') d._groupKey = d.epic
-        else if (props.groupBy === 'iteration') d._groupKey = d.iteration
-        else if (props.groupBy && props.groupBy.startsWith('scoped:')) {
+        else if (groupBy === 'assignee') d._groupKey = d.assigneeName
+        else if (groupBy === 'milestone') d._groupKey = d.milestoneTitle
+        else if (groupBy === 'priority') d._groupKey = d.priority
+        else if (groupBy === 'type') d._groupKey = d.type
+        else if (groupBy === 'weight') d._groupKey = d.weight
+        else if (groupBy === 'epic') d._groupKey = d.epic
+        else if (groupBy === 'iteration') d._groupKey = d.iteration
+        else if (groupBy && groupBy.startsWith('scoped:')) {
             // `_groupKey` can be precomputed (and duplicated) in updateGraph()
             // so keep it if present. Fallback to computing from labels.
             if (!d._groupKey) {
-              const prefix = props.groupBy.substring('scoped:'.length)
+              const prefix = groupBy.substring('scoped:'.length)
               const value = getScopedLabelValue(d._raw?.labels || [], prefix)
               d._groupKey = value || `No ${prefix}`
             }
         }
-        else if (props.groupBy === 'stale') {
+        else if (groupBy === 'stale') {
             if (d.daysSinceUpdate > 90) d._groupKey = '> 90 Days Stale'
             else if (d.daysSinceUpdate > 60) d._groupKey = '> 60 Days Stale'
             else if (d.daysSinceUpdate > 30) d._groupKey = '> 30 Days Stale'
             else d._groupKey = 'Active (< 30 Days)'
         }
-        else if (props.groupBy === 'timeline_created') d._groupKey = getWeekYear(d._raw.created_at)
-        else if (props.groupBy === 'timeline_updated') d._groupKey = getWeekYear(d._raw.updated_at)
-        else if (props.groupBy === 'timeline_closed') d._groupKey = getWeekYear(d._raw.closed_at)
+        else if (groupBy === 'timeline_created') d._groupKey = getWeekYear(d._raw.created_at)
+        else if (groupBy === 'timeline_updated') d._groupKey = getWeekYear(d._raw.updated_at)
+        else if (groupBy === 'timeline_closed') d._groupKey = getWeekYear(d._raw.closed_at)
         else d._groupKey = 'default'
     })
 

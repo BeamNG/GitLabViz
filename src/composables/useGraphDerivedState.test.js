@@ -82,6 +82,23 @@ describe('useGraphDerivedState', () => {
     expect(keys.some(k => k.includes('group-1-2'))).toBe(true)
   })
 
+  it('accepts object-shaped groupingMode (value field) for group links', () => {
+    const settings = baseSettings()
+    settings.uiState.view.linkMode = 'group'
+    settings.uiState.view.groupingMode = { title: 'Assignee', value: 'assignee' }
+
+    const nodes = reactive({
+      '1': { id: '1', type: 'gitlab_issue', _raw: { assignee: { name: 'Alice' }, labels: [] } },
+      '2': { id: '2', type: 'gitlab_issue', _raw: { assignee: { name: 'Alice' }, labels: [] } },
+      '3': { id: '3', type: 'gitlab_issue', _raw: { assignee: { name: 'Bob' }, labels: [] } }
+    })
+    const edges = reactive({})
+
+    const d = useGraphDerivedState({ settings, nodes, edges })
+    const keys = Object.keys(d.filteredEdges.value)
+    expect(keys.some(k => k.includes('group-1-2'))).toBe(true)
+  })
+
   it('derives label/author/assignee lists', () => {
     const settings = baseSettings()
     const nodes = reactive({

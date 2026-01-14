@@ -2,6 +2,7 @@
 
 ## [0.3.20] - 2026-01-14
 - GitLab sync: incremental refresh now includes state transitions (open/closed) by fetching updated issues with `state=all`; always updates issues already in cache/graph regardless of `gitlabClosedDays` (which only affects adding new closed issues).
+- Fix: Graph grouping could collapse into one big `default` group after time/tab switching, because the "Group" mode value could sometimes become an object (instead of a string) and fail comparisons like `groupBy === 'author'`. We now normalize grouping mode to a safe string before computing group keys/links/stats.
 
 ## [0.3.19] - 2026-01-09
 - Graph perf: speed up physics overlap resolution on large graphs; faster zoomed-out drawing (LOD) + cached group smudges; faster group label toggling.

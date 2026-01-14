@@ -462,7 +462,12 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
         }
       })
     } else if (settings.uiState.view.linkMode === 'group') {
-      if (settings.uiState.view.groupingMode === 'none') return {} // No groups to link
+      const groupingModeRaw = settings.uiState.view.groupingMode
+      const groupingMode = typeof groupingModeRaw === 'string'
+        ? groupingModeRaw
+        : (groupingModeRaw && typeof groupingModeRaw === 'object' && typeof groupingModeRaw.value === 'string' ? groupingModeRaw.value : '')
+
+      if (groupingMode === 'none') return {} // No groups to link
 
       // 1. Group nodes
       const groups = {}
@@ -471,17 +476,17 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
         const n = node._raw
         if (node.type === 'svn_commit') {
           // Special grouping for SVN?
-          if (settings.uiState.view.groupingMode === 'author') key = n.author || 'Unknown'
+          if (groupingMode === 'author') key = n.author || 'Unknown'
           else key = 'SVN Commits' // Default for other groupings
         } else {
-          if (settings.uiState.view.groupingMode === 'tag') key = node.tag || '_no_tag_'
-          else if (settings.uiState.view.groupingMode === 'author') key = n.author ? n.author.name : 'Unknown'
-          else if (settings.uiState.view.groupingMode === 'state') key = n.state
-          else if (settings.uiState.view.groupingMode === 'assignee') key = n.assignee ? n.assignee.name : 'Unassigned'
-          else if (settings.uiState.view.groupingMode === 'milestone') key = n.milestone ? n.milestone.title : 'No Milestone'
-          else if (settings.uiState.view.groupingMode === 'priority') key = getScopedLabelValue(n.labels, 'Priority') || 'No Priority'
-          else if (settings.uiState.view.groupingMode === 'type') key = getScopedLabelValue(n.labels, 'Type') || 'No Type'
-          else if (settings.uiState.view.groupingMode === 'epic') {
+          if (groupingMode === 'tag') key = node.tag || '_no_tag_'
+          else if (groupingMode === 'author') key = n.author ? n.author.name : 'Unknown'
+          else if (groupingMode === 'state') key = n.state
+          else if (groupingMode === 'assignee') key = n.assignee ? n.assignee.name : 'Unassigned'
+          else if (groupingMode === 'milestone') key = n.milestone ? n.milestone.title : 'No Milestone'
+          else if (groupingMode === 'priority') key = getScopedLabelValue(n.labels, 'Priority') || 'No Priority'
+          else if (groupingMode === 'type') key = getScopedLabelValue(n.labels, 'Type') || 'No Type'
+          else if (groupingMode === 'epic') {
             const parentType = String(n.parent?.work_item_type || '').trim().toLowerCase()
             key = (
               (n.epic ? n.epic.title : null) ||
@@ -490,8 +495,8 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
               getScopedLabelValue(n.labels, 'Epic') ||
               'No Epic'
             )
-          } else if (String(settings.uiState.view.groupingMode || '').startsWith('scoped:')) {
-            const prefix = String(settings.uiState.view.groupingMode || '').substring('scoped:'.length)
+          } else if (String(groupingMode || '').startsWith('scoped:')) {
+            const prefix = String(groupingMode || '').substring('scoped:'.length)
             key = getScopedLabelValue(n.labels, prefix) || `No ${prefix}`
           }
         }
@@ -556,7 +561,11 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
   })
 
   const groupStatsText = computed(() => {
-    const mode = String(settings.uiState.view.groupingMode || '')
+    const modeRaw = settings.uiState.view.groupingMode
+    const mode = typeof modeRaw === 'string'
+      ? modeRaw
+      : (modeRaw && typeof modeRaw === 'object' && typeof modeRaw.value === 'string' ? modeRaw.value : '')
+
     if (!mode || mode === 'none') return null
     // Special layout mode (SVN) doesn't meaningfully have groups.
     if (mode === 'svn_revision') return null
