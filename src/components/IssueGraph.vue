@@ -1664,7 +1664,7 @@ function updateGraph() {
       if (s != null) linked.add(String(s))
       if (t != null) linked.add(String(t))
     })
-    nodesData = nodesData.filter(n => n?._uiForceShow || linked.has(String(n.id)))
+    nodesData = nodesData.filter(n => linked.has(String(n.id)))
     const keep = new Set(nodesData.map(n => String(n.id)))
     edgesData = edgesData.filter(e => {
       const s = typeof e.source === 'object' ? e.source.id : e.source
@@ -2557,10 +2557,8 @@ function render() {
     const isLastOpened = lastOpened != null && String(node.id) === String(lastOpened)
     const selectedId = contextMenu.value.selectedNodeId
     const isContextSelected = selectedId != null && String(node.id) === String(selectedId)
-    const isForceShow = !!node._uiForceShow
-    const isForceClosed = isForceShow && String(node._raw?.state || node.state || '').toLowerCase() === 'closed'
     const isHovered = hoveredNodeId === node.id
-    const needsFocus = isHovered || isLegendHover || isLastOpened || isContextSelected || isForceShow
+    const needsFocus = isHovered || isLegendHover || isLastOpened || isContextSelected
 
     // Ultra zoomed out: draw a cheap box at the exact capsule bounds.
     // Keep full rendering for focused/highlighted nodes so interactions still work.
@@ -2583,12 +2581,7 @@ function render() {
 
     // Capsule Background
     const isZoomedOut = k < 0.4
-    if (isForceClosed) {
-      // Force-grey closed user-updated issues so they stay visually "done",
-      // regardless of the current view / filter settings.
-      ctx.fillStyle = themeName.value === 'dark' ? '#2a2d2e' : '#eeeeee'
-      ctx.globalAlpha = 1.0
-    } else if (isZoomedOut && node.color) {
+    if (isZoomedOut && node.color) {
       // Lighten the color for background
       ctx.fillStyle = node.color
       ctx.globalAlpha = 0.55
@@ -2601,16 +2594,6 @@ function render() {
     ctx.roundRect(x, y, w, h, r)
     ctx.fill()
     ctx.globalAlpha = 1.0
-
-    // Force-show highlight (subtle tint) for user-updated issues
-    if (isForceShow && !isForceClosed) {
-      ctx.save()
-      ctx.fillStyle = themeName.value === 'dark' ? 'rgba(255, 152, 0, 0.18)' : 'rgba(255, 152, 0, 0.12)'
-      ctx.beginPath()
-      ctx.roundRect(x, y, w, h, r)
-      ctx.fill()
-      ctx.restore()
-    }
 
     // Legend hover: also tint the capsule body to match the legend category
     if (isLegendHover && node.color) {
@@ -2628,19 +2611,6 @@ function render() {
       ctx.strokeStyle = c.nodeBorder
       ctx.lineWidth = 2
       if (node.color) ctx.strokeStyle = node.color
-
-      if (isForceClosed) {
-        ctx.strokeStyle = c.neutralNode
-      } else if (isForceShow && !isLegendHover && !isLastOpened && !isContextSelected && !isHovered) {
-        const scale = Math.max(0.0001, k * dpr)
-        const lw = 5 / scale
-        ctx.strokeStyle = 'rgba(255, 152, 0, 0.95)'
-        ctx.lineWidth = Math.max(ctx.lineWidth, lw)
-        ctx.shadowColor = themeName.value === 'dark' ? 'rgba(255, 152, 0, 0.28)' : 'rgba(255, 152, 0, 0.22)'
-        ctx.shadowBlur = 16 / scale
-        ctx.shadowOffsetX = 0
-        ctx.shadowOffsetY = 0
-      }
 
       if (isLegendHover) {
         const scale = Math.max(0.0001, k * dpr)
@@ -2718,7 +2688,7 @@ function render() {
         const headerY = y + 20
         
         // ID (Left)
-        ctx.fillStyle = isForceClosed ? c.textDim : c.textId
+        ctx.fillStyle = c.textId
         ctx.font = idFont
         ctx.textAlign = 'left'
         
@@ -2800,7 +2770,7 @@ function render() {
         }
 
         // -- Title --
-        ctx.fillStyle = isForceClosed ? c.textDim : c.textMain
+        ctx.fillStyle = c.textMain
         ctx.font = titleFont
         ctx.textAlign = 'left'
         ctx.textBaseline = 'top'
@@ -2828,7 +2798,7 @@ function render() {
 
         // -- Author (Bottom) --
         const authorName = node._raw.author ? node._raw.author.name : 'Unknown'
-        ctx.fillStyle = isForceClosed ? c.textDim : c.textMuted
+        ctx.fillStyle = c.textMuted
         ctx.font = metaFont
         ctx.textAlign = 'left'
         ctx.fillText(authorName, x + 15, y + h - 15)
@@ -2836,7 +2806,7 @@ function render() {
         // -- Tag (Bottom Right) --
         if (node.displayTag && node.displayTag !== '_no_tag_' && node.displayTag !== authorName) {
           ctx.textAlign = 'right'
-          ctx.fillStyle = isForceClosed ? c.textDim : node.color
+          ctx.fillStyle = node.color
           ctx.font = 'bold 10px "Segoe UI", sans-serif'
           ctx.fillText(node.displayTag, x + w - 15, y + h - 15)
         }

@@ -437,9 +437,7 @@ export function useDataLoader ({
               hasTasks: issue.has_tasks,
               taskStatus: issue.task_status,
               type: 'gitlab_issue',
-              _raw: issue,
-              // preserve UI-only flags if present
-              _uiForceShow: nodes[id]?._uiForceShow
+              _raw: issue
             }
           })
 

@@ -37,7 +37,6 @@ export function useGitLabIssueMutations ({
       }
       if (issueGraph.value && issueGraph.value.markDataOnlyUpdate) issueGraph.value.markDataOnlyUpdate()
       if (nodes[issueIid]) nodes[issueIid]._raw = updated
-      nodes[issueIid]._uiForceShow = true
       snackbarText.value = ev === 'close' ? `Closed #${issueIid}` : `Reopened #${issueIid}`
       snackbar.value = true
     } catch (e) {
@@ -84,7 +83,6 @@ export function useGitLabIssueMutations ({
 
       if (issueGraph.value && issueGraph.value.markDataOnlyUpdate) issueGraph.value.markDataOnlyUpdate()
       if (nodes[issueIid]) nodes[issueIid]._raw = updated
-      nodes[issueIid]._uiForceShow = true
       snackbarText.value = list.length ? `Assigned #${issueIid}` : `Unassigned #${issueIid}`
       snackbar.value = true
     } catch (e) {

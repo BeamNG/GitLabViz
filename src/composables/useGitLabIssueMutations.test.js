@@ -55,7 +55,6 @@ describe('useGitLabIssueMutations', () => {
     })
 
     await api.onIssueStateChange({ iid: 1, state_event: 'close' })
-    expect(nodes['1']._uiForceShow).toBe(true)
     expect(nodes['1']._raw.epic?.title).toBe('KeepMe')
     expect(snackbar.value).toBe(true)
     expect(snackbarText.value).toContain('Closed')
@@ -83,7 +82,6 @@ describe('useGitLabIssueMutations', () => {
     })
 
     await api.onIssueAssigneeChange({ iid: 1, assignee_ids: [123] })
-    expect(nodes['1']._uiForceShow).toBe(true)
     expect(snackbar.value).toBe(true)
     expect(snackbarText.value).toContain('Assigned')
   })

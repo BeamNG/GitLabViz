@@ -133,12 +133,6 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
     const result = {}
     const stateMap = userStateByName.value || {}
     Object.values(nodes).forEach(node => {
-      // Keep user-updated issues visible even if filters would exclude them.
-      if (node && node._uiForceShow) {
-        result[node.id] = node
-        return
-      }
-
       const nodeLabels = node._raw.labels || []
       const meName = settings.meta.gitlabMeName || ''
       const authorName = node._raw.author ? node._raw.author.name : null
