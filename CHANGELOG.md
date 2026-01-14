@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.20] - 2026-01-14
+- GitLab sync: incremental refresh now includes state transitions (open/closed) by fetching updated issues with `state=all`; always updates issues already in cache/graph regardless of `gitlabClosedDays` (which only affects adding new closed issues).
+
 ## [0.3.19] - 2026-01-09
 - Graph perf: speed up physics overlap resolution on large graphs; faster zoomed-out drawing (LOD) + cached group smudges; faster group label toggling.
 - improved frame fit

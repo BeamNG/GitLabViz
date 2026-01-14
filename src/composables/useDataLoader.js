@@ -279,53 +279,87 @@ export function useDataLoader ({
             settings.meta.gitlabCanWrite = false
           }
 
-          // Fetch opened issues (REST: fast + includes epic_iid)
-          issues = await fetchProjectIssuesRest(
-            restClient,
-            settings.config.projectId,
-            (msg) => {
-              loadingMessage.value = msg
-              updateStatus.value = { loading: true, source: 'gitlab', message: msg }
-            },
-            updatedAfter ? { params: { updated_after: updatedAfter } } : {}
-          )
-          const partialOpened = !!issues?.__glvPartial
-
-          // Fetch closed issues if requested
-          if (settings.config.gitlabClosedDays > 0) {
-            const closedAfter = new Date()
-            closedAfter.setDate(closedAfter.getDate() - settings.config.gitlabClosedDays)
-
-            const closedAfterMs = closedAfter.getTime()
-            const closedUpdatedAfter = (() => {
-              if (!updatedAfter) return closedAfter.toISOString()
-              const updatedAfterMs = parseCursorMs(updatedAfter)
-              if (updatedAfterMs == null) return closedAfter.toISOString()
-              return new Date(Math.max(closedAfterMs, updatedAfterMs)).toISOString()
-            })()
-
-            const closedIssues = await fetchProjectIssuesRest(
+          if (updatedAfter) {
+            // Incremental sync must include state transitions (opened <-> closed), not just new opened issues.
+            const updated = await fetchProjectIssuesRest(
               restClient,
               settings.config.projectId,
               (msg) => {
                 loadingMessage.value = msg
                 updateStatus.value = { loading: true, source: 'gitlab', message: msg }
               },
-              {
-                state: 'closed',
-                params: {
-                  updated_after: closedUpdatedAfter
-                }
+              { state: 'all', params: { updated_after: updatedAfter } }
+            )
+            const partialUpdated = !!updated?.__glvPartial
+
+            // NOTE: In incremental mode, always apply updates for issues that are already in cache/graph,
+            // regardless of gitlabClosedDays. gitlabClosedDays only affects adding *new* closed issues.
+            const closedAfter = (() => {
+              if (!(settings.config.gitlabClosedDays > 0)) return null
+              const d = new Date()
+              d.setDate(d.getDate() - settings.config.gitlabClosedDays)
+              return d
+            })()
+            issues = updated.filter(i => {
+              if (!i || i.iid == null) return false
+              const id = String(i.iid)
+              const exists = !!nodes[id]
+              if (i.state !== 'closed') return true
+              if (exists) return true
+              if (!closedAfter) return false
+              return !!(i.closed_at && new Date(i.closed_at) >= closedAfter)
+            })
+
+            if (partialUpdated) {
+              try { Object.defineProperty(issues, '__glvPartial', { value: true, enumerable: false }) } catch {}
+            }
+          } else {
+            // Full fetch: opened issues (REST: fast + includes epic_iid)
+            issues = await fetchProjectIssuesRest(
+              restClient,
+              settings.config.projectId,
+              (msg) => {
+                loadingMessage.value = msg
+                updateStatus.value = { loading: true, source: 'gitlab', message: msg }
               }
             )
-            const partialClosed = !!closedIssues?.__glvPartial
+            const partialOpened = !!issues?.__glvPartial
 
-            // Filter to ensure they were actually closed after the date (updated_after is broader)
-            const actuallyClosed = closedIssues.filter(i => i.closed_at && new Date(i.closed_at) >= closedAfter)
-            issues = [...issues, ...actuallyClosed]
-            // propagate partial marker
-            if (partialOpened || partialClosed) {
-              try { Object.defineProperty(issues, '__glvPartial', { value: true, enumerable: false }) } catch {}
+            // Fetch closed issues if requested
+            if (settings.config.gitlabClosedDays > 0) {
+              const closedAfter = new Date()
+              closedAfter.setDate(closedAfter.getDate() - settings.config.gitlabClosedDays)
+
+              const closedAfterMs = closedAfter.getTime()
+              const closedUpdatedAfter = (() => {
+                const updatedAfterMs = parseCursorMs(updatedAfter)
+                if (updatedAfterMs == null) return closedAfter.toISOString()
+                return new Date(Math.max(closedAfterMs, updatedAfterMs)).toISOString()
+              })()
+
+              const closedIssues = await fetchProjectIssuesRest(
+                restClient,
+                settings.config.projectId,
+                (msg) => {
+                  loadingMessage.value = msg
+                  updateStatus.value = { loading: true, source: 'gitlab', message: msg }
+                },
+                {
+                  state: 'closed',
+                  params: {
+                    updated_after: closedUpdatedAfter
+                  }
+                }
+              )
+              const partialClosed = !!closedIssues?.__glvPartial
+
+              // Filter to ensure they were actually closed after the date (updated_after is broader)
+              const actuallyClosed = closedIssues.filter(i => i.closed_at && new Date(i.closed_at) >= closedAfter)
+              issues = [...issues, ...actuallyClosed]
+              // propagate partial marker
+              if (partialOpened || partialClosed) {
+                try { Object.defineProperty(issues, '__glvPartial', { value: true, enumerable: false }) } catch {}
+              }
             }
           }
 
