@@ -1055,6 +1055,7 @@ const statusColors = {
   'to do': '#6c757d',
   'in progress': '#007bff',
   'ready for review': '#fd7e14',
+  'on hold/blocked': '#dc3545',
   'done': '#28a745',
   "won't do": '#dc3545',
   'duplicate': '#dc3545'

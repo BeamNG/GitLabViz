@@ -205,6 +205,7 @@
 
           <SidebarFilterControls
             :state="settings.uiState"
+            :all-statuses="allStatuses"
             :all-labels="allLabels"
             :all-authors="allAuthors"
             :all-assignees="allAssignees"
@@ -340,6 +341,7 @@ const props = defineProps({
   GLOBAL_PRESETS: { type: Array, default: () => [] },
   customPresets: { type: Array, default: () => [] },
 
+  allStatuses: { type: Array, default: () => [] },
   allLabels: { type: Array, default: () => [] },
   allAuthors: { type: Array, default: () => [] },
   allAssignees: { type: Array, default: () => [] },

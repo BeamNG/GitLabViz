@@ -12,6 +12,28 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
     return Array.from(labels).sort()
   })
 
+  const allStatuses = computed(() => {
+    const statuses = new Set()
+    Object.values(nodes).forEach(node => {
+      const raw = node?._raw || {}
+      let s = (typeof raw.status_display === 'string' && raw.status_display.trim()) ? raw.status_display.trim() : ''
+      if (!s) s = (typeof raw.work_item_status === 'string' && raw.work_item_status.trim()) ? raw.work_item_status.trim() : ''
+      if (!s) s = getScopedLabelValue(raw.labels, 'Status') || ''
+      if (!s) s = String(raw.state || '').toLowerCase() === 'closed' ? 'Done' : 'To do'
+      statuses.add(s)
+    })
+
+    const baseOrder = ['To do', 'In progress', 'Ready for Review', 'On Hold/Blocked', 'Done', 'Won\'t do', 'Duplicate']
+    const list = Array.from(statuses)
+    list.sort((a, b) => {
+      const ia = baseOrder.indexOf(a)
+      const ib = baseOrder.indexOf(b)
+      if (ia !== -1 || ib !== -1) return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib)
+      return String(a).localeCompare(String(b))
+    })
+    return list.length ? list : baseOrder
+  })
+
   const allAuthors = computed(() => {
     const authors = new Set()
     Object.values(nodes).forEach(node => {
@@ -655,6 +677,7 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
   })
 
   return {
+    allStatuses,
     allLabels,
     allAuthors,
     allAssignees,

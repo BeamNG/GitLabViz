@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.23] - 2026-01-14
+- Filters: Status dropdown is now derived from loaded issues (no longer hardcoded), fixing missing statuses like "On Hold/Blocked".
+
 ## [0.3.22] - 2026-01-14
 - Legend: customizable per-item colors (saved in presets). Click a legend swatch to pick a color, with a Reset option to restore defaults.
 - Priorities: default palette now matches severity (red → green).

@@ -113,6 +113,20 @@ describe('useGraphDerivedState', () => {
     expect(d.allAssignees.value).toEqual(['Bob'])
   })
 
+  it('derives status list from status_display/work_item_status/scoped label', () => {
+    const settings = baseSettings()
+    const nodes = reactive({
+      '1': { id: '1', type: 'gitlab_issue', _raw: { state: 'opened', status_display: 'On Hold/Blocked', labels: [] } },
+      '2': { id: '2', type: 'gitlab_issue', _raw: { state: 'opened', work_item_status: 'In progress', labels: [] } },
+      '3': { id: '3', type: 'gitlab_issue', _raw: { state: 'opened', labels: ['Status::Ready for Review'] } },
+      '4': { id: '4', type: 'gitlab_issue', _raw: { state: 'closed', labels: [] } }
+    })
+    const edges = reactive({})
+
+    const d = useGraphDerivedState({ settings, nodes, edges })
+    expect(d.allStatuses.value).toEqual(['In progress', 'Ready for Review', 'On Hold/Blocked', 'Done'])
+  })
+
   it('enables hideUnlinked when switching into dependency mode', async () => {
     const settings = baseSettings()
     const nodes = reactive({

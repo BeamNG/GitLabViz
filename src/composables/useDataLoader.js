@@ -413,6 +413,7 @@ export function useDataLoader ({
             if (status === 'To do') color = '#6c757d'
             else if (status === 'In progress') color = '#007bff'
             else if (status === 'Ready for Review') color = '#fd7e14'
+            else if (status === 'On Hold/Blocked') color = '#dc3545'
             else if (status === 'Done') color = '#28a745'
             else if (status === 'Won\'t do' || status === 'Duplicate') color = '#dc3545'
 

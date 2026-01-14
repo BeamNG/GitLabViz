@@ -16,6 +16,7 @@
       :viz-mode-options="vizModeOptions"
       :GLOBAL_PRESETS="GLOBAL_PRESETS"
       :custom-presets="customPresets"
+      :all-statuses="allStatuses"
       :all-labels="allLabels"
       :all-authors="allAuthors"
       :all-assignees="allAssignees"
@@ -525,6 +526,7 @@ const groupingModeOptions = computed(() => {
 })
 
 const {
+  allStatuses,
   allLabels,
   allAuthors,
   allAssignees,

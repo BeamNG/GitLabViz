@@ -215,14 +215,7 @@
       <!-- Status & Subscription -->
       <v-autocomplete
         v-model="state.filters.selectedStatuses"
-        :items="[
-          { title: 'To do', value: 'To do', icon: 'mdi-circle-outline' },
-          { title: 'In progress', value: 'In progress', icon: 'mdi-progress-check' },
-          { title: 'Ready for Review', value: 'Ready for Review', icon: 'mdi-eye-outline' },
-          { title: 'Done', value: 'Done', icon: 'mdi-check-circle-outline' },
-          { title: 'Won\'t do', value: 'Won\'t do', icon: 'mdi-cancel' },
-          { title: 'Duplicate', value: 'Duplicate', icon: 'mdi-content-copy' }
-        ]"
+        :items="statusItems"
         label="Status"
         multiple
         chips
@@ -638,12 +631,14 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
 
 const emit = defineEmits(['reset-filters'])
 const props = defineProps({
   // single dict for filters/view/ui (from useUiState)
   state: { type: Object, required: true },
 
+  allStatuses: { type: Array, required: true },
   allLabels: { type: Array, required: true },
   allAuthors: { type: Array, required: true },
   allAssignees: { type: Array, required: true },
@@ -667,6 +662,27 @@ const { state } = props
 
 const isSetArray = (v) => Array.isArray(v) && v.length > 0
 const isSetString = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v
+
+const statusIcon = (status) => {
+  const s = String(status || '').trim()
+  if (s === 'To do') return 'mdi-circle-outline'
+  if (s === 'In progress') return 'mdi-progress-check'
+  if (s === 'Ready for Review') return 'mdi-eye-outline'
+  if (s === 'On Hold/Blocked') return 'mdi-pause-circle-outline'
+  if (s === 'Done') return 'mdi-check-circle-outline'
+  if (s === 'Won\'t do') return 'mdi-cancel'
+  if (s === 'Duplicate') return 'mdi-content-copy'
+  return 'mdi-circle-medium'
+}
+
+const statusItems = computed(() => {
+  const list = Array.isArray(props.allStatuses) ? props.allStatuses : []
+  return list.filter(Boolean).map(s => ({
+    title: s,
+    value: s,
+    icon: statusIcon(s)
+  }))
+})
 const formatUserLabel = (name) => {
   const n = String(name || '').trim()
   if (!n) return ''
