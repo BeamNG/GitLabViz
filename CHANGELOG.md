@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.3.22] - 2026-01-14
+- Legend: customizable per-item colors (saved in presets). Click a legend swatch to pick a color, with a Reset option to restore defaults.
+- Priorities: default palette now matches severity (red → green).
+
 ## [0.3.21] - 2026-01-14
 - Graph: removed the "force show closed issues regardless of filters" behavior (closed issues now strictly respect “Include closed issues”), preventing layout issues caused by hidden-but-still-present nodes.
 

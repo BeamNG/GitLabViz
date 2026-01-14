@@ -351,7 +351,8 @@ const getCurrentConfigSnapshot = () => ({
     grouping: settings.uiState.view.groupingMode,
     linkMode: settings.uiState.view.linkMode,
     dueSoonDays: settings.uiState.view.dueSoonDays,
-    issueOpenTarget: settings.uiState.view.issueOpenTarget
+    issueOpenTarget: settings.uiState.view.issueOpenTarget,
+    colorOverrides: JSON.parse(JSON.stringify(settings.uiState.view.colorOverrides || {}))
   },
   ui: {
     showFilters: settings.uiState.ui.showFilters,
@@ -773,6 +774,7 @@ const applyConfiguration = (config) => {
       if (config.view.linkMode) settings.uiState.view.linkMode = config.view.linkMode
       if (config.view.dueSoonDays != null) settings.uiState.view.dueSoonDays = config.view.dueSoonDays
       if (config.view.issueOpenTarget) settings.uiState.view.issueOpenTarget = config.view.issueOpenTarget
+      if (config.view.colorOverrides) settings.uiState.view.colorOverrides = config.view.colorOverrides
     }
 
     if (config.ui) {

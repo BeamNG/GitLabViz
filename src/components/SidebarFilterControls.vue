@@ -638,6 +638,7 @@
 </template>
 
 <script setup>
+
 const emit = defineEmits(['reset-filters'])
 const props = defineProps({
   // single dict for filters/view/ui (from useUiState)

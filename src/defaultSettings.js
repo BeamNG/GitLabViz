@@ -120,7 +120,10 @@ export const defaultSettings = () => ({
       legendSort: 'name', // 'name' | 'count'
       showGroupLabels: true,
       dueSoonDays: 7,
-      issueOpenTarget: '_blank' // '_blank' | '_self' | 'GitlabVizIssueTab'
+      issueOpenTarget: '_blank', // '_blank' | '_self' | 'GitlabVizIssueTab'
+      // Optional per-mode color overrides (persisted in presets):
+      // { priority: { '1 - High': '#66bb6a', ... } }
+      colorOverrides: {}
     },
     simulation: {
       repulsion: 300,

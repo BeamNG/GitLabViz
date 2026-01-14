@@ -213,7 +213,7 @@
         </div>
       </template>
     </div>
-    <div v-if="(showLegend && (legendItems.length || legendGradient)) || showLinkLegend" class="legend">
+    <div v-if="(showLegend && (legendItems.length || legendGradient)) || showLinkLegend" ref="legendEl" class="legend">
       <div class="legend-title">
         <span>Legend</span>
         <div class="legend-controls">
@@ -243,7 +243,14 @@
           @mouseenter="legendHoverKey = it.label"
           @mouseleave="legendHoverKey = null"
         >
-          <span class="legend-swatch" :style="{ background: it.color }"></span>
+          <button
+            type="button"
+            class="legend-swatch-btn"
+            :title="'Set color…'"
+            @click.stop="openLegendColorPopover(it.label, $event)"
+          >
+            <span class="legend-swatch" :style="{ background: it.color }"></span>
+          </button>
           <span class="legend-label" :title="it.label">{{ it.label }}</span>
           <span class="legend-count">{{ it.count }}</span>
         </div>
@@ -259,6 +266,37 @@
             <div class="link-legend-label">{{ it.label }}</div>
           </div>
         </div>
+      </div>
+    </div>
+    <div
+      v-if="legendColorPopover.visible"
+      ref="legendColorPopoverEl"
+      class="legend-color-popover legend-color-popover--floating"
+      :class="{ 'is-below': legendColorPopover.placement === 'below' }"
+      :style="{ left: `${legendColorPopover.left}px`, top: `${legendColorPopover.top}px` }"
+      @click.stop
+    >
+      <div class="legend-color-popover__header">
+        <div class="legend-color-popover__headings">
+          <div class="legend-color-popover__title">Customize color item</div>
+          <div class="legend-color-popover__subtitle" :title="legendColorPopover.label">{{ legendColorPopover.label }}</div>
+        </div>
+        <button type="button" class="legend-btn legend-color-popover__close" title="Close" @click="closeLegendColorPopover">×</button>
+      </div>
+      <div class="legend-color-popover__body">
+        <input
+          type="color"
+          class="legend-color-popover__picker"
+          :value="getLegendColorValueByLabel(legendColorPopover.label)"
+          @input="setLegendOverride(legendColorPopover.label, $event.target.value)"
+          title="Pick color"
+        />
+        <button
+          type="button"
+          class="legend-btn legend-color-popover__reset"
+          title="Default / reset"
+          @click="clearLegendOverride(legendColorPopover.label)"
+        >Reset</button>
       </div>
     </div>
   </div>
@@ -751,6 +789,94 @@ const showGroupLabels = computed({
   set: (v) => { settings.uiState.view.showGroupLabels = !!v }
 })
 const legendHoverKey = ref(null)
+const legendEl = ref(null)
+const legendColorPopoverEl = ref(null)
+const legendColorPopover = ref({ visible: false, label: '', left: 0, top: 0, placement: 'above' })
+
+const normalizeHexColor = (v) => {
+  const s = String(v || '').trim()
+  return /^#[0-9a-fA-F]{6}$/.test(s) ? s : ''
+}
+const ensureColorOverrideMap = (mode) => {
+  const m = String(mode || '').trim()
+  if (!m) return null
+  if (!settings.uiState.view.colorOverrides) settings.uiState.view.colorOverrides = {}
+  const all = settings.uiState.view.colorOverrides
+  if (!all[m]) all[m] = {}
+  return all[m]
+}
+const getColorOverride = (mode, key) => {
+  const m = String(mode || '').trim()
+  const k = String(key || '').trim()
+  if (!m || !k) return ''
+  const all = settings?.uiState?.view?.colorOverrides || null
+  const map = all && all[m] ? all[m] : null
+  return map && typeof map[k] === 'string' ? normalizeHexColor(map[k]) : ''
+}
+const setColorOverride = (mode, key, color) => {
+  const map = ensureColorOverrideMap(mode)
+  if (!map) return
+  const k = String(key || '').trim()
+  const c = normalizeHexColor(color)
+  if (!k || !c) return
+  map[k] = c
+}
+const clearColorOverride = (mode, key) => {
+  const m = String(mode || '').trim()
+  const k = String(key || '').trim()
+  if (!m || !k) return
+  const all = settings?.uiState?.view?.colorOverrides || null
+  const map = all && all[m] ? all[m] : null
+  if (!map) return
+  delete map[k]
+}
+const getLegendColorValueByLabel = (label) => {
+  const l = String(label || '')
+  if (!l) return '#000000'
+  const it = Array.isArray(legendItems.value) ? legendItems.value.find(x => x && x.label === l) : null
+  return getColorOverride(props.colorMode, l) || (it && it.color ? String(it.color) : '#000000')
+}
+const setLegendOverride = (label, color) => {
+  setColorOverride(props.colorMode, label, color)
+}
+const clearLegendOverride = (label) => {
+  clearColorOverride(props.colorMode, label)
+}
+const closeLegendColorPopover = () => {
+  legendColorPopover.value = { visible: false, label: '', left: 0, top: 0, placement: 'above' }
+}
+const openLegendColorPopover = (label, e) => {
+  if (legendGradient.value) return
+  const l = String(label || '')
+  if (!l) return
+
+  if (legendColorPopover.value.visible && legendColorPopover.value.label === l) {
+    closeLegendColorPopover()
+    return
+  }
+
+  const btnRect = e?.currentTarget?.getBoundingClientRect?.()
+  if (!btnRect) {
+    legendColorPopover.value = { visible: true, label: l, left: 10, top: 10, placement: 'above' }
+    return
+  }
+
+  // Render as a floating (viewport-based) popover so it isn't clipped by the legend's scroll container.
+  const approxW = 240
+  const approxH = 90
+  const pad = 8
+  const maxLeft = Math.max(pad, (window.innerWidth || 0) - approxW - pad)
+  const left = Math.min(Math.max(pad, btnRect.left), maxLeft)
+
+  // Prefer above; if near top, place below.
+  const canAbove = btnRect.top > (approxH + pad)
+  const placement = canAbove ? 'above' : 'below'
+  const top = placement === 'above'
+    ? Math.max(pad, btnRect.top)
+    : Math.min(Math.max(pad, btnRect.bottom + pad), Math.max(pad, (window.innerHeight || 0) - approxH - pad))
+
+  legendColorPopover.value = { visible: true, label: l, left, top, placement }
+}
 
 const sortLegendItems = (items) => {
   const isWeight = props.colorMode === 'weight'
@@ -784,6 +910,20 @@ const onWindowKeyDown = (e) => {
 }
 
 const onGlobalMouseDown = (e) => {
+  // Close legend color popover when clicking outside the legend.
+  if (legendColorPopover.value.visible) {
+    const legend = legendEl.value
+    const pop = legendColorPopoverEl.value
+    const t = e && e.target ? e.target : null
+    if (t && legend && legend.contains(t)) {
+      // inside legend (ignore)
+    } else if (t && pop && pop.contains(t)) {
+      // inside popover (ignore)
+    } else {
+      closeLegendColorPopover()
+    }
+  }
+
   if (!contextMenu.value.visible) return
   const el = contextMenuEl.value
   if (el && e && e.target && el.contains(e.target)) return
@@ -898,6 +1038,17 @@ function scheduleRender () {
 // Color Scale
 const colorScale = d3.scaleOrdinal(d3.schemeTableau10)
 
+// Stable priority colors (can be overridden via settings.uiState.view.colorOverrides.priority)
+const PRIORITY_DEFAULT_COLORS = {
+  '0 - Blocking': '#d32f2f',
+  '1 - High': '#f57c00',
+  '2 - Medium': '#fbc02d',
+  '3 - Low': '#7cb342',
+  '4 - Lowest': '#2e7d32',
+  'TBD': '#80cbc4'
+}
+const priorityScale = d3.scaleOrdinal(d3.schemeTableau10)
+
 // Status palette: known statuses use fixed colors; everything else gets a stable palette color.
 const statusPalette = d3.scaleOrdinal([...(d3.schemeSet3 || []), ...d3.schemeTableau10])
 const statusColors = {
@@ -967,8 +1118,16 @@ watch(legendHoverKey, () => {
   scheduleRender()
 })
 
+watch(() => settings?.uiState?.view?.colorOverrides, () => {
+  if (showLegend.value) updateGraph()
+}, { deep: true })
+
 watch(() => showGroupLabels.value, () => {
   scheduleRender()
+})
+
+watch(() => props.colorMode, () => {
+  closeLegendColorPopover()
 })
 
 function initGraph() {
@@ -1196,6 +1355,8 @@ function updateGraph() {
     if (props.colorMode === 'none') {
       node.color = node.state === 'opened' ? '#28a745' : '#dc3545'
       node.displayTag = null
+      const ov = getColorOverride('none', node.state || 'Unknown')
+      if (ov) node.color = ov
     } else if (props.colorMode === 'due_status') {
       const dueRaw = node.dueDate || node._raw?.due_date || node._raw?.dueDate || null
       const due = dueRaw ? new Date(dueRaw) : null
@@ -1220,26 +1381,42 @@ function updateGraph() {
         node.displayTag = 'Due later'
         node._legendKey = 'Due later'
       }
+      const ok = node._legendKey || 'Unknown'
+      const ov = getColorOverride('due_status', ok)
+      if (ov) node.color = ov
     } else if (props.colorMode === 'tag') {
-      node.color = node.tag === '_no_tag_' ? neutralNode : colorScale(node.tag)
+      const key = node.tag
+      if (key === '_no_tag_') node.color = neutralNode
+      else node.color = getColorOverride('tag', key) || colorScale(key)
       node.displayTag = node.tag
     } else if (props.colorMode === 'author') {
-      node.color = colorScale(node.authorName)
+      node.color = getColorOverride('author', node.authorName) || colorScale(node.authorName)
       node.displayTag = node.authorName
     } else if (props.colorMode === 'assignee') {
-      node.color = node.assigneeName === 'Unassigned' ? neutralNode : colorScale(node.assigneeName)
+      const key = node.assigneeName
+      if (key === 'Unassigned') node.color = getColorOverride('assignee', key) || neutralNode
+      else node.color = getColorOverride('assignee', key) || colorScale(key)
       node.displayTag = node.assigneeName
     } else if (props.colorMode === 'milestone') {
-      node.color = node.milestoneTitle === 'No Milestone' ? neutralNode : colorScale(node.milestoneTitle)
+      const key = node.milestoneTitle
+      if (key === 'No Milestone') node.color = getColorOverride('milestone', key) || neutralNode
+      else node.color = getColorOverride('milestone', key) || colorScale(key)
       node.displayTag = node.milestoneTitle
     } else if (props.colorMode === 'priority') {
-      node.color = node.priority === 'No Priority' ? neutralNode : colorScale(node.priority)
-      node.displayTag = node.priority
+      const key = node.priority
+      const override = getColorOverride('priority', key)
+      if (key === 'No Priority') node.color = override || neutralNode
+      else node.color = override || PRIORITY_DEFAULT_COLORS[key] || priorityScale(key)
+      node.displayTag = key
     } else if (props.colorMode === 'type') {
-      node.color = node.type === 'No Type' ? neutralNode : colorScale(node.type)
+      const key = node.type
+      if (key === 'No Type') node.color = getColorOverride('type', key) || neutralNode
+      else node.color = getColorOverride('type', key) || colorScale(key)
       node.displayTag = node.type
     } else if (props.colorMode === 'weight') {
-      node.color = node.weight === 'No Weight' ? neutralNode : colorScale(node.weight)
+      const key = node.weight
+      if (key === 'No Weight') node.color = getColorOverride('weight', key) || neutralNode
+      else node.color = getColorOverride('weight', key) || colorScale(key)
       node.displayTag = node.weight
     } else if (props.colorMode === 'time_estimate') {
       const v = Number(node.timeEstimate) || 0
@@ -1267,6 +1444,9 @@ function updateGraph() {
         node.displayTag = 'Within'
         node._legendKey = 'Within budget'
       }
+      const ok = node._legendKey || 'Unknown'
+      const ov = getColorOverride('budget_status', ok)
+      if (ov) node.color = ov
     } else if (props.colorMode === 'estimate_bucket') {
       const est = Number(node.timeEstimate) || 0
       const h = est / 3600
@@ -1294,6 +1474,8 @@ function updateGraph() {
       node.color = color
       node.displayTag = est > 0 ? formatSecondsShort(est) : null
       node._legendKey = key
+      const ov = getColorOverride('estimate_bucket', key)
+      if (ov) node.color = ov
     } else if (props.colorMode === 'task_completion') {
       const tcs = node._raw?.task_completion_status || node._raw?.taskCompletionStatus || null
       const count = Number(tcs?.count) || 0
@@ -1315,6 +1497,9 @@ function updateGraph() {
         node.displayTag = `${done}/${count}`
         node._legendKey = 'In progress'
       }
+      const ok = node._legendKey || 'Unknown'
+      const ov = getColorOverride('task_completion', ok)
+      if (ov) node.color = ov
     } else if (props.colorMode === 'time_ratio') {
       // Continuous scale for time ratio: 0 (green) -> 1 (yellow) -> >1 (red)
       const ratio = node.timeSpentRatio || 0
@@ -1378,6 +1563,10 @@ function updateGraph() {
       }
 
       node.displayTag = null // Don't show extra tag for state
+
+      const legendKey = s || (node.state === 'closed' ? 'Closed' : 'Open')
+      const ov = getColorOverride('state', legendKey)
+      if (ov) node.color = ov
     }
   }
 
@@ -3443,6 +3632,7 @@ html[data-theme="dark"] .issue-context-menu__chip:hover {
   border: 1px solid rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.92);
   font-size: 12px;
+  cursor: default;
 }
 
 .legend-title {
@@ -3494,6 +3684,10 @@ html[data-theme="dark"] .issue-context-menu__chip:hover {
   font-size: 11px;
   cursor: pointer;
 }
+.legend-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
 
 .legend-btn.active {
   border-color: rgba(255, 193, 7, 0.45);
@@ -3513,6 +3707,8 @@ html[data-theme="dark"] .issue-context-menu__chip:hover {
   gap: 8px;
   border-radius: 8px;
   padding: 2px 4px;
+  position: relative;
+  cursor: default;
 }
 
 .legend-item:hover {
@@ -3525,6 +3721,79 @@ html[data-theme="dark"] .issue-context-menu__chip:hover {
   border-radius: 3px;
   border: 1px solid rgba(255, 255, 255, 0.18);
 }
+.legend-swatch-btn {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.legend-color-popover {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.88);
+  backdrop-filter: blur(8px);
+  z-index: 5;
+  width: 240px;
+  transform: translateY(calc(-100% - 8px));
+}
+.legend-color-popover--floating {
+  position: fixed;
+  z-index: 50;
+}
+.legend-color-popover--floating.is-below {
+  transform: translateY(0);
+}
+.legend-color-popover__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.legend-color-popover__headings {
+  min-width: 0;
+}
+.legend-color-popover__title {
+  font-size: 12px;
+  font-weight: 700;
+  opacity: 0.95;
+}
+.legend-color-popover__subtitle {
+  margin-top: 2px;
+  font-size: 12px;
+  opacity: 0.75;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.legend-color-popover__close {
+  padding: 0 8px;
+  line-height: 1.2;
+}
+.legend-color-popover__body {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.legend-color-popover__picker {
+  width: 34px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.legend-color-popover__reset {
+  padding: 3px 8px;
+}
 
 .legend-label {
   overflow: hidden;
@@ -3532,6 +3801,7 @@ html[data-theme="dark"] .issue-context-menu__chip:hover {
   white-space: nowrap;
   opacity: 0.95;
 }
+
 
 .legend-count {
   opacity: 0.65;
