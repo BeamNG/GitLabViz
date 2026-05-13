@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.36] - 2026-05-13
+- Filter dropdown UX polish: width pinned per-dropdown via JS (no more jitter as long
+  labels scroll into view; Vuetify virtualizes the list so CSS-only sizing didn't help),
+  taller menu (~13 rows visible), tighter row height, subtle border + drop shadow, zebra
+  striping for horizontal scanability.
+- Sensible date-input defaults: picking "Before" / "After" / "Between" / "Last X Days"
+  pre-fills the date fields (past 7 days for Created/Updated, next 7 days for Due Date)
+  so they don't render as blank `dd/mm/yyyy`.
+- Active-filter affordance: focused field gets a 2px primary outline, non-focused filters
+  fade to ~35% opacity so the eye lands on the input you're working with.
+- Date-mode dropdown rows are now icon-coloured (Before / After / Between / Last X Days)
+  matching the rest of the filter palette.
+
 ## [0.3.35] - 2026-05-13
 - Filter dropdowns now sort options by ticket count (descending), so frequently-used values
   surface first and unused / deprecated ones sink to the bottom. Applied to Status, Labels

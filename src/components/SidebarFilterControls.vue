@@ -19,7 +19,7 @@
     </div>
   </div>
 
-  <v-expand-transition><div v-show="state.ui.showFilters" class="px-1">
+  <v-expand-transition><div v-show="state.ui.showFilters" class="px-1 glv-filter-list">
       <!-- Search -->
       <v-text-field
         v-model="state.filters.searchQuery"
@@ -48,7 +48,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-tag-multiple"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(sortByCount(allLabels, 'labels'))"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item">
@@ -74,7 +74,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-tag-remove"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(sortByCount(allLabels, 'excludedLabels'))"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item">
@@ -103,7 +103,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-account-edit"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(sortByCount(makeUserItems(allAuthors), 'authors'))"
       >
         <template v-slot:item="{ props, item }">
           <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
@@ -133,7 +133,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-account"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(sortByCount(makeUserItems(allAssignees, { includeUnassigned: true }), 'assignees'))"
       >
         <template v-slot:item="{ props, item }">
           <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
@@ -164,7 +164,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-flag"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(sortByCount(milestoneItems, 'milestones'))"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -192,7 +192,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-alert-circle"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(sortByCount(priorityItems, 'priorities'))"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -220,7 +220,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-shape"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(sortByCount(typeItems, 'types'))"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -247,7 +247,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-list-status"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(sortByCount(statusItems, 'status'))"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -270,7 +270,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-bell-ring-outline"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(subscriptionOptions)"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -293,7 +293,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-source-merge"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(mrModeOptions)"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -321,7 +321,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-account-multiple"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(sortByCount(makeUserItems(allParticipants), 'participants'))"
       >
         <template v-slot:item="{ props, item }">
           <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
@@ -346,7 +346,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-calendar-alert"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(dueStatusOptions)"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -369,7 +369,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-timer"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(spentModeOptions)"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -392,7 +392,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-cash"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(budgetModeOptions)"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -415,7 +415,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-timer-sand"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(estimateBucketOptions)"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -438,7 +438,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-format-list-checks"
-        :menu-props="menuProps"
+        :menu-props="menuPropsFor(taskModeOptions)"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -462,7 +462,7 @@
           :class="['compact-input', { 'is-active': isDateActive(state.filters.dateFilters.createdMode, state.filters.dateFilters.createdAfter, state.filters.dateFilters.createdBefore, state.filters.dateFilters.createdDays) }]"
           style="font-size: 12px"
           prepend-inner-icon="mdi-calendar-plus"
-          :menu-props="menuProps"
+          :menu-props="menuPropsFor(dateFilterModes)"
         >
           <template v-slot:item="{ props, item }">
             <v-list-item v-bind="props" :title="item.title">
@@ -488,7 +488,7 @@
           :class="['compact-input', { 'is-active': isDateActive(state.filters.dateFilters.updatedMode, state.filters.dateFilters.updatedAfter, state.filters.dateFilters.updatedBefore, state.filters.dateFilters.updatedDays) }]"
           style="font-size: 12px"
           prepend-inner-icon="mdi-calendar-edit"
-          :menu-props="menuProps"
+          :menu-props="menuPropsFor(dateFilterModes)"
         >
           <template v-slot:item="{ props, item }">
             <v-list-item v-bind="props" :title="item.title">
@@ -514,7 +514,7 @@
           :class="['compact-input', { 'is-active': isDateActive(state.filters.dateFilters.dueDateMode, state.filters.dateFilters.dueDateAfter, state.filters.dateFilters.dueDateBefore, state.filters.dateFilters.dueDateDays) }]"
           style="font-size: 12px"
           prepend-inner-icon="mdi-calendar-clock"
-          :menu-props="menuProps"
+          :menu-props="menuPropsFor(dateFilterModes)"
         >
           <template v-slot:item="{ props, item }">
             <v-list-item v-bind="props" :title="item.title">
@@ -560,7 +560,7 @@
           hide-details
           :class="['compact-input sidebar-display-select', { 'is-active': state.view.groupingMode !== 'none' }]"
           style="font-size: 12px"
-          :menu-props="menuProps"
+          :menu-props="menuPropsFor(groupingModeOptions)"
         >
           <template v-slot:item="{ props, item }">
             <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
@@ -593,7 +593,7 @@
           hide-details
           style="font-size: 12px"
           :class="['compact-input sidebar-display-select', { 'is-active': state.view.viewMode !== 'state' }]"
-          :menu-props="menuProps"
+          :menu-props="menuPropsFor(viewModeOptions)"
         >
           <template v-slot:item="{ props, item }">
             <v-list-item v-bind="props" :title="item.title">
@@ -628,7 +628,7 @@
           hide-details
           style="font-size: 12px"
           :class="['compact-input sidebar-display-select', { 'is-active': state.view.linkMode !== 'none' }]"
-          :menu-props="menuProps"
+          :menu-props="menuPropsFor(linkModeOptions)"
         >
           <template v-slot:item="{ props, item }">
             <v-list-item v-bind="props" :title="item.title">
@@ -688,10 +688,29 @@ const { state } = props
 const isSetArray = (v) => Array.isArray(v) && v.length > 0
 const isSetString = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v
 
-// Shared dropdown menu config: taller (more rows visible) + width pinned via custom class
-// (avoids the Vuetify jitter where the menu width changes while scrolling through items
-// of varying length).
+// Shared dropdown menu config: taller (more rows visible) + width pinned via custom class.
+// Width itself is computed per-dropdown by `menuPropsFor()` based on the longest label,
+// because Vuetify virtualizes the list (only ~10 items in DOM at a time) — so CSS-only
+// approaches like `max-content` recompute as you scroll. Pre-measuring all items upfront
+// gives a stable width that fits everything.
 const menuProps = { maxHeight: 460, contentClass: 'glv-filter-menu' }
+
+const MENU_MIN_PX = 280   // never narrower than the combo box
+const MENU_MAX_PX = 600   // cap so one giant label can't blow up the menu
+const MENU_CHAR_PX = 7    // approx avg width per char at 13px sans-serif
+const MENU_CHROME_PX = 80 // icon + count chip + padding
+
+const menuPropsFor = (items, titleFn) => {
+  const get = titleFn || ((i) => typeof i === 'string' ? i : (i?.title ?? i?.value ?? ''))
+  const list = Array.isArray(items) ? items : []
+  let maxLen = 0
+  for (const it of list) {
+    const t = String(get(it) || '')
+    if (t.length > maxLen) maxLen = t.length
+  }
+  const w = Math.max(MENU_MIN_PX, Math.min(MENU_MAX_PX, maxLen * MENU_CHAR_PX + MENU_CHROME_PX))
+  return { ...menuProps, width: w, minWidth: w, maxWidth: w }
+}
 
 // Pre-fill sensible defaults when a date mode is picked so the date inputs
 // don't render blank (which shows up as "dd/mm/yyyy" / "Invalid"). Past-dated
@@ -974,22 +993,24 @@ const isDateActive = (mode, after, before, days) => {
   opacity: 0.25;
 }
 
-/* Filter dropdown menu (shared via menuProps.contentClass): tighter rows + width pin.
-   `min-width` prevents Vuetify from re-measuring + jittering the menu width while the
-   user scrolls through items of varying length. */
-:deep(.glv-filter-menu) {
-  min-width: 260px !important;
+/* (filter dropdown menu styles moved to the unscoped block below — Vuetify menus are
+   teleported to <body> so they live outside this component's scoped CSS attribute.) */
+
+/* Focused-filter affordance: dim non-focused siblings + give the active field a clear
+   primary outline. Helps the eye land on the input the user is currently working with.
+   Uses TWO conditions so the dim persists once a dropdown menu opens (Vuetify teleports
+   the menu and may move DOM focus away, breaking `:focus-within`; but Vuetify keeps the
+   `.v-field--focused` class on the activator while the menu is open). */
+.glv-filter-list > * {
+  transition: opacity 160ms ease-out;
 }
-:deep(.glv-filter-menu .v-list) {
-  padding-block: 2px;
+.glv-filter-list:focus-within > *:not(:focus-within),
+.glv-filter-list:has(.v-field--focused) > *:not(:has(.v-field--focused)) {
+  opacity: 0.35;
 }
-:deep(.glv-filter-menu .v-list-item) {
-  min-height: 30px !important;
-  padding-top: 2px !important;
-  padding-bottom: 2px !important;
-}
-:deep(.glv-filter-menu .v-list-item__prepend) {
-  padding-inline-end: 6px !important;
+.glv-filter-list :deep(.v-field.v-field--focused) {
+  box-shadow: 0 0 0 2px rgba(var(--v-theme-primary), 0.55);
+  border-radius: 4px;
 }
 
 /* The icon wrapper sets `color`, the inner v-icon glyph inherits via `currentColor`.
@@ -1068,5 +1089,43 @@ const isDateActive = (mode, after, before, days) => {
   0%   { opacity: 0.8; transform: scaleY(0.95); }
   50%  { opacity: 1;    transform: scaleY(1); }
   100% { opacity: 0.8; transform: scaleY(0.95); }
+}
+</style>
+
+<!-- Unscoped: Vuetify menus are teleported to <body>, so they're outside the component's
+     scoped CSS. Use a contentClass-based selector with high specificity to pin the menu
+     width (no jitter while scrolling through items of varying length) and tighten rows. -->
+<style>
+/* Width is set per-dropdown via JS (`menuPropsFor()` measures the longest item once
+   and pins the menu to a fixed px). CSS-based sizing like `max-content` would re-flow
+   while scrolling because Vuetify virtualizes the list. */
+.glv-filter-menu.v-overlay__content,
+.v-overlay__content.glv-filter-menu {
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.18);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35), 0 2px 6px rgba(0, 0, 0, 0.25) !important;
+}
+.glv-filter-menu .v-list {
+  padding-block: 2px;
+}
+.glv-filter-menu .v-list-item {
+  min-height: 30px !important;
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+}
+.glv-filter-menu .v-list-item__prepend {
+  padding-inline-end: 6px !important;
+}
+/* Subtle zebra striping so rows are easier to track horizontally. */
+.glv-filter-menu .v-list-item:nth-child(even) {
+  background-color: rgba(var(--v-theme-on-surface), 0.04);
+}
+.glv-filter-menu .v-list-item__content {
+  min-width: 0;
+  overflow: hidden;
+}
+.glv-filter-menu .v-list-item-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
