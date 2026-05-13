@@ -2,7 +2,7 @@
   <v-card variant="outlined">
     <v-card-title class="text-subtitle-1">Highlights</v-card-title>
     <v-card-text>
-      <v-row dense>
+      <v-row density="compact">
         <v-col cols="12" md="3">
           <v-text-field v-model.number="cfg.days" type="number" min="1" label="Days" density="compact" variant="outlined" />
         </v-col>

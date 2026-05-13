@@ -154,13 +154,15 @@ export function useDataLoader ({
 
   const loadData = async (opts = {}) => {
     // Do not start another fetch while one is already running (no queueing).
+    // Set the flag synchronously to close the TOCTOU window before the first await.
     if (loading.value) return
+    loading.value = true
 
     // Check for app updates (hosted builds) before re-fetching data.
     try {
       if (typeof window.__glvCheckForUpdate === 'function') {
         const didReload = await window.__glvCheckForUpdate()
-        if (didReload) return
+        if (didReload) { loading.value = false; return }
       }
     } catch {}
 
@@ -172,27 +174,21 @@ export function useDataLoader ({
 
     const gitlabApiBaseUrl = resolveGitLabApiBaseUrl()
 
+    const bail = (msg) => { error.value = msg; loading.value = false }
+
     if (doGitLab && (!settings.config.token || !settings.config.projectId || !gitlabApiBaseUrl)) {
-      error.value = 'Please provide GitLab URL, Token, and Project ID'
-      return
+      return bail('Please provide GitLab URL, Token, and Project ID')
     }
-
     if (doSvn && !svnUrl.value) {
-      error.value = 'Please provide SVN URL'
-      return
+      return bail('Please provide SVN URL')
     }
-
     if (only === 'mattermost' && (!settings.config.mattermostUrl || !settings.config.mattermostToken)) {
-      error.value = 'Please configure Mattermost URL and login token in Configuration → Mattermost'
-      return
+      return bail('Please configure Mattermost URL and login token in Configuration → Mattermost')
     }
-
     if (!doGitLab && !doSvn && !doMattermost) {
-      error.value = 'Please enable at least one data source (GitLab / SVN) or log into Mattermost'
-      return
+      return bail('Please enable at least one data source (GitLab / SVN) or log into Mattermost')
     }
 
-    loading.value = true
     error.value = ''
     loadingMessage.value = 'Starting...'
     updateStatus.value = { loading: true, source: only === 'both' ? '' : only, message: 'Starting...' }
@@ -446,7 +442,7 @@ export function useDataLoader ({
           settings.meta.gitlabSyncCursor = startedCursor
         } catch (e) {
           console.error(e)
-          error.value = `GitLab Error: ${e.message}`
+          error.value = `GitLab Error: ${e?.message || String(e)}`
           // If SVN is enabled, continue?
           if (!settings.config.enableSvn) throw e
         }
@@ -544,7 +540,7 @@ export function useDataLoader ({
         } catch (svnErr) {
           console.error('SVN Error:', svnErr)
           // Don't fail completely if SVN fails
-          error.value = `GitLab loaded, but SVN failed: ${svnErr.message}`
+          error.value = `GitLab loaded, but SVN failed: ${svnErr?.message || String(svnErr)}`
           // Keep going to show GitLab data
         }
       }
@@ -661,10 +657,10 @@ export function useDataLoader ({
         settings.meta.lastUpdated = now
       } catch (e) {
         console.error('Failed to save to cache:', e)
-        error.value = 'Failed to save to cache: ' + e.message
+        error.value = `Failed to save to cache: ${e?.message || String(e)}`
       }
     } catch (err) {
-      error.value = err.message || 'Failed to load data'
+      error.value = err?.message || String(err) || 'Failed to load data'
       console.error(err)
     } finally {
       loading.value = false
@@ -682,37 +678,31 @@ export function useDataLoader ({
     return loadData({ forceFull })
   }
 
+  const runSvnUpdate = async (override) => {
+    // Refuse if any other update (loadData/SVN/etc.) is in progress to avoid
+    // racing the shared `loading` flag and concurrent SVN writes.
+    if (loading.value) return
+    loading.value = true
+    try {
+      error.value = ''
+      await updateAllSvnCaches(override)
+    } catch (e) {
+      error.value = `SVN Error: ${e?.message || String(e)}`
+    } finally {
+      loading.value = false
+      updateStatus.value = { loading: false, source: 'svn', message: 'Done' }
+    }
+  }
+
   const handleUpdateSource = async (payload) => {
     // run update without leaving the config page
     if (typeof payload === 'string') {
-      if (payload === 'svn') {
-        try {
-          error.value = ''
-          loading.value = true
-          await updateAllSvnCaches()
-        } catch (e) {
-          error.value = `SVN Error: ${e?.message || String(e)}`
-        } finally {
-          loading.value = false
-          updateStatus.value = { loading: false, source: 'svn', message: 'Done' }
-        }
-        return
-      }
+      if (payload === 'svn') return runSvnUpdate()
       await loadData({ only: payload })
       return
     }
     if (payload && typeof payload === 'object' && payload.source === 'svn' && payload.mode === 'all') {
-      try {
-        error.value = ''
-        loading.value = true
-        await updateAllSvnCaches(payload)
-      } catch (e) {
-        error.value = `SVN Error: ${e?.message || String(e)}`
-      } finally {
-        loading.value = false
-        updateStatus.value = { loading: false, source: 'svn', message: 'Done' }
-      }
-      return
+      return runSvnUpdate(payload)
     }
   }
 

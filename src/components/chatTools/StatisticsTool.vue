@@ -2,7 +2,7 @@
   <v-card variant="outlined">
     <v-card-title class="text-subtitle-1">Statistics</v-card-title>
     <v-card-text>
-      <v-row dense>
+      <v-row density="compact">
         <v-col cols="12" md="3">
           <v-text-field v-model.number="cfg.days" type="number" min="1" label="Days in the past" density="compact" variant="outlined" />
         </v-col>
@@ -32,7 +32,7 @@
           Users: <strong>{{ stats.users.toLocaleString() }}</strong>
         </div>
 
-        <v-row dense>
+        <v-row density="compact">
           <v-col cols="12" md="6">
             <v-card variant="tonal">
               <v-card-title class="text-subtitle-2">Top contributors</v-card-title>
@@ -51,7 +51,7 @@
           </v-col>
         </v-row>
 
-        <v-row dense class="mt-1">
+        <v-row density="compact" class="mt-1">
           <v-col cols="12">
             <v-card variant="tonal">
               <v-card-title class="text-subtitle-2">Messages per day</v-card-title>

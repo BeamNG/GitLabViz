@@ -147,7 +147,7 @@
             <v-switch v-model="settings.config.enableGitLab" color="success" hide-details inset label="Enable GitLab" />
           </div>
 
-          <v-row dense class="mb-4">
+          <v-row density="compact" class="mb-4">
             <v-col cols="12">
               <v-text-field
                 v-model="settings.config.gitlabApiBaseUrl"
@@ -180,7 +180,7 @@
             </template>
           </v-text-field>
 
-          <v-row dense class="mb-4">
+          <v-row density="compact" class="mb-4">
             <v-col cols="12">
               <v-text-field
                 v-model="settings.config.token"
@@ -188,12 +188,25 @@
                 type="password"
                 variant="outlined"
                 :disabled="!settings.config.enableGitLab"
-                hint="Read-only: read_api + read_user. Editing (close/reopen, etc.): api."
+                hint="Read-only: read_api + read_user. Write (close/reopen, assign): api."
                 persistent-hint
                 bg-color="surface"
               >
                 <template #prepend-inner>
                   <v-icon icon="mdi-key" size="small" class="text-medium-emphasis" />
+                </template>
+                <template #append-inner>
+                  <v-btn
+                    v-if="gitlabTokenUrl('read_api,read_user')"
+                    size="small"
+                    variant="tonal"
+                    :href="gitlabTokenUrl('read_api,read_user')"
+                    target="_blank"
+                    rel="noreferrer"
+                    prepend-icon="mdi-open-in-new"
+                    class="text-none"
+                    title="Open prefilled GitLab token form (read-only). Use 'api' scope instead for write access."
+                  >Create token</v-btn>
                 </template>
               </v-text-field>
             </v-col>
@@ -238,7 +251,7 @@
             </div>
           </v-alert>
 
-          <v-row dense class="mt-2" justify="end">
+          <v-row density="compact" class="mt-2 justify-end">
             <v-col cols="auto">
               <v-btn
                 variant="tonal"
@@ -266,38 +279,6 @@
               </v-btn>
             </v-col>
           </v-row>
-
-          <v-alert
-            v-if="settings.config.enableGitLab"
-            type="info"
-            variant="tonal"
-            density="compact"
-            class="mt-4"
-            icon="mdi-information"
-          >
-            <div class="text-subtitle-2 mb-1">How to create a GitLab token</div>
-            <ol class="pl-4 text-caption">
-              <li class="mb-1">
-                Open
-                <a
-                  v-if="gitlabTokenHelpUrl"
-                  :href="gitlabTokenHelpUrl"
-                  target="_blank"
-                  rel="noreferrer"
-                  class="text-decoration-none font-weight-bold"
-                >GitLab → User Settings → Access Tokens</a>
-                <span v-else><strong>GitLab → User Settings → Access Tokens</strong></span>.
-              </li>
-              <li class="mb-1">Click <strong>Add new token</strong>.</li>
-              <li class="mb-1">Give it a name (e.g. <code>GitLab Viz</code>) and optionally set an expiry date.</li>
-              <li class="mb-1">
-                For <strong>read-only</strong>, tick: <code>read_api</code> and <code>read_user</code>.
-                For <strong>editing</strong> (close/reopen, etc.), tick: <code>api</code>.
-              </li>
-              <li class="mb-1">Click <strong>Create personal access token</strong>.</li>
-              <li>Copy the token immediately (GitLab usually only shows it once), then paste it into <strong>Personal Access Token</strong> below.</li>
-            </ol>
-          </v-alert>
 
           <v-alert
             v-if="settings.config.enableGitLab && settings.config.token"
@@ -520,7 +501,7 @@
           <v-card variant="outlined">
             <v-card-title class="text-subtitle-1">Login</v-card-title>
             <v-card-text>
-              <v-row dense>
+              <v-row density="compact">
                 <v-col cols="12" sm="6">
                   <v-text-field v-model="mmEmail" label="Email" variant="outlined" density="comfortable" bg-color="surface" :disabled="!isElectron" />
                 </v-col>
@@ -1037,12 +1018,13 @@ async function saveAndReloadGitLab () {
   refreshAndClose()
 }
 
-const gitlabTokenHelpUrl = computed(() => {
+function gitlabTokenUrl (scopes) {
   const raw = String(settings.config.gitlabApiBaseUrl || '').trim()
   if (!raw) return ''
   const base = raw.replace(/\/+$/, '').replace(/\/api\/v\d+$/, '')
-  return `${base}/-/user_settings/personal_access_tokens`
-})
+  const q = new URLSearchParams({ name: 'GitLab Viz', scopes, description: 'Created by GitLab Viz' })
+  return `${base}/-/user_settings/personal_access_tokens?${q}`
+}
 
 const appVersion = computed(() => {
   const v = pkg && pkg.version ? String(pkg.version) : ''

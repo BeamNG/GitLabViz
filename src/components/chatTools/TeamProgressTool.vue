@@ -2,7 +2,7 @@
   <v-card variant="outlined">
     <v-card-title class="text-subtitle-1">Team Progress</v-card-title>
     <v-card-text>
-      <v-row dense>
+      <v-row density="compact">
         <v-col cols="12" md="2">
           <v-text-field v-model.number="cfg.days" type="number" min="1" label="Days" density="compact" variant="outlined" />
         </v-col>
@@ -14,7 +14,7 @@
         </v-col>
       </v-row>
 
-      <v-row dense class="mt-1">
+      <v-row density="compact" class="mt-1">
         <v-col cols="12" md="6">
           <v-text-field v-model="cfg.git_commit_url_template" label="Git commit URL template (optional)" density="compact" variant="outlined" hint="Use {sha}. Example: https://gitlab.example.com/group/proj/-/commit/{sha}" persistent-hint />
         </v-col>
@@ -37,7 +37,7 @@
       <v-divider class="my-4" />
 
       <div class="text-subtitle-2 mb-2">Roster</div>
-      <v-row dense>
+      <v-row density="compact">
         <v-col cols="12" md="4" v-for="m in members" :key="m.id">
           <v-card variant="tonal">
             <v-card-text>
@@ -67,7 +67,7 @@
 
       <div class="text-subtitle-2 mb-2">Results</div>
 
-      <v-row dense v-if="rows.length">
+      <v-row density="compact" v-if="rows.length">
         <v-col cols="12" md="4" v-for="r in rows" :key="r.id">
           <v-card variant="outlined">
             <v-card-title class="text-subtitle-2 d-flex align-center justify-space-between">

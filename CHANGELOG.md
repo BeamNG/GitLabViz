@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.24] - 2026-05-13
+- Deps: bump to Vuetify 4, Vite 8, Electron 42, jsdom 29, Vitest 4.1, plugin-vue 6, plus latest patches; 0 known vulnerabilities (was 27).
+- Vuetify 4 migration: `v-row dense` → `density="compact"`, `justify="end"` → utility class, select/autocomplete `item.raw` → `item` (v4 unwraps to raw).
+- Config → GitLab: simplified token UX — "Create token" button inline in the PAT field (prefilled form), removed the long instructions block.
+- Fix: `loadData` race — set loading flag before the first await; refuse to start while another load is running, including SVN cache updates.
+- Fix: `IssueGraph` save-transform timeout was not cleared on unmount (could write settings after teardown).
+- Fix: non-Error rejections no longer log "undefined" in error/cache/SVN/links paths.
+
 ## [0.3.23] - 2026-01-14
 - Filters: Status dropdown is now derived from loaded issues (no longer hardcoded), fixing missing statuses like "On Hold/Blocked".
 

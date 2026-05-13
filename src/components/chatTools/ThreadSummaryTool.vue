@@ -2,7 +2,7 @@
   <v-card variant="outlined">
     <v-card-title class="text-subtitle-1">Thread Summary</v-card-title>
     <v-card-text>
-      <v-row dense>
+      <v-row density="compact">
         <v-col cols="12">
           <v-text-field v-model="cfg.thread_url" label="Thread URL or post id" density="compact" variant="outlined" />
         </v-col>

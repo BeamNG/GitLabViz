@@ -1100,6 +1100,7 @@ onUnmounted(() => {
     containerResizeObserver.disconnect()
     containerResizeObserver = null
   }
+  if (saveTimeout) { clearTimeout(saveTimeout); saveTimeout = null }
 })
 
 watch(() => [props.nodes, props.edges, props.colorMode, props.groupBy, props.linkMode, props.hideUnlinked, props.repulsion, props.friction, props.groupGravity, props.linkStrength, props.linkDistance, props.centerGravity, props.gridStrength, props.gridSpacing], () => {

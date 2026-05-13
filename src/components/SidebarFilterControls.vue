@@ -50,7 +50,7 @@
         prepend-inner-icon="mdi-tag-multiple"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw">
+          <v-list-item v-bind="props" :title="item">
             <template v-slot:prepend>
               <v-icon icon="mdi-tag" size="small" class="mr-2"></v-icon>
             </template>
@@ -74,7 +74,7 @@
         prepend-inner-icon="mdi-tag-remove"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw">
+          <v-list-item v-bind="props" :title="item">
             <template v-slot:prepend>
               <v-icon icon="mdi-tag-outline" size="small" class="mr-2"></v-icon>
             </template>
@@ -101,12 +101,12 @@
         prepend-inner-icon="mdi-account-edit"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-subheader v-if="item.raw.type === 'subheader'" :title="item.raw.title" />
-          <v-list-item v-else v-bind="props" :title="item.raw.title">
+          <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
+          <v-list-item v-else v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="userItemIcon(item.raw.value).icon" :color="userItemIcon(item.raw.value).color" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="userItemIcon(item.value).icon" :color="userItemIcon(item.value).color" size="small" class="mr-2"></v-icon>
             </template>
-            <template v-slot:title>{{ item.raw.title }}</template>
+            <template v-slot:title>{{ item.title }}</template>
           </v-list-item>
         </template>
       </v-autocomplete>
@@ -129,12 +129,12 @@
         prepend-inner-icon="mdi-account"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-subheader v-if="item.raw.type === 'subheader'" :title="item.raw.title" />
-          <v-list-item v-else v-bind="props" :title="item.raw.title">
+          <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
+          <v-list-item v-else v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="userItemIcon(item.raw.value).icon" :color="userItemIcon(item.raw.value).color" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="userItemIcon(item.value).icon" :color="userItemIcon(item.value).color" size="small" class="mr-2"></v-icon>
             </template>
-            <template v-slot:title>{{ item.raw.title }}</template>
+            <template v-slot:title>{{ item.title }}</template>
           </v-list-item>
         </template>
       </v-autocomplete>
@@ -156,7 +156,7 @@
         prepend-inner-icon="mdi-flag"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw">
+          <v-list-item v-bind="props" :title="item">
             <template v-slot:prepend>
               <v-icon icon="mdi-flag-variant" size="small" class="mr-2"></v-icon>
             </template>
@@ -180,7 +180,7 @@
         prepend-inner-icon="mdi-alert-circle"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw">
+          <v-list-item v-bind="props" :title="item">
             <template v-slot:prepend>
               <v-icon icon="mdi-alert-box" size="small" class="mr-2"></v-icon>
             </template>
@@ -204,7 +204,7 @@
         prepend-inner-icon="mdi-shape"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw">
+          <v-list-item v-bind="props" :title="item">
             <template v-slot:prepend>
               <v-icon icon="mdi-shape-outline" size="small" class="mr-2"></v-icon>
             </template>
@@ -229,9 +229,9 @@
         prepend-inner-icon="mdi-list-status"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw.title">
+          <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
             </template>
           </v-list-item>
         </template>
@@ -253,9 +253,9 @@
         prepend-inner-icon="mdi-bell-ring-outline"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw.title">
+          <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
             </template>
           </v-list-item>
         </template>
@@ -277,9 +277,9 @@
         prepend-inner-icon="mdi-source-merge"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw.title">
+          <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
             </template>
           </v-list-item>
         </template>
@@ -303,12 +303,12 @@
         prepend-inner-icon="mdi-account-multiple"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-subheader v-if="item.raw.type === 'subheader'" :title="item.raw.title" />
-          <v-list-item v-else v-bind="props" :title="item.raw.title">
+          <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
+          <v-list-item v-else v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="userItemIcon(item.raw.value).icon" :color="userItemIcon(item.raw.value).color" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="userItemIcon(item.value).icon" :color="userItemIcon(item.value).color" size="small" class="mr-2"></v-icon>
             </template>
-            <template v-slot:title>{{ item.raw.title }}</template>
+            <template v-slot:title>{{ item.title }}</template>
           </v-list-item>
         </template>
       </v-autocomplete>
@@ -331,9 +331,9 @@
         prepend-inner-icon="mdi-calendar-alert"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw.title">
+          <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
             </template>
           </v-list-item>
         </template>
@@ -355,9 +355,9 @@
         prepend-inner-icon="mdi-timer"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw.title">
+          <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
             </template>
           </v-list-item>
         </template>
@@ -380,9 +380,9 @@
         prepend-inner-icon="mdi-cash"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw.title">
+          <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
             </template>
           </v-list-item>
         </template>
@@ -408,9 +408,9 @@
         prepend-inner-icon="mdi-timer-sand"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw.title">
+          <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
             </template>
           </v-list-item>
         </template>
@@ -434,9 +434,9 @@
         prepend-inner-icon="mdi-format-list-checks"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item.raw.title">
+          <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
             </template>
           </v-list-item>
         </template>
@@ -456,9 +456,9 @@
           prepend-inner-icon="mdi-calendar-plus"
         >
           <template v-slot:item="{ props, item }">
-            <v-list-item v-bind="props" :title="item.raw.title">
+            <v-list-item v-bind="props" :title="item.title">
               <template v-slot:prepend>
-                <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+                <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
               </template>
             </v-list-item>
           </template>
@@ -481,9 +481,9 @@
           prepend-inner-icon="mdi-calendar-edit"
         >
           <template v-slot:item="{ props, item }">
-            <v-list-item v-bind="props" :title="item.raw.title">
+            <v-list-item v-bind="props" :title="item.title">
               <template v-slot:prepend>
-                <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+                <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
               </template>
             </v-list-item>
           </template>
@@ -506,9 +506,9 @@
           prepend-inner-icon="mdi-calendar-clock"
         >
           <template v-slot:item="{ props, item }">
-            <v-list-item v-bind="props" :title="item.raw.title">
+            <v-list-item v-bind="props" :title="item.title">
               <template v-slot:prepend>
-                <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+                <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
               </template>
             </v-list-item>
           </template>
@@ -551,10 +551,10 @@
           style="font-size: 12px"
         >
           <template v-slot:item="{ props, item }">
-            <v-list-subheader v-if="item.raw.type === 'subheader'" :title="item.raw.title" />
-            <v-list-item v-else v-bind="props" :title="item.raw.title">
+            <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
+            <v-list-item v-else v-bind="props" :title="item.title">
               <template v-slot:prepend>
-                <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+                <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
               </template>
             </v-list-item>
           </template>
@@ -573,9 +573,9 @@
           :class="['compact-input sidebar-display-select', { 'is-active': state.view.viewMode !== 'state' }]"
         >
           <template v-slot:item="{ props, item }">
-            <v-list-item v-bind="props" :title="item.raw.title">
+            <v-list-item v-bind="props" :title="item.title">
               <template v-slot:prepend>
-                <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+                <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
               </template>
             </v-list-item>
           </template>
@@ -607,9 +607,9 @@
           :class="['compact-input sidebar-display-select', { 'is-active': state.view.linkMode !== 'none' }]"
         >
           <template v-slot:item="{ props, item }">
-            <v-list-item v-bind="props" :title="item.raw.title">
+            <v-list-item v-bind="props" :title="item.title">
               <template v-slot:prepend>
-                <v-icon :icon="item.raw.icon" size="small" class="mr-2"></v-icon>
+                <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
               </template>
             </v-list-item>
           </template>

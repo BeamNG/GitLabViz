@@ -2,7 +2,7 @@
   <v-card variant="outlined">
     <v-card-title class="text-subtitle-1">Thread Checker</v-card-title>
     <v-card-text>
-      <v-row dense>
+      <v-row density="compact">
         <v-col cols="12" md="3">
           <v-text-field v-model.number="cfg.search_days" type="number" min="1" label="Search days" density="compact" variant="outlined" />
         </v-col>

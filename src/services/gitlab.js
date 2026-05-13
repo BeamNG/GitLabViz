@@ -1088,7 +1088,7 @@ export const fetchIssueLinks = async (client, projectId, issueIid) => {
     )
     return response.data;
   } catch (error) {
-     console.warn(`Warning: Failed to fetch links for issue ${issueIid}: ${error.message}`);
+     console.warn(`Warning: Failed to fetch links for issue ${issueIid}: ${error?.message || String(error)}`);
      return []; // Return empty array on error to allow partial loading
   }
 }

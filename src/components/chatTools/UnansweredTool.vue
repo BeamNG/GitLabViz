@@ -2,7 +2,7 @@
   <v-card variant="outlined">
     <v-card-title class="text-subtitle-1">Unanswered Threads</v-card-title>
     <v-card-text>
-      <v-row dense>
+      <v-row density="compact">
         <v-col cols="12" md="3">
           <v-text-field v-model.number="cfg.search_days" type="number" min="1" label="Search days" density="compact" variant="outlined" />
         </v-col>
@@ -43,7 +43,7 @@
         Sample output (mock)
       </v-alert>
 
-      <v-row class="mt-3" dense>
+      <v-row class="mt-3" density="compact">
         <v-col cols="12" md="6">
           <v-card variant="tonal">
             <v-card-title class="text-subtitle-2">Unanswered</v-card-title>
