@@ -48,6 +48,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-tag-multiple"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item">
@@ -73,6 +74,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-tag-remove"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item">
@@ -101,6 +103,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-account-edit"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
@@ -130,6 +133,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-account"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
@@ -160,6 +164,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-flag"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -187,6 +192,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-alert-circle"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -214,6 +220,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-shape"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -240,6 +247,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-list-status"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -262,6 +270,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-bell-ring-outline"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -284,6 +293,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-source-merge"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -311,6 +321,7 @@
         hide-details
         style="font-size: 12px"
         prepend-inner-icon="mdi-account-multiple"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
@@ -335,6 +346,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-calendar-alert"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -357,6 +369,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-timer"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -379,6 +392,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-cash"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -401,6 +415,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-timer-sand"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -423,6 +438,7 @@
         style="font-size: 12px"
         clearable
         prepend-inner-icon="mdi-format-list-checks"
+        :menu-props="menuProps"
       >
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
@@ -446,6 +462,7 @@
           :class="['compact-input', { 'is-active': isDateActive(state.filters.dateFilters.createdMode, state.filters.dateFilters.createdAfter, state.filters.dateFilters.createdBefore, state.filters.dateFilters.createdDays) }]"
           style="font-size: 12px"
           prepend-inner-icon="mdi-calendar-plus"
+          :menu-props="menuProps"
         >
           <template v-slot:item="{ props, item }">
             <v-list-item v-bind="props" :title="item.title">
@@ -471,6 +488,7 @@
           :class="['compact-input', { 'is-active': isDateActive(state.filters.dateFilters.updatedMode, state.filters.dateFilters.updatedAfter, state.filters.dateFilters.updatedBefore, state.filters.dateFilters.updatedDays) }]"
           style="font-size: 12px"
           prepend-inner-icon="mdi-calendar-edit"
+          :menu-props="menuProps"
         >
           <template v-slot:item="{ props, item }">
             <v-list-item v-bind="props" :title="item.title">
@@ -496,6 +514,7 @@
           :class="['compact-input', { 'is-active': isDateActive(state.filters.dateFilters.dueDateMode, state.filters.dateFilters.dueDateAfter, state.filters.dateFilters.dueDateBefore, state.filters.dateFilters.dueDateDays) }]"
           style="font-size: 12px"
           prepend-inner-icon="mdi-calendar-clock"
+          :menu-props="menuProps"
         >
           <template v-slot:item="{ props, item }">
             <v-list-item v-bind="props" :title="item.title">
@@ -541,6 +560,7 @@
           hide-details
           :class="['compact-input sidebar-display-select', { 'is-active': state.view.groupingMode !== 'none' }]"
           style="font-size: 12px"
+          :menu-props="menuProps"
         >
           <template v-slot:item="{ props, item }">
             <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
@@ -573,6 +593,7 @@
           hide-details
           style="font-size: 12px"
           :class="['compact-input sidebar-display-select', { 'is-active': state.view.viewMode !== 'state' }]"
+          :menu-props="menuProps"
         >
           <template v-slot:item="{ props, item }">
             <v-list-item v-bind="props" :title="item.title">
@@ -607,6 +628,7 @@
           hide-details
           style="font-size: 12px"
           :class="['compact-input sidebar-display-select', { 'is-active': state.view.linkMode !== 'none' }]"
+          :menu-props="menuProps"
         >
           <template v-slot:item="{ props, item }">
             <v-list-item v-bind="props" :title="item.title">
@@ -665,6 +687,11 @@ const { state } = props
 
 const isSetArray = (v) => Array.isArray(v) && v.length > 0
 const isSetString = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v
+
+// Shared dropdown menu config: taller (more rows visible) + width pinned via custom class
+// (avoids the Vuetify jitter where the menu width changes while scrolling through items
+// of varying length).
+const menuProps = { maxHeight: 460, contentClass: 'glv-filter-menu' }
 
 // Pre-fill sensible defaults when a date mode is picked so the date inputs
 // don't render blank (which shows up as "dd/mm/yyyy" / "Invalid"). Past-dated
@@ -945,6 +972,24 @@ const isDateActive = (mode, after, before, days) => {
 }
 .count-chip-zero {
   opacity: 0.25;
+}
+
+/* Filter dropdown menu (shared via menuProps.contentClass): tighter rows + width pin.
+   `min-width` prevents Vuetify from re-measuring + jittering the menu width while the
+   user scrolls through items of varying length. */
+:deep(.glv-filter-menu) {
+  min-width: 260px !important;
+}
+:deep(.glv-filter-menu .v-list) {
+  padding-block: 2px;
+}
+:deep(.glv-filter-menu .v-list-item) {
+  min-height: 30px !important;
+  padding-top: 2px !important;
+  padding-bottom: 2px !important;
+}
+:deep(.glv-filter-menu .v-list-item__prepend) {
+  padding-inline-end: 6px !important;
 }
 
 /* The icon wrapper sets `color`, the inner v-icon glyph inherits via `currentColor`.
