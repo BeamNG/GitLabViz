@@ -1100,35 +1100,32 @@ const parseScopesHeader = (v) => {
   return scopes.length ? scopes : null
 }
 
-// Best-effort token scope detection:
-// - Newer GitLab: GET /personal_access_tokens/self (returns { scopes: [...] })
-// - Fallback: read X-OAuth-Scopes header if present (typically OAuth tokens; some setups may include it)
-export const fetchTokenScopes = async (client) => {
-  if (!client) return null
+// Best-effort token introspection:
+// - Newer GitLab: GET /personal_access_tokens/self → { scopes, expires_at, active, revoked }
+// - Fallback: read X-OAuth-Scopes header (OAuth tokens / some setups). No expiry available there.
+// Returns { scopes: string[]|null, expiresAt: string|null } — never throws for typical auth issues.
+export const fetchTokenInfo = async (client) => {
+  if (!client) return { scopes: null, expiresAt: null }
 
-  // 1) Prefer the explicit introspection endpoint if available.
   try {
     const resp = await gitlabGet(client, '/personal_access_tokens/self', {}, { maxRetries: 1 })
-    const scopes = Array.isArray(resp?.data?.scopes) ? resp.data.scopes.filter(Boolean) : null
-    if (scopes && scopes.length) return scopes
+    const d = resp?.data || {}
+    const scopes = Array.isArray(d.scopes) ? d.scopes.filter(Boolean) : null
+    const expiresAt = d.expires_at ? String(d.expires_at) : null
+    if ((scopes && scopes.length) || expiresAt) return { scopes, expiresAt }
   } catch (e) {
     const status = e?.response?.status
-    // If unsupported/forbidden, we'll fall back below.
     if (!(status === 404 || status === 401 || status === 403)) throw e
   }
 
-  // 2) Fallback: probe a cheap endpoint and inspect headers if available.
   try {
     const resp = await gitlabGet(client, '/user', {}, { maxRetries: 1 })
     const h = resp?.headers || {}
-    return (
-      parseScopesHeader(h['x-oauth-scopes']) ||
-      parseScopesHeader(h['X-OAuth-Scopes']) ||
-      null
-    )
+    const scopes = parseScopesHeader(h['x-oauth-scopes']) || parseScopesHeader(h['X-OAuth-Scopes']) || null
+    return { scopes, expiresAt: null }
   } catch (e) {
     const status = e?.response?.status
-    if (status === 401) return null
+    if (status === 401) return { scopes: null, expiresAt: null }
     throw e
   }
 }

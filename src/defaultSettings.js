@@ -144,6 +144,7 @@ export const defaultSettings = () => ({
     gitlabMeName: '',
     gitlabMeId: null, // numeric GitLab user id (for "assign to me")
     gitlabTokenScopes: null, // null = unknown/unverified, otherwise array of scopes (e.g. ['read_api', 'api'])
+    gitlabTokenExpiresAt: null, // ISO date string from /personal_access_tokens/self, or null
     gitlabCanWrite: false, // derived from scopes (true when 'api' is present)
     lastUpdated: null
   }

@@ -197,15 +197,15 @@
               </template>
             </v-text-field>
             <v-btn
-              v-if="gitlabTokenUrl('read_api,read_user')"
+              v-if="gitlabTokenUrl('api')"
               variant="tonal"
-              :href="gitlabTokenUrl('read_api,read_user')"
+              :href="gitlabTokenUrl('api')"
               target="_blank"
               rel="noreferrer"
               prepend-icon="mdi-open-in-new"
               class="text-none"
               style="height: 56px;"
-              title="Open prefilled GitLab token form (read-only). Use 'api' scope instead for write access."
+              title="Open prefilled GitLab token form with 'api' scope (full read + write)."
             >Create token</v-btn>
           </div>
 
@@ -279,7 +279,7 @@
 
           <v-alert
             v-if="settings.config.enableGitLab && settings.config.token"
-            :type="settings.meta.gitlabTokenScopes ? (settings.meta.gitlabCanWrite ? 'success' : 'warning') : 'info'"
+            :type="tokenAlertType"
             variant="tonal"
             density="compact"
             class="mt-3"
@@ -296,6 +296,15 @@
             </div>
             <div v-else>
               Token scopes: <strong>unknown</strong>. Click <strong>Test connection</strong> to detect scopes.
+            </div>
+            <div v-if="tokenExpiry.status !== 'unknown'" class="text-caption mt-1">
+              <v-icon :icon="tokenExpiry.status === 'expired' ? 'mdi-alert' : 'mdi-clock-outline'" size="x-small" class="mr-1" />
+              <span v-if="tokenExpiry.status === 'never'">Token does not expire.</span>
+              <span v-else-if="tokenExpiry.status === 'expired'"><strong>Token expired</strong> on {{ tokenExpiry.dateStr }}.</span>
+              <span v-else>
+                Token expires on {{ tokenExpiry.dateStr }}
+                <span v-if="tokenExpiry.days != null"> ({{ tokenExpiry.days }} day{{ tokenExpiry.days === 1 ? '' : 's' }} left)</span>.
+              </span>
             </div>
           </v-alert>
         </v-container>
@@ -848,7 +857,8 @@
 import { computed, onMounted, ref, toRaw, watch } from 'vue'
 import { cacheGetPath, cacheOpenFolder, svnCacheGetStats } from '../services/cache'
 import { mattermostLogin } from '../services/mattermost'
-import { createGitLabClient, fetchTokenScopes, normalizeGitLabApiBaseUrl } from '../services/gitlab'
+import { createGitLabClient, fetchTokenInfo, normalizeGitLabApiBaseUrl } from '../services/gitlab'
+import { getTokenExpiry } from '../utils/tokenExpiry'
 import { useSettingsStore } from '../composables/useSettingsStore'
 import localforage from 'localforage'
 import pkg from '../../package.json'
@@ -940,19 +950,22 @@ async function runGitLabTest ({ requireToken = false, requireProject = false } =
       if (!v || !v.version) throw new Error('Unexpected /version response')
     }
 
-    // Best-effort scope introspection (PAT: /personal_access_tokens/self; fallback: headers).
+    // Best-effort introspection (PAT: /personal_access_tokens/self; fallback: headers).
     if (token) {
       try {
-        const scopes = await fetchTokenScopes(client)
-        settings.meta.gitlabTokenScopes = scopes
-        settings.meta.gitlabCanWrite = Array.isArray(scopes) ? scopes.includes('api') : false
+        const info = await fetchTokenInfo(client)
+        settings.meta.gitlabTokenScopes = info.scopes
+        settings.meta.gitlabTokenExpiresAt = info.expiresAt
+        settings.meta.gitlabCanWrite = Array.isArray(info.scopes) ? info.scopes.includes('api') : false
       } catch (e) {
-        console.warn('[GitLab] Failed to detect token scopes:', e)
+        console.warn('[GitLab] Failed to detect token info:', e)
         settings.meta.gitlabTokenScopes = null
+        settings.meta.gitlabTokenExpiresAt = null
         settings.meta.gitlabCanWrite = false
       }
     } else {
       settings.meta.gitlabTokenScopes = null
+      settings.meta.gitlabTokenExpiresAt = null
       settings.meta.gitlabCanWrite = false
     }
 
@@ -1022,6 +1035,15 @@ function gitlabTokenUrl (scopes) {
   const q = new URLSearchParams({ name: 'GitLab Viz', scopes, description: 'Created by GitLab Viz' })
   return `${base}/-/user_settings/personal_access_tokens?${q}`
 }
+
+const tokenExpiry = computed(() => getTokenExpiry(settings.meta))
+
+const tokenAlertType = computed(() => {
+  if (tokenExpiry.value.status === 'expired') return 'error'
+  if (tokenExpiry.value.status === 'soon') return 'warning'
+  if (!settings.meta.gitlabTokenScopes) return 'info'
+  return settings.meta.gitlabCanWrite ? 'success' : 'warning'
+})
 
 const appVersion = computed(() => {
   const v = pkg && pkg.version ? String(pkg.version) : ''

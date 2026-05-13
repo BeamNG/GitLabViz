@@ -54,6 +54,30 @@
       <v-app-bar-title>GitLab Viz</v-app-bar-title>
     </v-app-bar> -->
 
+    <v-app-bar
+      v-if="tokenExpired || tokenExpiringSoon"
+      :color="tokenExpired ? 'error' : 'warning'"
+      density="compact"
+      :elevation="0"
+      class="token-banner"
+      @click="openTokenConfig"
+    >
+      <v-icon :icon="tokenExpired ? 'mdi-alert-circle' : 'mdi-clock-alert-outline'" class="ms-3 me-2" />
+      <v-app-bar-title class="text-body-2">
+        <strong v-if="tokenExpired">GitLab token expired</strong>
+        <strong v-else>GitLab token expires in {{ tokenExpiry.days }} day{{ tokenExpiry.days === 1 ? '' : 's' }}</strong>
+        <span class="ms-2 text-medium-emphasis">({{ tokenExpiry.dateStr }})</span>
+        — click to create a new one.
+      </v-app-bar-title>
+      <v-btn
+        variant="outlined"
+        size="small"
+        class="text-none me-3"
+        prepend-icon="mdi-key-plus"
+        @click.stop="openTokenConfig"
+      >Create new token</v-btn>
+    </v-app-bar>
+
     <v-main>
       <ConfigPage
         v-if="activePage === 'config'"
@@ -79,14 +103,14 @@
         </div>
 
         <div
-          v-if="isMockGraph"
+          v-if="isMockGraph && !tokenExpired"
           class="sample-watermark position-absolute top-0 left-0 w-100 h-100 d-flex align-center justify-center"
         >
           SAMPLE DATA
         </div>
 
         <div
-          v-if="isMockGraph"
+          v-if="isMockGraph && !tokenExpired"
           class="position-absolute top-0 left-50 pa-3 z-index-10"
           style="max-width: 460px;"
         >
@@ -94,10 +118,27 @@
             Showing <strong>sample data</strong>. Configure sources and hit Refresh to load real data.
           </v-alert>
         </div>
+
+        <div
+          v-if="tokenExpired && isMockGraph"
+          class="token-expired-overlay position-absolute top-0 left-0 w-100 h-100 d-flex flex-column align-center justify-center pa-8 text-center"
+        >
+          <v-icon icon="mdi-alert-circle" size="96" color="error" class="mb-4" />
+          <div class="token-expired-title mb-3">TOKEN EXPIRED</div>
+          <div class="text-body-1 mb-2">
+            Your GitLab Personal Access Token expired on <strong>{{ tokenExpiry.dateStr }}</strong>.
+          </div>
+          <div class="text-body-2 text-medium-emphasis mb-6">
+            Create a new token in GitLab and paste it into the configuration to resume loading data.
+          </div>
+          <v-btn color="error" size="large" prepend-icon="mdi-key-plus" class="text-none" @click="openTokenConfig">
+            Create new token
+          </v-btn>
+        </div>
         
           <IssueGraph 
           ref="issueGraph"
-          v-if="hasData" 
+          v-if="hasData && !(tokenExpired && isMockGraph)" 
           :nodes="filteredNodes" 
           :edges="filteredEdges" 
           :color-mode="settings.uiState.view.viewMode"
@@ -173,6 +214,7 @@ import { useGitLabIssueMutations } from './composables/useGitLabIssueMutations'
 import { useSettingsStore } from './composables/useSettingsStore'
 import { GLOBAL_PRESETS } from './presets'
 import { getScopedLabelValue, getScopedLabelValues } from './utils/scopedLabels'
+import { getTokenExpiry } from './utils/tokenExpiry'
 
 const { settings, init: initSettings } = useSettingsStore()
 
@@ -543,6 +585,12 @@ const {
   groupStatsText
 } = useGraphDerivedState({ settings, nodes, edges })
 
+// Token expiry — banner appears for <=7 days or expired; expired also blocks demo data.
+const tokenExpiry = computed(() => getTokenExpiry(settings.meta, 7))
+const tokenExpired = computed(() => tokenExpiry.value.status === 'expired')
+const tokenExpiringSoon = computed(() => tokenExpiry.value.status === 'soon')
+const openTokenConfig = () => { configInitialTab.value = 'gitlab'; activePage.value = 'config' }
+
 const dataAge = computed(() => {
   if (!lastUpdated.value) return null
   // If the saved timestamp is slightly in the future (clock skew / timezone / restore),
@@ -572,6 +620,7 @@ const {
   resolveGitLabApiBaseUrl,
   initCachedData,
   loadData,
+  checkTokenInfo,
   handleRefreshClick,
   handleUpdateSource,
   handleClearSource,
@@ -625,6 +674,10 @@ onMounted(async () => {
   nowTickInterval = setInterval(() => { nowTick.value = Date.now() }, 10 * 60 * 1000)
 
   await initCachedData()
+
+  // Fire-and-forget: detect token scopes + expiry on startup so the UI can warn about expiring tokens
+  // without waiting for the user to trigger a full refresh.
+  checkTokenInfo()
 })
 
 onUnmounted(() => {
@@ -895,6 +948,22 @@ body {
 }
 :root[data-theme="dark"] .sample-watermark {
   color: rgba(255, 255, 255, 0.08);
+}
+
+.token-banner {
+  cursor: pointer;
+}
+
+.token-expired-overlay {
+  z-index: 5;
+  background: rgba(var(--v-theme-background), 0.96);
+}
+
+.token-expired-title {
+  font-size: clamp(40px, 7vw, 88px);
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: rgb(var(--v-theme-error));
 }
 
 .custom-preset-btn {

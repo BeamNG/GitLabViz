@@ -7,7 +7,7 @@ import {
   enrichIssuesFromGraphql,
   fetchProjectIssuesRest,
   fetchIssueLinks,
-  fetchTokenScopes,
+  fetchTokenInfo,
   normalizeGitLabApiBaseUrl
 } from '../services/gitlab'
 import { createSvnClient, fetchSvnLog } from '../services/svn'
@@ -152,6 +152,24 @@ export function useDataLoader ({
     if (meta && meta.totalCount != null) svnCommitCount.value = meta.totalCount
   }
 
+  // Lightweight standalone token introspection (scopes + expiry) without a full fetch.
+  // Safe to call on app startup: at most 1-2 cheap GitLab API calls; swallows all errors.
+  const checkTokenInfo = async () => {
+    if (!settings.config.enableGitLab) return
+    const token = String(settings.config.token || '').trim()
+    const baseURL = resolveGitLabApiBaseUrl()
+    if (!token || !baseURL) return
+    try {
+      const client = createGitLabClient(baseURL, token)
+      const info = await fetchTokenInfo(client)
+      settings.meta.gitlabTokenScopes = info.scopes
+      settings.meta.gitlabTokenExpiresAt = info.expiresAt
+      settings.meta.gitlabCanWrite = Array.isArray(info.scopes) ? info.scopes.includes('api') : false
+    } catch (e) {
+      console.warn('[GitLab] Startup token check failed:', e?.message || String(e))
+    }
+  }
+
   const loadData = async (opts = {}) => {
     // Do not start another fetch while one is already running (no queueing).
     // Set the flag synchronously to close the TOCTOU window before the first await.
@@ -192,6 +210,16 @@ export function useDataLoader ({
     error.value = ''
     loadingMessage.value = 'Starting...'
     updateStatus.value = { loading: true, source: only === 'both' ? '' : only, message: 'Starting...' }
+
+    // Drop sample/mock data before fetching so the user doesn't see fake nodes during the load.
+    // Mock nodes are tagged with `_raw.__mock` by createMockIssuesGraph().
+    const hasMock = Object.values(nodes).some(n => n && n._raw && n._raw.__mock)
+    if (hasMock) {
+      for (const k in nodes) delete nodes[k]
+      for (const k in edges) delete edges[k]
+      for (const k in issueGraphSnapshot.nodes) delete issueGraphSnapshot.nodes[k]
+      for (const k in issueGraphSnapshot.edges) delete issueGraphSnapshot.edges[k]
+    }
 
     // Incremental GitLab sync (skip existing data) if cache matches this project.
     const cachedProjectId = String(gitlabCacheMeta.value?.projectId || '').trim()
@@ -264,14 +292,16 @@ export function useDataLoader ({
             settings.meta.gitlabMeId = null
           }
 
-          // Best-effort: detect scopes to enable/disable write features in UI.
+          // Best-effort: detect scopes + expiry to enable/disable write features and show expiry in UI.
           try {
-            const scopes = await fetchTokenScopes(restClient)
-            settings.meta.gitlabTokenScopes = scopes
-            settings.meta.gitlabCanWrite = Array.isArray(scopes) ? scopes.includes('api') : false
+            const info = await fetchTokenInfo(restClient)
+            settings.meta.gitlabTokenScopes = info.scopes
+            settings.meta.gitlabTokenExpiresAt = info.expiresAt
+            settings.meta.gitlabCanWrite = Array.isArray(info.scopes) ? info.scopes.includes('api') : false
           } catch (e) {
-            console.warn('[GitLab] Failed to detect token scopes:', e)
+            console.warn('[GitLab] Failed to detect token info:', e)
             settings.meta.gitlabTokenScopes = null
+            settings.meta.gitlabTokenExpiresAt = null
             settings.meta.gitlabCanWrite = false
           }
 
@@ -752,6 +782,7 @@ export function useDataLoader ({
     resolveGitLabApiBaseUrl,
     initCachedData,
     loadData,
+    checkTokenInfo,
     handleRefreshClick,
     handleUpdateSource,
     handleClearSource,

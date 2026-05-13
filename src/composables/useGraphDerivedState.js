@@ -43,12 +43,20 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
     return Array.from(authors).sort()
   })
 
+  // Multi-assignee aware: prefer the `assignees` array (source of truth in GitLab),
+  // fall back to the singular `assignee` (deprecated, but kept for old cached data / mocks).
+  const getAssigneeNames = (raw) => {
+    if (!raw) return []
+    if (Array.isArray(raw.assignees) && raw.assignees.length) {
+      return raw.assignees.map(a => a?.name).filter(Boolean)
+    }
+    return raw.assignee?.name ? [raw.assignee.name] : []
+  }
+
   const allAssignees = computed(() => {
     const assignees = new Set()
     Object.values(nodes).forEach(node => {
-      if (node._raw.assignee) {
-        assignees.add(node._raw.assignee.name)
-      }
+      getAssigneeNames(node._raw).forEach(n => assignees.add(n))
     })
     return Array.from(assignees).sort()
   })
@@ -158,7 +166,7 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
       const nodeLabels = node._raw.labels || []
       const meName = settings.meta.gitlabMeName || ''
       const authorName = node._raw.author ? node._raw.author.name : null
-      const assigneeName = node._raw.assignee ? node._raw.assignee.name : null
+      const assigneeNames = getAssigneeNames(node._raw)
       const milestoneTitle = node._raw.milestone ? node._raw.milestone.title : null
       const priority = getScopedLabelValue(nodeLabels, 'Priority')
       const type = getScopedLabelValue(nodeLabels, 'Type')
@@ -219,7 +227,8 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
         authorMatch = !!authorName && (wantNames.includes(authorName) || (wantsDeactivated && isDeactivated))
       }
 
-      // 2. Assignee Filter
+      // 2. Assignee Filter — match if ANY assignee on the ticket matches the filter
+      // (issues can have multiple assignees; filtering by one of them must still hit).
       let assigneeMatch = true
       if ((settings.uiState.filters.selectedAssignees?.length || 0) > 0) {
         const rawWant = settings.uiState.filters.selectedAssignees
@@ -229,13 +238,13 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
         const wantsDeactivated = want.includes('@deactivated')
         const wantsUnassigned = want.includes('@unassigned')
         const wantNames = want.filter(v => v && v !== '@deactivated' && v !== '@unassigned')
-        const isDeactivated = assigneeName && (() => {
-          const s = stateMap[assigneeName]
+        const isDeactivated = (n) => {
+          const s = stateMap[n]
           const st = s ? String(s).trim().toLowerCase() : ''
           return !!st && st !== 'active'
-        })()
-        const matchUnassigned = wantsUnassigned && !assigneeName
-        const matchNamed = !!assigneeName && (wantNames.includes(assigneeName) || (wantsDeactivated && isDeactivated))
+        }
+        const matchUnassigned = wantsUnassigned && assigneeNames.length === 0
+        const matchNamed = assigneeNames.some(n => wantNames.includes(n) || (wantsDeactivated && isDeactivated(n)))
         assigneeMatch = matchNamed || matchUnassigned
       }
 

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.26] - 2026-05-13
+- Fix #16647 (filter by assignee on multi-assignee tickets): Assignee dropdown and filter were only looking at `_raw.assignee` (the first/legacy assignee). The filter now uses the full `_raw.assignees` array and matches if ANY assignee on the ticket matches the selected filter. The Assignee dropdown also lists every co-assignee.
+
+## [0.3.25] - 2026-05-13
+- GitLab token expiry detection: on startup the app now introspects the PAT (`/personal_access_tokens/self`) to read scopes + `expires_at`.
+- Top warning banner when the token expires in ≤7 days or is already expired; click → opens Config → GitLab tab.
+- Config → GitLab alert shows expiry date and remaining days; turns warning (≤14d) and error (expired).
+- When the token is expired and only sample data is loaded, a full-screen **TOKEN EXPIRED** message replaces the demo (with a "Create new token" CTA). Real cached data stays browsable.
+- "Create token" button now uses `api` scope in the prefilled form (full read + write) instead of `read_api,read_user`.
+- Fix: "Create token" button click was swallowed by `v-text-field`'s `append-inner` slot — moved next to the field so the link works.
+- Fix: starting a fetch now immediately clears any sample/mock data so it's not visible during loading.
+
 ## [0.3.24] - 2026-05-13
 - Deps: bump to Vuetify 4, Vite 8, Electron 42, jsdom 29, Vitest 4.1, plugin-vue 6, plus latest patches; 0 known vulnerabilities (was 27).
 - Vuetify 4 migration: `v-row dense` → `density="compact"`, `justify="end"` → utility class, select/autocomplete `item.raw` → `item` (v4 unwraps to raw).
