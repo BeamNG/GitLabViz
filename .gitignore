@@ -6,3 +6,8 @@ dist-ssr
 .npm
 .env
 coverage/
+
+# Local debug exports (Ctrl+Shift+E in dev mode).
+gitlabviz-export-*.json
+# Fixture data for filter regression tests.
+*.unittestdata.json
