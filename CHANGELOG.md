@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.3.34] - 2026-05-13
+- Fix #16649 (Status filter showed nothing for "In progress" / "On Hold/Blocked" / etc.):
+  the REST `/projects/:id/issues` endpoint never returns work-item status, and the GraphQL
+  enrichment pass wasn't requesting it. Probe `Issue.status { name }` and (when supported)
+  fetch via `project.issues(iids:)` — counts in this project's fixture went from 1798 "To do"
+  + 154 "Done" + 40 "Backlog" to a real distribution (1486 / 163 / 112 / 73 / 152 / 4).
+  Previously, `Query.nodes(ids:)` was used for the bulk lookup but isn't exposed on
+  self-managed installs ("Field 'nodes' doesn't exist on type 'Query'"); switched to
+  `project.issues(iids:)` which is universally supported. Restricted-introspection setups
+  also work now (probe-based capability detection always runs, not just when introspection
+  fails).
+- Status filter & dropdown now share a single `currentStatusOfRaw()` helper so closed issues
+  without an explicit status fall back to "Done" in BOTH places (previously the dropdown
+  showed "Done" but selecting it returned 0 results).
+- Filter dropdowns gained per-row ticket counts. Counts are **contextual** (GitLab-style):
+  each dropdown's numbers reflect all OTHER active filters, so picking Author=X immediately
+  narrows Status / Priority / Milestone / etc. counts to that author's tickets — but the
+  Author dropdown itself stays unfiltered so deselection / multi-select still makes sense.
+- Filter dropdown rows now have varied per-option icons + semantic colors (success / info /
+  warning / error / muted) for Status, Priority, Type, Milestone, Subscribed, Merge Requests,
+  Due, Time spent, Budget, Estimate bucket, Tasks, and the Created / Updated / Due Date
+  mode pickers. Previously many rows shared one icon (e.g. estimate buckets all `mdi-timer-sand`).
+- Date-range filters auto-fill sensible defaults when a mode is picked: past-dated dimensions
+  (Created / Updated) default to the last 7 days, future-dated (Due Date) to the next 7 days.
+  No more empty `dd/mm/yyyy` inputs that silently invalidate the filter.
+- "Sample data" notice promoted from a small inline alert to a top app bar matching the
+  token-expired banner style — much harder to miss when running without GitLab configured.
+- GitLab URL config accepts shorthand: `gitlab.example.com` → `https://gitlab.example.com/api/v4`.
+  Preserves `http://`, custom ports, sub-paths, and the existing `/api/vN` suffix; idempotent.
+  6 new tests for `normalizeGitLabApiBaseUrl`.
+- "Create token" link warns to bump the expiration to the maximum (GitLab silently caps PAT
+  prefill URLs to ~30 days; the `expires_at` query param is ignored upstream).
+- Refactored the 250-line inline filter into `passesFilters(node, skip)` — single source of
+  truth used by both `filteredNodes` and `filterCounts`. Removes drift risk and dedupes the
+  date-range branches.
+- Dev-only debug shortcut `Ctrl+Shift+E` exports the current graph + filter state to
+  `gitlabviz-export-<timestamp>.unittestdata.json`. Stripped from production builds
+  (`import.meta.env.DEV`-gated). Files matching `*.unittestdata.json` are gitignored and
+  auto-discovered by a new fixture-backed regression suite (`useGraphDerivedState.fixture.test.js`).
+  The suite runs ~30 dynamic assertions per fixture against every filter dimension,
+  predicates derived from the data so counts never need to be hardcoded.
+- 5 new tests in total this release.
+
 ## [0.3.33] - 2026-05-13
 - Status filter: always lists all 7 standard GitLab work-item statuses (`To do`, `In progress`, `Ready for Review`, `On Hold/Blocked`, `Done`, `Won't do`, `Duplicate`) plus any project-specific custom statuses from the loaded data. Previously only statuses present in currently-loaded issues were filterable.
 - Group / Color by "Label" now excludes scoped labels (e.g. `Priority::High`, `Type::Bug`, `Component::core engine`) — those have their own dedicated grouping modes. New `isScopedLabel()` helper in `utils/scopedLabels.js`.

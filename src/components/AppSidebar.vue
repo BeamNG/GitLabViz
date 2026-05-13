@@ -215,6 +215,7 @@
             :all-milestones="allMilestones"
             :all-priorities="allPriorities"
             :all-types="allTypes"
+            :filter-counts="filterCounts"
             :date-filter-modes="dateFilterModes"
             :grouping-mode-options="groupingModeOptions"
             :view-mode-options="viewModeOptions"
@@ -351,6 +352,7 @@ const props = defineProps({
   allMilestones: { type: Array, default: () => [] },
   allPriorities: { type: Array, default: () => [] },
   allTypes: { type: Array, default: () => [] },
+  filterCounts: { type: Object, default: () => ({}) },
   dateFilterModes: { type: Array, default: () => [] },
   groupingModeOptions: { type: [Array, Object], default: () => [] },
   viewModeOptions: { type: Array, default: () => [] },

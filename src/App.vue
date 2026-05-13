@@ -26,6 +26,7 @@
       :all-milestones="allMilestones"
       :all-priorities="allPriorities"
       :all-types="allTypes"
+      :filter-counts="filterCounts"
       :date-filter-modes="dateFilterModes"
       :grouping-mode-options="groupingModeOptions"
       :view-mode-options="viewModeOptions"
@@ -78,6 +79,28 @@
       >Create new token</v-btn>
     </v-app-bar>
 
+    <v-app-bar
+      v-if="isMockGraph && !tokenExpired"
+      color="info"
+      density="compact"
+      :elevation="0"
+      class="token-banner"
+      @click="openTokenConfig"
+    >
+      <v-icon icon="mdi-flask-outline" class="ms-3 me-2" />
+      <v-app-bar-title class="text-body-2">
+        <strong>Showing sample data</strong>
+        <span class="ms-2 text-medium-emphasis">— configure GitLab and hit Refresh to load real issues.</span>
+      </v-app-bar-title>
+      <v-btn
+        variant="outlined"
+        size="small"
+        class="text-none me-3"
+        prepend-icon="mdi-cog"
+        @click.stop="openTokenConfig"
+      >Open Configuration</v-btn>
+    </v-app-bar>
+
     <v-main>
       <ConfigPage
         v-if="activePage === 'config'"
@@ -107,16 +130,6 @@
           class="sample-watermark position-absolute top-0 left-0 w-100 h-100 d-flex align-center justify-center"
         >
           SAMPLE DATA
-        </div>
-
-        <div
-          v-if="isMockGraph && !tokenExpired"
-          class="position-absolute top-0 left-50 pa-3 z-index-10"
-          style="max-width: 460px;"
-        >
-          <v-alert type="info" variant="tonal" density="compact" icon="mdi-flask-outline">
-            Showing <strong>sample data</strong>. Configure sources and hit Refresh to load real data.
-          </v-alert>
         </div>
 
         <div
@@ -342,6 +355,29 @@ const openConfig = () => { configInitialTab.value = 'gitlab'; activePage.value =
 const openChangelog = () => { configInitialTab.value = 'changelog'; activePage.value = 'config' }
 const openSvnLog = () => { showSvnLog.value = true }
 
+// Export current graph + UI state as JSON (debug only, triggered by Ctrl+Shift+E).
+// Used for repro fixtures / filter regression tests; not exposed in the UI.
+const exportData = () => {
+  const payload = {
+    exportedAt: new Date().toISOString(),
+    appVersion,
+    nodes: toRaw(nodes),
+    edges: toRaw(edges),
+    uiState: JSON.parse(JSON.stringify(toRaw(settings.uiState))),
+    meta: { gitlabMeName: settings.meta.gitlabMeName || '' }
+  }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+  a.href = url
+  a.download = `gitlabviz-export-${stamp}.unittestdata.json`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 const gitlabCacheMeta = ref({ nodes: 0, edges: 0, updatedAt: null })
 const updateStatus = ref({ loading: false, source: '', message: '' })
 const mattermostMeta = ref({ teams: 0, updatedAt: null })
@@ -466,11 +502,11 @@ const createPreset = async () => {
 // Need to define issueGraph ref
 const issueGraph = ref(null)
 const dateFilterModes = [
-  { title: 'Any Time', value: 'none', icon: 'mdi-clock-outline' },
-  { title: 'Before', value: 'before', icon: 'mdi-clock-start' },
-  { title: 'After', value: 'after', icon: 'mdi-clock-end' },
-  { title: 'Between', value: 'between', icon: 'mdi-clock-in' },
-  { title: 'Last X Days', value: 'last_x_days', icon: 'mdi-history' }
+  { title: 'Any Time', value: 'none', icon: 'mdi-clock-outline', color: 'medium-emphasis' },
+  { title: 'Before', value: 'before', icon: 'mdi-clock-start', color: 'info' },
+  { title: 'After', value: 'after', icon: 'mdi-clock-end', color: 'success' },
+  { title: 'Between', value: 'between', icon: 'mdi-clock-in', color: 'warning' },
+  { title: 'Last X Days', value: 'last_x_days', icon: 'mdi-history', color: 'amber' }
 ]
 
 const nodes = reactive({})
@@ -586,7 +622,8 @@ const {
   hasData,
   isMockGraph,
   statsText,
-  groupStatsText
+  groupStatsText,
+  filterCounts
 } = useGraphDerivedState({ settings, nodes, edges })
 
 // Active assignee filter resolved into a concrete name set + flags. Drives multi-assignee
@@ -693,12 +730,24 @@ onMounted(async () => {
   // Fire-and-forget: detect token scopes + expiry on startup so the UI can warn about expiring tokens
   // without waiting for the user to trigger a full refresh.
   checkTokenInfo()
+
+  // Dev-only: register the export hotkey. Stripped from prod bundles.
+  if (import.meta.env.DEV) window.addEventListener('keydown', onGlobalKeydown)
 })
 
 onUnmounted(() => {
   if (nowTickInterval) clearInterval(nowTickInterval)
   nowTickInterval = null
+  if (import.meta.env.DEV) window.removeEventListener('keydown', onGlobalKeydown)
 })
+
+// Hidden dev-only shortcut: Ctrl+Shift+E exports the current graph + filter state for fixture tests.
+const onGlobalKeydown = (e) => {
+  if (e.ctrlKey && e.shiftKey && !e.altKey && (e.key === 'E' || e.key === 'e')) {
+    e.preventDefault()
+    exportData()
+  }
+}
 
 function createMockIssuesGraph () {
   const now = Date.now()

@@ -39,17 +39,13 @@ export function useDataLoader ({
   createMockIssuesGraph
 }) {
   const resolveGitLabApiBaseUrl = () => {
-    const raw = String(settings.config.gitlabApiBaseUrl || '').trim()
-    if (!raw) return ''
-
-    const direct = normalizeGitLabApiBaseUrl(raw)
+    const direct = normalizeGitLabApiBaseUrl(settings.config.gitlabApiBaseUrl)
     if (!direct) return ''
 
     // In dev (web), use Vite proxy if configured and the URL matches that proxy target.
     if (!window.electronAPI && import.meta.env.DEV) {
       const proxyTarget = String(import.meta.env.VITE_GITLAB_PROXY_TARGET || '').trim().replace(/\/+$/, '')
-      const host = String(raw || '').trim().replace(/\/+$/, '')
-      if (proxyTarget && host.startsWith(proxyTarget)) return '/gitlab/api/v4'
+      if (proxyTarget && direct.startsWith(proxyTarget)) return '/gitlab/api/v4'
     }
 
     return direct

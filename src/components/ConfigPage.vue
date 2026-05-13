@@ -180,7 +180,7 @@
             </template>
           </v-text-field>
 
-          <div class="d-flex ga-2 align-start mb-4">
+          <div class="d-flex ga-2 align-start mb-1">
             <v-text-field
               v-model="settings.config.token"
               label="Personal Access Token"
@@ -208,6 +208,16 @@
               title="Open prefilled GitLab token form with 'api' scope (full read + write)."
             >Create token</v-btn>
           </div>
+          <v-alert
+            v-if="gitlabTokenUrl('api')"
+            type="warning"
+            variant="tonal"
+            density="compact"
+            icon="mdi-calendar-alert"
+            class="mb-4"
+          >
+            On the GitLab token page, set <strong>Expiration date</strong> to the maximum allowed (typically 1 year). GitLab defaults to ~30 days and ignores any prefill from this app.
+          </v-alert>
 
           <v-select
             v-model="settings.config.gitlabClosedDays"
@@ -908,16 +918,12 @@ const gitlabTestLoading = ref(false)
 const gitlabTestResult = ref(null) // { ok: boolean, message: string }
 
 const resolveGitLabApiBaseUrl = () => {
-  const raw = String(settings.config.gitlabApiBaseUrl || '').trim()
-  if (!raw) return ''
-
-  const direct = normalizeGitLabApiBaseUrl(raw)
+  const direct = normalizeGitLabApiBaseUrl(settings.config.gitlabApiBaseUrl)
   if (!direct) return ''
 
   if (!isElectron.value && isDev) {
     const proxyTarget = String(import.meta.env.VITE_GITLAB_PROXY_TARGET || '').trim().replace(/\/+$/, '')
-    const host = raw.replace(/\/+$/, '')
-    if (proxyTarget && host.startsWith(proxyTarget)) return '/gitlab/api/v4'
+    if (proxyTarget && direct.startsWith(proxyTarget)) return '/gitlab/api/v4'
   }
 
   return direct
@@ -1029,9 +1035,11 @@ async function saveAndReloadGitLab () {
 }
 
 function gitlabTokenUrl (scopes) {
-  const raw = String(settings.config.gitlabApiBaseUrl || '').trim()
-  if (!raw) return ''
-  const base = raw.replace(/\/+$/, '').replace(/\/api\/v\d+$/, '')
+  const normalized = normalizeGitLabApiBaseUrl(settings.config.gitlabApiBaseUrl)
+  if (!normalized) return ''
+  const base = normalized.replace(/\/api\/v\d+$/, '')
+  // GitLab's PAT page only honors name/description/scopes (expires_at is ignored).
+  // It auto-defaults the expiry to 365 days from today when left blank.
   const q = new URLSearchParams({ name: 'GitLab Viz', scopes, description: 'Created by GitLab Viz' })
   return `${base}/-/user_settings/personal_access_tokens?${q}`
 }

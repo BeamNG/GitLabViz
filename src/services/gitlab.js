@@ -19,6 +19,8 @@ const INCLUDE_DESCRIPTION_HTML = false
 export const normalizeGitLabApiBaseUrl = (gitlabUrl) => {
   let u = String(gitlabUrl || '').trim().replace(/\/+$/, '')
   if (!u) return ''
+  // Default to https:// if no scheme — user can type "gitlab.example.com" or "host:8443".
+  if (!/^https?:\/\//i.test(u)) u = `https://${u.replace(/^\/+/, '')}`
   if (!/\/api\/v\d+$/.test(u)) u = `${u}/api/v4`
   return u
 }
@@ -202,7 +204,7 @@ export const fetchProjectIssuesRest = async (client, projectId, onProgress, opti
 
 const ensureIssueCaps = async (client, fullPath) => {
   let caps = await detectFeatures(client)
-  if (!caps?._introspectionFailed || caps._probeDone || !client) return caps
+  if (caps._probeDone || !client) return caps
 
   const keyCaps = '__glvIssueFieldCaps'
   const probeIssueField = async (fieldSnippet) => {
@@ -230,17 +232,24 @@ const ensureIssueCaps = async (client, fullPath) => {
     }
   }
 
-  const hasEpic = await probeIssueField('epic { id title }')
-  const hasParent = await probeIssueField('parent { id iid title }')
+  // Always probe — introspection is sometimes restricted on self-managed installs (returns
+  // empty field lists even when the actual GraphQL fields work). Probe results are cached
+  // per-client so this only runs once per session. Prefer probe-true over introspection-false.
+  const [hasEpic, hasParent, hasWorkItemType, hasStatus] = await Promise.all([
+    probeIssueField('epic { id title }'),
+    probeIssueField('parent { id iid title }'),
+    probeIssueField('workItemType { name }'),
+    probeIssueField('status { name }')
+  ])
   const hasParentWorkItemType = hasParent ? await probeIssueField('parent { workItemType { name } }') : false
-  const hasWorkItemType = await probeIssueField('workItemType { name }')
 
   caps = {
     ...caps,
-    hasEpic: !!hasEpic,
-    hasParent: !!hasParent,
-    hasWorkItemType: !!hasWorkItemType,
-    hasParentWorkItemType: !!hasParentWorkItemType,
+    hasEpic: !!hasEpic || !!caps.hasEpic,
+    hasParent: !!hasParent || !!caps.hasParent,
+    hasWorkItemType: !!hasWorkItemType || !!caps.hasWorkItemType,
+    hasParentWorkItemType: !!hasParentWorkItemType || !!caps.hasParentWorkItemType,
+    hasStatus: !!hasStatus || !!caps.hasStatus,
     _probeDone: true,
   }
   client[keyCaps] = caps
@@ -255,13 +264,16 @@ export const enrichIssuesFromGraphql = async (client, projectId, issues, onProgr
   const wantEpic = !!caps?.hasEpic
   const wantIteration = !!caps?.hasIteration
   const wantParent = !!caps?.hasParent
-  if (!wantEpic && !wantIteration && !wantParent) return issues
+  const wantStatus = !!caps?.hasStatus
+  if (!wantEpic && !wantIteration && !wantParent && !wantStatus) return issues
 
   const need = issues.filter(i => {
     if (!i) return false
     if (wantIteration && i.iteration == null) return true
     if (wantParent && i.parent == null) return true
     if (wantEpic && i.epic == null && i.epic_iid != null) return true
+    // REST never returns work-item status, so re-enrich it on every refresh.
+    if (wantStatus && i.work_item_status == null) return true
     return false
   })
   if (need.length === 0) return issues
@@ -271,34 +283,39 @@ export const enrichIssuesFromGraphql = async (client, projectId, issues, onProgr
   const parentField = wantParent
     ? `parent { id iid title ${caps.hasParentWorkItemType ? 'workItemType { name }' : ''} }`
     : ''
+  const statusField = wantStatus ? 'status { name }' : ''
 
-  const byId = new Map()
+  // Lookup by IID (the per-project number): self-managed GitLab doesn't expose `Query.nodes(ids:)`,
+  // so we use `project(fullPath).issues(iids:)` which is universally supported.
+  const byIid = new Map()
   issues.forEach(i => {
-    const id = i && i.id != null ? String(i.id) : ''
-    if (id) byId.set(id, i)
+    const iid = i && i.iid != null ? String(i.iid) : ''
+    if (iid) byIid.set(iid, i)
   })
 
   const batchSize = Math.max(10, Math.min(200, Number(options.batchSize) || 100))
   for (let idx = 0; idx < need.length; idx += batchSize) {
     const batch = need.slice(idx, idx + batchSize)
-    const ids = batch
-      .map(i => (i && i.id != null) ? `gid://gitlab/Issue/${i.id}` : null)
+    const iids = batch
+      .map(i => (i && i.iid != null) ? String(i.iid) : null)
       .filter(Boolean)
 
-    if (!ids.length) continue
+    if (!iids.length) continue
 
     if (onProgress) onProgress(`Enriching issue fields (GraphQL) ${Math.min(idx + batch.length, need.length)} / ${need.length}...`)
 
     const q = `
-      query EnrichIssues($ids: [ID!]!) {
-        nodes(ids: $ids) {
-          __typename
-          ... on Issue {
-            id
-            iid
-            ${epicField}
-            ${iterationField}
-            ${parentField}
+      query EnrichIssues($fullPath: ID!, $iids: [String!]) {
+        project(fullPath: $fullPath) {
+          issues(iids: $iids) {
+            nodes {
+              id
+              iid
+              ${epicField}
+              ${iterationField}
+              ${parentField}
+              ${statusField}
+            }
           }
         }
       }
@@ -306,25 +323,25 @@ export const enrichIssuesFromGraphql = async (client, projectId, issues, onProgr
 
     let resp
     try {
-      resp = await gitlabPost(client, '', { data: { query: q, variables: { ids } } }, { maxRetries: 1 })
-    } catch {
+      resp = await gitlabPost(client, '', { data: { query: q, variables: { fullPath, iids } } }, { maxRetries: 1 })
+    } catch (e) {
+      console.warn('[GitLab] enrichment request threw — bailing out:', e?.message || e)
       return issues
     }
 
     const payload = resp?.data || {}
     if (Array.isArray(payload?.errors) && payload.errors.length) {
+      console.warn('[GitLab] enrichment GraphQL errors — bailing out:', payload.errors.map(e => e?.message).join('; '))
       return issues
     }
 
-    const nodes = payload?.data?.nodes
+    const nodes = payload?.data?.project?.issues?.nodes
     if (!Array.isArray(nodes)) continue
 
     nodes.forEach(n => {
-      if (!n || n.__typename !== 'Issue') return
-      const gid = String(n.id || '')
-      const m = gid.match(/\/Issue\/(\d+)$/)
-      const id = m ? m[1] : ''
-      const local = id ? byId.get(id) : null
+      if (!n) return
+      const iid = n.iid != null ? String(n.iid) : ''
+      const local = iid ? byIid.get(iid) : null
       if (!local) return
 
       if (wantEpic && n.epic && local.epic == null) local.epic = { title: n.epic.title }
@@ -335,6 +352,19 @@ export const enrichIssuesFromGraphql = async (client, projectId, issues, onProgr
           iid: n.parent.iid != null ? Number(n.parent.iid) : null,
           title: n.parent.title || '',
           work_item_type: (n.parent.workItemType && n.parent.workItemType.name) ? n.parent.workItemType.name : null,
+        }
+      }
+      if (wantStatus) {
+        const sname = n.status && n.status.name ? String(n.status.name).trim() : ''
+        local.work_item_status = sname || null
+        // Mirror the dropdown's effective-status logic so the Status filter and the legend agree.
+        if (sname) {
+          local.status_display = sname
+        } else if (local.status_display == null) {
+          // Use scoped Status:: label if present, else state-based fallback.
+          const lab = (Array.isArray(local.labels) ? local.labels : []).find(l => typeof l === 'string' && (l.startsWith('Status::') || l.startsWith('Status:')))
+          const labV = lab ? (lab.includes('::') ? lab.split('::').slice(1).join('::') : lab.split(':').slice(1).join(':')).trim() : ''
+          local.status_display = labV || (String(local.state || '').toLowerCase() === 'closed' ? 'Done' : 'To do')
         }
       }
     })

@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { createGitLabClient, createGitLabGraphqlClient, fetchProjectIssues, fetchIssueLinks } from './gitlab';
+import { createGitLabClient, createGitLabGraphqlClient, fetchProjectIssues, fetchIssueLinks, normalizeGitLabApiBaseUrl } from './gitlab';
 
 vi.mock('axios');
 
@@ -104,6 +104,10 @@ describe('gitlab service', () => {
         if (q.includes('__type(name: "Project")')) {
           return Promise.resolve({ data: { data: { __type: { fields: [{ name: 'issues' }] } } } })
         }
+        // ensureIssueCaps probes — return field-doesn't-exist so probes resolve to false (no upgrade).
+        if (q.includes('ProbeIssueFields')) {
+          return Promise.resolve({ data: { errors: [{ message: "Field 'x' doesn't exist on type 'Issue'" }] } })
+        }
 
         // issues query
         return Promise.resolve({
@@ -133,7 +137,7 @@ describe('gitlab service', () => {
     const result = await fetchProjectIssues(mockClient, 'group/project');
 
     const calls = mockClient.post.mock.calls
-    const issuesCall = calls.find(c => c && c[1] && c[1].variables && c[1].variables.fullPath === 'group/project')
+    const issuesCall = calls.find(c => c && c[1] && String(c[1].query || '').includes('query ProjectIssues'))
     expect(issuesCall).toBeTruthy()
     const [url, body] = issuesCall
     expect(url).toBe('')
@@ -193,8 +197,11 @@ describe('gitlab service', () => {
           if (q.includes('__type(name: "Project")')) {
             return Promise.resolve({ data: { data: { __type: { fields: [{ name: 'issues' }] } } } })
           }
+          if (q.includes('ProbeIssueFields')) {
+            return Promise.resolve({ data: { errors: [{ message: "Field 'x' doesn't exist on type 'Issue'" }] } })
+          }
 
-          // issues pages
+          // issues pages — only the named "ProjectIssues" query reaches here
           const after = body?.variables?.after || null
           if (!after) {
             return Promise.resolve({
@@ -245,7 +252,7 @@ describe('gitlab service', () => {
 
     const result = await fetchProjectIssues(mockClient, '123');
 
-    const issueCalls = mockClient.post.mock.calls.filter(c => c && c[1] && c[1].variables && c[1].variables.fullPath === '123')
+    const issueCalls = mockClient.post.mock.calls.filter(c => c && c[1] && String(c[1].query || '').includes('query ProjectIssues'))
     expect(issueCalls.length).toBe(2)
     expect(issueCalls[0][1].variables.after).toBe(null)
     expect(issueCalls[1][1].variables.after).toBe('CUR1')
@@ -320,6 +327,9 @@ describe('gitlab service', () => {
           if (q.includes('__type(name: "Project")')) {
             return Promise.resolve({ data: { data: { __type: { fields: [{ name: 'issues' }] } } } })
           }
+          if (q.includes('ProbeIssueFields')) {
+            return Promise.resolve({ data: { errors: [{ message: "Field 'x' doesn't exist on type 'Issue'" }] } })
+          }
 
           // first issues query: 429
           const after = body?.variables?.after || null
@@ -360,5 +370,31 @@ describe('gitlab service', () => {
     expect(mockClient.post).toHaveBeenCalled();
     expect(consoleSpy).toHaveBeenCalled();
   });
+
+  describe('normalizeGitLabApiBaseUrl', () => {
+    it('appends https:// when no scheme is given', () => {
+      expect(normalizeGitLabApiBaseUrl('gitlab.example.com')).toBe('https://gitlab.example.com/api/v4')
+    })
+    it('preserves http:// scheme', () => {
+      expect(normalizeGitLabApiBaseUrl('http://gitlab.local')).toBe('http://gitlab.local/api/v4')
+    })
+    it('keeps custom ports', () => {
+      expect(normalizeGitLabApiBaseUrl('gitlab.local:8443')).toBe('https://gitlab.local:8443/api/v4')
+      expect(normalizeGitLabApiBaseUrl('http://localhost:8080')).toBe('http://localhost:8080/api/v4')
+    })
+    it('strips trailing slashes and is idempotent on /api/vN', () => {
+      expect(normalizeGitLabApiBaseUrl('https://gitlab.example.com/')).toBe('https://gitlab.example.com/api/v4')
+      expect(normalizeGitLabApiBaseUrl('https://gitlab.example.com/api/v4')).toBe('https://gitlab.example.com/api/v4')
+      expect(normalizeGitLabApiBaseUrl('https://gitlab.example.com/api/v3')).toBe('https://gitlab.example.com/api/v3')
+    })
+    it('returns empty for empty/whitespace input', () => {
+      expect(normalizeGitLabApiBaseUrl('')).toBe('')
+      expect(normalizeGitLabApiBaseUrl('   ')).toBe('')
+      expect(normalizeGitLabApiBaseUrl(null)).toBe('')
+    })
+    it('handles leading slashes (e.g. //host)', () => {
+      expect(normalizeGitLabApiBaseUrl('//gitlab.example.com')).toBe('https://gitlab.example.com/api/v4')
+    })
+  })
 });
 

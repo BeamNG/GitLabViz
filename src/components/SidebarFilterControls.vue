@@ -54,6 +54,7 @@
             <template v-slot:prepend>
               <v-icon icon="mdi-tag" size="small" class="mr-2"></v-icon>
             </template>
+            <template v-slot:append><span :class="countChipClass(item, 'labels')">{{ countOf('labels', item) }}</span></template>
           </v-list-item>
         </template>
       </v-autocomplete>
@@ -78,6 +79,7 @@
             <template v-slot:prepend>
               <v-icon icon="mdi-tag-outline" size="small" class="mr-2"></v-icon>
             </template>
+            <template v-slot:append><span :class="countChipClass(item, 'excludedLabels')">{{ countOf('excludedLabels', item) }}</span></template>
           </v-list-item>
         </template>
       </v-autocomplete>
@@ -104,9 +106,10 @@
           <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
           <v-list-item v-else v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="userItemIcon(item.value).icon" :color="userItemIcon(item.value).color" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(userItemIcon(item.value).color) }"><v-icon :icon="userItemIcon(item.value).icon" size="small"></v-icon></span>
             </template>
             <template v-slot:title>{{ item.title }}</template>
+            <template v-slot:append><span :class="countChipClass(item, 'authors')">{{ countOf('authors', item) }}</span></template>
           </v-list-item>
         </template>
       </v-autocomplete>
@@ -132,9 +135,10 @@
           <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
           <v-list-item v-else v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="userItemIcon(item.value).icon" :color="userItemIcon(item.value).color" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(userItemIcon(item.value).color) }"><v-icon :icon="userItemIcon(item.value).icon" size="small"></v-icon></span>
             </template>
             <template v-slot:title>{{ item.title }}</template>
+            <template v-slot:append><span :class="countChipClass(item, 'assignees')">{{ countOf('assignees', item) }}</span></template>
           </v-list-item>
         </template>
       </v-autocomplete>
@@ -160,8 +164,9 @@
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.value === '@none' ? 'mdi-flag-outline' : 'mdi-flag-variant'" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(milestoneIconAndColor(item.value).color) }"><v-icon :icon="milestoneIconAndColor(item.value).icon" size="small"></v-icon></span>
             </template>
+            <template v-slot:append><span :class="countChipClass(item, 'milestones')">{{ countOf('milestones', item) }}</span></template>
           </v-list-item>
         </template>
       </v-autocomplete>
@@ -186,8 +191,9 @@
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.value === '@none' ? 'mdi-alert-circle-outline' : 'mdi-alert-box'" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(priorityIconAndColor(item.value).color) }"><v-icon :icon="priorityIconAndColor(item.value).icon" size="small"></v-icon></span>
             </template>
+            <template v-slot:append><span :class="countChipClass(item, 'priorities')">{{ countOf('priorities', item) }}</span></template>
           </v-list-item>
         </template>
       </v-autocomplete>
@@ -212,8 +218,9 @@
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.value === '@none' ? 'mdi-shape-plus-outline' : 'mdi-shape-outline'" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(typeIconAndColor(item.value).color) }"><v-icon :icon="typeIconAndColor(item.value).icon" size="small"></v-icon></span>
             </template>
+            <template v-slot:append><span :class="countChipClass(item, 'types')">{{ countOf('types', item) }}</span></template>
           </v-list-item>
         </template>
       </v-autocomplete>
@@ -237,18 +244,16 @@
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(item.raw?.color || item.color) }"><v-icon :icon="item.raw?.icon || item.icon" size="small"></v-icon></span>
             </template>
+            <template v-slot:append><span :class="countChipClass(item, 'status')">{{ countOf('status', item) }}</span></template>
           </v-list-item>
         </template>
       </v-autocomplete>
 
       <v-select
         v-model="state.filters.selectedSubscription"
-        :items="[
-          { title: 'Explicitly subscribed', value: 'subscribed', icon: 'mdi-bell' },
-          { title: 'Explicitly unsubscribed', value: 'unsubscribed', icon: 'mdi-bell-off' }
-        ]"
+        :items="subscriptionOptions"
         label="Subscribed"
         density="compact"
         variant="outlined"
@@ -261,18 +266,16 @@
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(item.raw?.color || item.color) }"><v-icon :icon="item.raw?.icon || item.icon" size="small"></v-icon></span>
             </template>
+            <template v-slot:append><span :class="countChipClass(item, 'subscription')">{{ countOf('subscription', item) }}</span></template>
           </v-list-item>
         </template>
       </v-select>
 
       <v-select
         v-model="state.filters.mrMode"
-        :items="[
-          { title: 'Has merge requests', value: 'has', icon: 'mdi-source-merge' },
-          { title: 'No merge requests', value: 'none', icon: 'mdi-source-merge' }
-        ]"
+        :items="mrModeOptions"
         label="Merge Requests"
         density="compact"
         variant="outlined"
@@ -285,8 +288,9 @@
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(item.raw?.color || item.color) }"><v-icon :icon="item.raw?.icon || item.icon" size="small"></v-icon></span>
             </template>
+            <template v-slot:append><span :class="countChipClass(item, 'mr')">{{ countOf('mr', item) }}</span></template>
           </v-list-item>
         </template>
       </v-select>
@@ -312,21 +316,17 @@
           <v-list-subheader v-if="item.type === 'subheader'" :title="item.title" />
           <v-list-item v-else v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="userItemIcon(item.value).icon" :color="userItemIcon(item.value).color" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(userItemIcon(item.value).color) }"><v-icon :icon="userItemIcon(item.value).icon" size="small"></v-icon></span>
             </template>
             <template v-slot:title>{{ item.title }}</template>
+            <template v-slot:append><span :class="countChipClass(item, 'participants')">{{ countOf('participants', item) }}</span></template>
           </v-list-item>
         </template>
       </v-autocomplete>
 
       <v-select
         v-model="state.filters.dueStatus"
-        :items="[
-          { title: 'Overdue', value: 'overdue', icon: 'mdi-calendar-alert' },
-          { title: 'Due soon', value: 'soon', icon: 'mdi-calendar-clock' },
-          { title: 'Due later', value: 'later', icon: 'mdi-calendar' },
-          { title: 'No due date', value: 'none', icon: 'mdi-calendar-remove' }
-        ]"
+        :items="dueStatusOptions"
         label="Due status"
         density="compact"
         variant="outlined"
@@ -339,18 +339,16 @@
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(item.raw?.color || item.color) }"><v-icon :icon="item.raw?.icon || item.icon" size="small"></v-icon></span>
             </template>
+            <template v-slot:append><span :class="countChipClass(item, 'due')">{{ countOf('due', item) }}</span></template>
           </v-list-item>
         </template>
       </v-select>
 
       <v-select
         v-model="state.filters.spentMode"
-        :items="[
-          { title: 'Has time spent', value: 'has', icon: 'mdi-timer' },
-          { title: 'No time spent', value: 'none', icon: 'mdi-timer-off' }
-        ]"
+        :items="spentModeOptions"
         label="Time spent"
         density="compact"
         variant="outlined"
@@ -363,19 +361,16 @@
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(item.raw?.color || item.color) }"><v-icon :icon="item.raw?.icon || item.icon" size="small"></v-icon></span>
             </template>
+            <template v-slot:append><span :class="countChipClass(item, 'spent')">{{ countOf('spent', item) }}</span></template>
           </v-list-item>
         </template>
       </v-select>
 
       <v-select
         v-model="state.filters.budgetMode"
-        :items="[
-          { title: 'Over budget', value: 'over', icon: 'mdi-cash-remove' },
-          { title: 'Within budget', value: 'within', icon: 'mdi-cash-check' },
-          { title: 'No estimate', value: 'no_est', icon: 'mdi-cash-off' }
-        ]"
+        :items="budgetModeOptions"
         label="Budget"
         density="compact"
         variant="outlined"
@@ -388,22 +383,16 @@
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(item.raw?.color || item.color) }"><v-icon :icon="item.raw?.icon || item.icon" size="small"></v-icon></span>
             </template>
+            <template v-slot:append><span :class="countChipClass(item, 'budget')">{{ countOf('budget', item) }}</span></template>
           </v-list-item>
         </template>
       </v-select>
 
       <v-select
         v-model="state.filters.estimateBucket"
-        :items="[
-          { title: '< 1h', value: 'lt1h', icon: 'mdi-timer-sand' },
-          { title: '1–4h', value: '1_4h', icon: 'mdi-timer-sand' },
-          { title: '4–8h', value: '4_8h', icon: 'mdi-timer-sand' },
-          { title: '1–3d', value: '1_3d', icon: 'mdi-timer-sand' },
-          { title: '3d+', value: '3dplus', icon: 'mdi-timer-sand' },
-          { title: 'No estimate', value: 'none', icon: 'mdi-timer-sand-empty' }
-        ]"
+        :items="estimateBucketOptions"
         label="Estimate bucket"
         density="compact"
         variant="outlined"
@@ -416,20 +405,16 @@
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(item.raw?.color || item.color) }"><v-icon :icon="item.raw?.icon || item.icon" size="small"></v-icon></span>
             </template>
+            <template v-slot:append><span :class="countChipClass(item, 'estimate')">{{ countOf('estimate', item) }}</span></template>
           </v-list-item>
         </template>
       </v-select>
 
       <v-select
         v-model="state.filters.taskMode"
-        :items="[
-          { title: 'No tasks', value: 'no_tasks', icon: 'mdi-format-list-bulleted' },
-          { title: '0% done', value: 'none_done', icon: 'mdi-format-list-checks' },
-          { title: 'In progress', value: 'in_progress', icon: 'mdi-progress-check' },
-          { title: '100% done', value: 'done', icon: 'mdi-check-circle-outline' }
-        ]"
+        :items="taskModeOptions"
         label="Tasks"
         density="compact"
         variant="outlined"
@@ -442,8 +427,9 @@
         <template v-slot:item="{ props, item }">
           <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
+              <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(item.raw?.color || item.color) }"><v-icon :icon="item.raw?.icon || item.icon" size="small"></v-icon></span>
             </template>
+            <template v-slot:append><span :class="countChipClass(item, 'tasks')">{{ countOf('tasks', item) }}</span></template>
           </v-list-item>
         </template>
       </v-select>
@@ -464,7 +450,7 @@
           <template v-slot:item="{ props, item }">
             <v-list-item v-bind="props" :title="item.title">
               <template v-slot:prepend>
-                <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
+                <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(item.raw?.color || item.color) }"><v-icon :icon="item.raw?.icon || item.icon" size="small"></v-icon></span>
               </template>
             </v-list-item>
           </template>
@@ -489,7 +475,7 @@
           <template v-slot:item="{ props, item }">
             <v-list-item v-bind="props" :title="item.title">
               <template v-slot:prepend>
-                <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
+                <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(item.raw?.color || item.color) }"><v-icon :icon="item.raw?.icon || item.icon" size="small"></v-icon></span>
               </template>
             </v-list-item>
           </template>
@@ -514,7 +500,7 @@
           <template v-slot:item="{ props, item }">
             <v-list-item v-bind="props" :title="item.title">
               <template v-slot:prepend>
-                <v-icon :icon="item.icon" size="small" class="mr-2"></v-icon>
+                <span class="mr-2 list-icon-wrap" :style="{ color: iconColor(item.raw?.color || item.color) }"><v-icon :icon="item.raw?.icon || item.icon" size="small"></v-icon></span>
               </template>
             </v-list-item>
           </template>
@@ -647,7 +633,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 
 const emit = defineEmits(['reset-filters'])
 const props = defineProps({
@@ -664,6 +650,7 @@ const props = defineProps({
   allMilestones: { type: Array, required: true },
   allPriorities: { type: Array, required: true },
   allTypes: { type: Array, required: true },
+  filterCounts: { type: Object, required: false, default: () => ({}) },
 
   dateFilterModes: { type: Array, required: true },
 
@@ -679,39 +666,177 @@ const { state } = props
 const isSetArray = (v) => Array.isArray(v) && v.length > 0
 const isSetString = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v
 
-const statusIcon = (status) => {
+// Pre-fill sensible defaults when a date mode is picked so the date inputs
+// don't render blank (which shows up as "dd/mm/yyyy" / "Invalid"). Past-dated
+// dimensions (created/updated) default to the last 7 days; due-date defaults
+// to the next 7 days. Only fills empty fields — never overwrites user input.
+const todayYmd = () => new Date().toISOString().slice(0, 10)
+const ymdOffset = (days) => { const d = new Date(); d.setDate(d.getDate() + days); return d.toISOString().slice(0, 10) }
+
+const applyDateDefaults = (group, futureBias) => {
+  const f = state.filters.dateFilters
+  const mode = f[`${group}Mode`]
+  const afterKey = `${group}After`; const beforeKey = `${group}Before`; const daysKey = `${group}Days`
+  // Past dimensions: "after" = N days ago, "before" = today.
+  // Future dimensions: "after" = today, "before" = N days from now.
+  const defAfter = futureBias ? todayYmd() : ymdOffset(-7)
+  const defBefore = futureBias ? ymdOffset(7) : todayYmd()
+  if ((mode === 'after' || mode === 'between') && !f[afterKey]) f[afterKey] = defAfter
+  if ((mode === 'before' || mode === 'between') && !f[beforeKey]) f[beforeKey] = defBefore
+  if (mode === 'last_x_days' && (!f[daysKey] || f[daysKey] <= 0)) f[daysKey] = 7
+}
+
+watch(() => state.filters.dateFilters.createdMode, () => applyDateDefaults('created', false))
+watch(() => state.filters.dateFilters.updatedMode, () => applyDateDefaults('updated', false))
+watch(() => state.filters.dateFilters.dueDateMode, () => applyDateDefaults('dueDate', true))
+
+// Per-option icons + semantic colors for the boolean/enum filters.
+// Centralized here so the templates stay tidy.
+const subscriptionOptions = [
+  { title: 'Explicitly subscribed', value: 'subscribed', icon: 'mdi-bell', color: 'success' },
+  { title: 'Explicitly unsubscribed', value: 'unsubscribed', icon: 'mdi-bell-off-outline', color: 'medium-emphasis' }
+]
+const mrModeOptions = [
+  { title: 'Has merge requests', value: 'has', icon: 'mdi-source-merge', color: 'info' },
+  { title: 'No merge requests', value: 'none', icon: 'mdi-source-branch-remove', color: 'medium-emphasis' }
+]
+const dueStatusOptions = [
+  { title: 'Overdue', value: 'overdue', icon: 'mdi-calendar-alert', color: 'error' },
+  { title: 'Due soon', value: 'soon', icon: 'mdi-calendar-clock', color: 'warning' },
+  { title: 'Due later', value: 'later', icon: 'mdi-calendar-blank-outline', color: 'info' },
+  { title: 'No due date', value: 'none', icon: 'mdi-calendar-remove-outline', color: 'medium-emphasis' }
+]
+const spentModeOptions = [
+  { title: 'Has time spent', value: 'has', icon: 'mdi-timer-outline', color: 'info' },
+  { title: 'No time spent', value: 'none', icon: 'mdi-timer-off-outline', color: 'medium-emphasis' }
+]
+const budgetModeOptions = [
+  { title: 'Over budget', value: 'over', icon: 'mdi-cash-remove', color: 'error' },
+  { title: 'Within budget', value: 'within', icon: 'mdi-cash-check', color: 'success' },
+  { title: 'No estimate', value: 'no_est', icon: 'mdi-cash-off', color: 'medium-emphasis' }
+]
+const estimateBucketOptions = [
+  { title: '< 1h', value: 'lt1h', icon: 'mdi-flash-outline', color: 'success' },
+  { title: '1–4h', value: '1_4h', icon: 'mdi-clock-fast', color: 'info' },
+  { title: '4–8h', value: '4_8h', icon: 'mdi-clock-outline', color: 'info' },
+  { title: '1–3d', value: '1_3d', icon: 'mdi-calendar-week-outline', color: 'warning' },
+  { title: '3d+', value: '3dplus', icon: 'mdi-calendar-month-outline', color: 'error' },
+  { title: 'No estimate', value: 'none', icon: 'mdi-timer-sand-empty', color: 'medium-emphasis' }
+]
+const taskModeOptions = [
+  { title: 'No tasks', value: 'no_tasks', icon: 'mdi-format-list-bulleted', color: 'medium-emphasis' },
+  { title: '0% done', value: 'none_done', icon: 'mdi-checkbox-blank-outline', color: 'warning' },
+  { title: 'In progress', value: 'in_progress', icon: 'mdi-progress-check', color: 'info' },
+  { title: '100% done', value: 'done', icon: 'mdi-check-circle-outline', color: 'success' }
+]
+
+// Lookup ticket count for a filter value; falls back to 0 (shown greyed in the row).
+// Vuetify's `item` slot prop is an InternalListItem ({value, title, raw, ...}) for object
+// items, but a plain primitive for string-array items — accept both shapes.
+const countOf = (bucket, item) => {
+  const m = props.filterCounts && props.filterCounts[bucket]
+  if (!m || typeof m.get !== 'function') return 0
+  const key = (item && typeof item === 'object') ? (item.value ?? item.raw ?? item.title) : item
+  return m.get(key) || 0
+}
+
+// Color the count chip with the same semantic color as the row's icon
+// (success/warning/error/info/...) — and dim it when the count is zero.
+const countChipClass = (item, bucket) => {
+  const c = countOf(bucket, item)
+  const obj = item && typeof item === 'object' ? item : null
+  const color = obj?.raw?.color || obj?.color || 'medium-emphasis'
+  return ['count-chip', `text-${color}`, c === 0 ? 'count-chip-zero' : '']
+}
+
+// Map semantic color names to hex. Passing hex to v-icon's `color` prop forces it via
+// inline style on the icon element itself (works around Vuetify's prepend-slot dimming).
+const ICON_COLOR_MAP = {
+  success: '#4caf50',
+  info: '#2196f3',
+  warning: '#fb8c00',
+  error: '#ef5350',
+  amber: '#ffb300',
+  primary: '#1976d2',
+  'medium-emphasis': '#9e9e9e'
+}
+const iconColor = (color) => ICON_COLOR_MAP[color] || color || ''
+
+const statusIconAndColor = (status) => {
   const s = String(status || '').trim()
-  if (s === 'To do') return 'mdi-circle-outline'
-  if (s === 'In progress') return 'mdi-progress-check'
-  if (s === 'Ready for Review') return 'mdi-eye-outline'
-  if (s === 'On Hold/Blocked') return 'mdi-pause-circle-outline'
-  if (s === 'Done') return 'mdi-check-circle-outline'
-  if (s === 'Won\'t do') return 'mdi-cancel'
-  if (s === 'Duplicate') return 'mdi-content-copy'
-  return 'mdi-circle-medium'
+  if (s === 'To do') return { icon: 'mdi-circle-outline', color: 'medium-emphasis' }
+  if (s === 'In progress') return { icon: 'mdi-progress-check', color: 'info' }
+  if (s === 'Ready for Review') return { icon: 'mdi-eye-outline', color: 'warning' }
+  if (s === 'On Hold/Blocked') return { icon: 'mdi-pause-circle-outline', color: 'error' }
+  if (s === 'Done') return { icon: 'mdi-check-circle-outline', color: 'success' }
+  if (s === "Won't do") return { icon: 'mdi-cancel', color: 'error' }
+  if (s === 'Duplicate') return { icon: 'mdi-content-copy', color: 'medium-emphasis' }
+  return { icon: 'mdi-circle-medium', color: '' }
+}
+
+// Visual cue per priority bucket — icon + color so the dropdown reads at a glance.
+const priorityIconAndColor = (value) => {
+  const v = String(value || '').trim().toLowerCase()
+  if (v === '@none') return { icon: 'mdi-circle-outline', color: 'medium-emphasis' }
+  if (v.includes('block')) return { icon: 'mdi-alert-octagram', color: 'error' }
+  if (v.includes('high')) return { icon: 'mdi-arrow-up-bold', color: 'warning' }
+  if (v.includes('medium') || v.includes('med')) return { icon: 'mdi-equal', color: 'amber' }
+  if (v.includes('lowest')) return { icon: 'mdi-chevron-double-down', color: 'medium-emphasis' }
+  if (v.includes('low')) return { icon: 'mdi-arrow-down-bold', color: 'success' }
+  if (v.includes('tbd')) return { icon: 'mdi-help-circle-outline', color: 'medium-emphasis' }
+  return { icon: 'mdi-flag-variant-outline', color: '' }
+}
+
+// Per Type bucket — picks a thematic mdi icon based on the label name.
+const typeIconAndColor = (value) => {
+  const v = String(value || '').trim().toLowerCase()
+  if (v === '@none') return { icon: 'mdi-shape-plus-outline', color: 'medium-emphasis' }
+  if (v === 'bug') return { icon: 'mdi-bug-outline', color: 'error' }
+  if (v === 'feature') return { icon: 'mdi-star-outline', color: 'amber' }
+  if (v === 'story') return { icon: 'mdi-book-open-page-variant-outline', color: 'info' }
+  if (v === 'task') return { icon: 'mdi-checkbox-marked-outline', color: '' }
+  if (v === 'sub-task' || v === 'subtask') return { icon: 'mdi-format-list-bulleted-square', color: 'medium-emphasis' }
+  if (v === 'chore') return { icon: 'mdi-broom', color: 'medium-emphasis' }
+  if (v === 'performance') return { icon: 'mdi-speedometer', color: 'warning' }
+  if (v === 'idea') return { icon: 'mdi-lightbulb-outline', color: 'amber' }
+  if (v === 'feedback') return { icon: 'mdi-comment-quote-outline', color: 'info' }
+  if (v === 'recurring') return { icon: 'mdi-repeat', color: '' }
+  if (v === 'project') return { icon: 'mdi-folder-outline', color: '' }
+  if (v === 'incident') return { icon: 'mdi-alert-circle-outline', color: 'error' }
+  return { icon: 'mdi-shape-outline', color: '' }
+}
+
+// Milestones often look like version numbers ("0.39"); pick a flag style for "open" milestones,
+// flag-outline for the @none sentinel, and a calendar tag for date-stamped or special ones.
+const milestoneIconAndColor = (value) => {
+  const v = String(value || '').trim()
+  if (v === '@none') return { icon: 'mdi-flag-outline', color: 'medium-emphasis' }
+  if (/^\d/.test(v)) return { icon: 'mdi-flag-variant', color: 'info' }
+  if (/tbd|backlog/i.test(v)) return { icon: 'mdi-flag-variant-outline', color: 'medium-emphasis' }
+  return { icon: 'mdi-flag-variant', color: '' }
 }
 
 const statusItems = computed(() => {
   const list = Array.isArray(props.allStatuses) ? props.allStatuses : []
-  return list.filter(Boolean).map(s => ({
-    title: s,
-    value: s,
-    icon: statusIcon(s)
-  }))
+  return list.filter(Boolean).map(s => {
+    const { icon, color } = statusIconAndColor(s)
+    return { title: s, value: s, icon, color }
+  })
 })
 
 // Prepend an "@none" sentinel so users can filter for tickets without a milestone/priority/type.
+// `icon`/`color` are also embedded so the count-chip can pick up the row's semantic color.
 const milestoneItems = computed(() => [
-  { title: '(No milestone)', value: '@none' },
-  ...(props.allMilestones || []).map(v => ({ title: v, value: v }))
+  { title: '(No milestone)', value: '@none', ...milestoneIconAndColor('@none') },
+  ...(props.allMilestones || []).map(v => ({ title: v, value: v, ...milestoneIconAndColor(v) }))
 ])
 const priorityItems = computed(() => [
-  { title: '(No priority)', value: '@none' },
-  ...(props.allPriorities || []).map(v => ({ title: v, value: v }))
+  { title: '(No priority)', value: '@none', ...priorityIconAndColor('@none') },
+  ...(props.allPriorities || []).map(v => ({ title: v, value: v, ...priorityIconAndColor(v) }))
 ])
 const typeItems = computed(() => [
-  { title: '(No type)', value: '@none' },
-  ...(props.allTypes || []).map(v => ({ title: v, value: v }))
+  { title: '(No type)', value: '@none', ...typeIconAndColor('@none') },
+  ...(props.allTypes || []).map(v => ({ title: v, value: v, ...typeIconAndColor(v) }))
 ])
 const formatUserLabel = (name) => {
   const n = String(name || '').trim()
@@ -773,6 +898,34 @@ const isDateActive = (mode, after, before, days) => {
 }
 .sidebar-display-select:last-child {
   margin-bottom: 0;
+}
+
+.count-chip {
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  margin-left: 8px;
+  min-width: 28px;
+  text-align: right;
+  opacity: 0.7;
+}
+.count-chip-zero {
+  opacity: 0.25;
+}
+
+/* The icon wrapper sets `color`, the inner v-icon glyph inherits via `currentColor`.
+   Force opacity:1 on both to defeat Vuetify's prepend-slot dimming. */
+.list-icon-wrap,
+.list-icon-wrap :deep(.v-icon) {
+  opacity: 1 !important;
+}
+.list-icon-wrap :deep(.v-icon),
+.list-icon-wrap :deep(.v-icon i),
+.list-icon-wrap :deep(.v-icon svg) {
+  color: inherit !important;
+  fill: currentColor !important;
 }
 
 .is-active :deep(.v-field) {
