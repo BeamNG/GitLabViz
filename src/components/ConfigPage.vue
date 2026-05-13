@@ -180,37 +180,34 @@
             </template>
           </v-text-field>
 
-          <v-row density="compact" class="mb-4">
-            <v-col cols="12">
-              <v-text-field
-                v-model="settings.config.token"
-                label="Personal Access Token"
-                type="password"
-                variant="outlined"
-                :disabled="!settings.config.enableGitLab"
-                hint="Read-only: read_api + read_user. Write (close/reopen, assign): api."
-                persistent-hint
-                bg-color="surface"
-              >
-                <template #prepend-inner>
-                  <v-icon icon="mdi-key" size="small" class="text-medium-emphasis" />
-                </template>
-                <template #append-inner>
-                  <v-btn
-                    v-if="gitlabTokenUrl('read_api,read_user')"
-                    size="small"
-                    variant="tonal"
-                    :href="gitlabTokenUrl('read_api,read_user')"
-                    target="_blank"
-                    rel="noreferrer"
-                    prepend-icon="mdi-open-in-new"
-                    class="text-none"
-                    title="Open prefilled GitLab token form (read-only). Use 'api' scope instead for write access."
-                  >Create token</v-btn>
-                </template>
-              </v-text-field>
-            </v-col>
-          </v-row>
+          <div class="d-flex ga-2 align-start mb-4">
+            <v-text-field
+              v-model="settings.config.token"
+              label="Personal Access Token"
+              type="password"
+              variant="outlined"
+              :disabled="!settings.config.enableGitLab"
+              hint="Read-only: read_api + read_user. Write (close/reopen, assign): api."
+              persistent-hint
+              bg-color="surface"
+              class="flex-grow-1"
+            >
+              <template #prepend-inner>
+                <v-icon icon="mdi-key" size="small" class="text-medium-emphasis" />
+              </template>
+            </v-text-field>
+            <v-btn
+              v-if="gitlabTokenUrl('read_api,read_user')"
+              variant="tonal"
+              :href="gitlabTokenUrl('read_api,read_user')"
+              target="_blank"
+              rel="noreferrer"
+              prepend-icon="mdi-open-in-new"
+              class="text-none"
+              style="height: 56px;"
+              title="Open prefilled GitLab token form (read-only). Use 'api' scope instead for write access."
+            >Create token</v-btn>
+          </div>
 
           <v-select
             v-model="settings.config.gitlabClosedDays"
