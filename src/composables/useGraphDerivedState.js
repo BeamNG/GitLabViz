@@ -251,16 +251,22 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
       // Logic: AND between different filters
       if (!labelMatch || !authorMatch || !assigneeMatch) return false
 
-      // 3. Milestone Filter
+      // 3. Milestone Filter ('@none' matches tickets without a milestone)
       let milestoneMatch = true
       if ((settings.uiState.filters.selectedMilestones?.length || 0) > 0) {
-        milestoneMatch = milestoneTitle && settings.uiState.filters.selectedMilestones.includes(milestoneTitle)
+        const want = settings.uiState.filters.selectedMilestones
+        const wantsNone = want.includes('@none')
+        const wantNames = want.filter(v => v !== '@none')
+        milestoneMatch = (!!milestoneTitle && wantNames.includes(milestoneTitle)) || (wantsNone && !milestoneTitle)
       }
 
-      // 4. Priority Filter
+      // 4. Priority Filter ('@none' matches tickets without a priority)
       let priorityMatch = true
       if ((settings.uiState.filters.selectedPriorities?.length || 0) > 0) {
-        priorityMatch = priority && settings.uiState.filters.selectedPriorities.includes(priority)
+        const want = settings.uiState.filters.selectedPriorities
+        const wantsNone = want.includes('@none')
+        const wantNames = want.filter(v => v !== '@none')
+        priorityMatch = (!!priority && wantNames.includes(priority)) || (wantsNone && !priority)
       }
 
       // 5. Type Filter

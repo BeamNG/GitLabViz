@@ -142,7 +142,9 @@
       <!-- Attributes -->
       <v-autocomplete
         v-model="state.filters.selectedMilestones"
-        :items="allMilestones"
+        :items="milestoneItems"
+        item-title="title"
+        item-value="value"
         label="Milestone"
         multiple
         chips
@@ -156,9 +158,9 @@
         prepend-inner-icon="mdi-flag"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item">
+          <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon icon="mdi-flag-variant" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="item.value === '@none' ? 'mdi-flag-outline' : 'mdi-flag-variant'" size="small" class="mr-2"></v-icon>
             </template>
           </v-list-item>
         </template>
@@ -166,7 +168,9 @@
 
       <v-autocomplete
         v-model="state.filters.selectedPriorities"
-        :items="allPriorities"
+        :items="priorityItems"
+        item-title="title"
+        item-value="value"
         label="Priority"
         multiple
         chips
@@ -180,9 +184,9 @@
         prepend-inner-icon="mdi-alert-circle"
       >
         <template v-slot:item="{ props, item }">
-          <v-list-item v-bind="props" :title="item">
+          <v-list-item v-bind="props" :title="item.title">
             <template v-slot:prepend>
-              <v-icon icon="mdi-alert-box" size="small" class="mr-2"></v-icon>
+              <v-icon :icon="item.value === '@none' ? 'mdi-alert-circle-outline' : 'mdi-alert-box'" size="small" class="mr-2"></v-icon>
             </template>
           </v-list-item>
         </template>
@@ -683,6 +687,16 @@ const statusItems = computed(() => {
     icon: statusIcon(s)
   }))
 })
+
+// Prepend an "@none" sentinel so users can filter for tickets without a milestone/priority.
+const milestoneItems = computed(() => [
+  { title: '(No milestone)', value: '@none' },
+  ...(props.allMilestones || []).map(v => ({ title: v, value: v }))
+])
+const priorityItems = computed(() => [
+  { title: '(No priority)', value: '@none' },
+  ...(props.allPriorities || []).map(v => ({ title: v, value: v }))
+])
 const formatUserLabel = (name) => {
   const n = String(name || '').trim()
   if (!n) return ''

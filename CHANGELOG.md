@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.3.27] - 2026-05-13
+- Fix #16648 (no way to filter tickets with no priority/milestone): Milestone and Priority filters now have a "(No milestone)" / "(No priority)" entry (`@none` sentinel, same pattern as Unassigned) so tickets without one can be found.
+
 ## [0.3.26] - 2026-05-13
 - Fix #16647 (filter by assignee on multi-assignee tickets): Assignee dropdown and filter were only looking at `_raw.assignee` (the first/legacy assignee). The filter now uses the full `_raw.assignees` array and matches if ANY assignee on the ticket matches the selected filter. The Assignee dropdown also lists every co-assignee.
 
