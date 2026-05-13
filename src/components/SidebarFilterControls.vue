@@ -36,7 +36,7 @@
       <!-- Labels -->
       <v-autocomplete
         v-model="state.filters.selectedLabels"
-        :items="allLabels"
+        :items="sortByCount(allLabels, 'labels')"
         label="Labels (Include)"
         multiple
         chips
@@ -61,7 +61,7 @@
 
       <v-autocomplete
         v-model="state.filters.excludedLabels"
-        :items="allLabels"
+        :items="sortByCount(allLabels, 'excludedLabels')"
         label="Labels (Exclude)"
         multiple
         chips
@@ -87,7 +87,7 @@
       <!-- People -->
       <v-autocomplete
         v-model="state.filters.selectedAuthors"
-        :items="makeUserItems(allAuthors)"
+        :items="sortByCount(makeUserItems(allAuthors), 'authors')"
         item-title="title"
         item-value="value"
         label="Author"
@@ -116,7 +116,7 @@
 
       <v-autocomplete
         v-model="state.filters.selectedAssignees"
-        :items="makeUserItems(allAssignees, { includeUnassigned: true })"
+        :items="sortByCount(makeUserItems(allAssignees, { includeUnassigned: true }), 'assignees')"
         item-title="title"
         item-value="value"
         label="Assignee"
@@ -146,7 +146,7 @@
       <!-- Attributes -->
       <v-autocomplete
         v-model="state.filters.selectedMilestones"
-        :items="milestoneItems"
+        :items="sortByCount(milestoneItems, 'milestones')"
         item-title="title"
         item-value="value"
         label="Milestone"
@@ -173,7 +173,7 @@
 
       <v-autocomplete
         v-model="state.filters.selectedPriorities"
-        :items="priorityItems"
+        :items="sortByCount(priorityItems, 'priorities')"
         item-title="title"
         item-value="value"
         label="Priority"
@@ -200,7 +200,7 @@
 
       <v-autocomplete
         v-model="state.filters.selectedTypes"
-        :items="typeItems"
+        :items="sortByCount(typeItems, 'types')"
         item-title="title"
         item-value="value"
         label="Type"
@@ -228,7 +228,7 @@
       <!-- Status & Subscription -->
       <v-autocomplete
         v-model="state.filters.selectedStatuses"
-        :items="statusItems"
+        :items="sortByCount(statusItems, 'status')"
         label="Status"
         multiple
         chips
@@ -297,7 +297,7 @@
 
       <v-autocomplete
         v-model="state.filters.selectedParticipants"
-        :items="makeUserItems(allParticipants)"
+        :items="sortByCount(makeUserItems(allParticipants), 'participants')"
         item-title="title"
         item-value="value"
         label="Participants"
@@ -740,6 +740,31 @@ const countOf = (bucket, item) => {
   return m.get(key) || 0
 }
 
+// Sort items by ticket count (descending) so frequently-used values surface first.
+// Sentinels (@me / @none / @unassigned / @deactivated, subheaders, disabled rows) stay
+// at the top in their original relative order.
+const SENTINELS = new Set(['@me', '@none', '@unassigned', '@deactivated'])
+const isSentinelItem = (it) => {
+  if (!it) return false
+  if (typeof it === 'object') {
+    if (it.type === 'subheader' || it.disabled) return true
+    return SENTINELS.has(it.value)
+  }
+  return SENTINELS.has(it)
+}
+const sortByCount = (items, bucket) => {
+  const m = props.filterCounts && props.filterCounts[bucket]
+  if (!Array.isArray(items) || !m || typeof m.get !== 'function') return items || []
+  const decorated = items.map((it, i) => ({ it, i, sent: isSentinelItem(it), count: countOf(bucket, it) }))
+  decorated.sort((a, b) => {
+    if (a.sent !== b.sent) return a.sent ? -1 : 1
+    if (a.sent && b.sent) return a.i - b.i
+    if (b.count !== a.count) return b.count - a.count
+    return a.i - b.i
+  })
+  return decorated.map(d => d.it)
+}
+
 // Color the count chip with the same semantic color as the row's icon
 // (success/warning/error/info/...) — and dim it when the count is zero.
 const countChipClass = (item, bucket) => {
@@ -818,8 +843,15 @@ const milestoneIconAndColor = (value) => {
 
 const statusItems = computed(() => {
   const list = Array.isArray(props.allStatuses) ? props.allStatuses : []
+  const counts = (props.filterCounts && props.filterCounts.status) || null
+  const get = counts && typeof counts.get === 'function' ? (k) => counts.get(k) || 0 : () => 0
   return list.filter(Boolean).map(s => {
-    const { icon, color } = statusIconAndColor(s)
+    // Drop the dedicated icon for unused entries — the standard icon list otherwise implies
+    // the option is canonical when in fact this project may use a different status name.
+    const present = get(s) > 0
+    const { icon, color } = present
+      ? statusIconAndColor(s)
+      : { icon: 'mdi-circle-medium', color: 'medium-emphasis' }
     return { title: s, value: s, icon, color }
   })
 })

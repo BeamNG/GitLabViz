@@ -2,14 +2,14 @@ import { computed, watch } from 'vue'
 import { getScopedLabelValue, getScopedLabelValues, isScopedLabel } from '../utils/scopedLabels'
 import { getAssigneeNames, resolveAssigneeFilter, filterAssigneeKeys } from '../utils/issueFields'
 
-// Single source of truth for an issue's effective status — used by both the dropdown
-// derivation and the filter so they never disagree (closed issues fall back to "Done",
-// opened to "To do" when no explicit work-item status / Status:: label is set).
+// Single source of truth for an issue's effective status — used by the dropdown
+// derivation, the filter, and the graph so they never disagree. Returns the raw value
+// only (status_display → work_item_status → Status:: scoped label); empty string when
+// none is set, so we never pretend a ticket has a status it doesn't.
 export const currentStatusOfRaw = (raw) => {
   let s = (typeof raw?.status_display === 'string' && raw.status_display.trim()) ? raw.status_display.trim() : ''
   if (!s && raw?.work_item_status) s = String(raw.work_item_status).trim()
   if (!s) s = getScopedLabelValue(raw?.labels, 'Status') || ''
-  if (!s) s = String(raw?.state || '').toLowerCase() === 'closed' ? 'Done' : 'To do'
   return s
 }
 
@@ -31,7 +31,10 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
 
   const allStatuses = computed(() => {
     const statuses = new Set(STANDARD_STATUSES)
-    Object.values(nodes).forEach(node => statuses.add(currentStatusOfRaw(node?._raw)))
+    Object.values(nodes).forEach(node => {
+      const s = currentStatusOfRaw(node?._raw)
+      if (s) statuses.add(s)
+    })
 
     const list = Array.from(statuses)
     list.sort((a, b) => {

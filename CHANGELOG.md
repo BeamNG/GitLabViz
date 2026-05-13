@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.35] - 2026-05-13
+- Filter dropdowns now sort options by ticket count (descending), so frequently-used values
+  surface first and unused / deprecated ones sink to the bottom. Applied to Status, Labels
+  (Include/Exclude), Author, Assignee, Participants, Milestone, Priority, Type. Sentinels
+  (`@me`, `@none`, `@unassigned`, `@deactivated`, subheaders) stay pinned at the top.
+  Categorical dropdowns with semantic order (Subscribed, MR, Due, Spent, Budget, Estimate,
+  Tasks) keep their existing order.
+- Status dropdown: dedicated icons (e.g. `mdi-eye-outline` for "Ready for Review") are only
+  shown when the status is actually used in the current data. Unused standard statuses get
+  a generic muted dot, so canonical-but-unused names don't outshine project-specific ones.
+  Avoids the GitLab-quirk where "Ready for Review" (standard, often empty) and "For Review"
+  (custom, actually used) competed visually for the same slot.
+- `currentStatusOfRaw()` returns ONLY the raw value present on the ticket (`status_display`
+  / `work_item_status` / `Status::` scoped label) — no closed→Done / opened→To do fallback.
+  Tickets without an explicit status simply don't appear under any status (in the dropdown,
+  the filter, the legend, or the "Group by Status" graph).
+
 ## [0.3.34] - 2026-05-13
 - Fix #16649 (Status filter showed nothing for "In progress" / "On Hold/Blocked" / etc.):
   the REST `/projects/:id/issues` endpoint never returns work-item status, and the GraphQL
@@ -11,9 +28,10 @@
   `project.issues(iids:)` which is universally supported. Restricted-introspection setups
   also work now (probe-based capability detection always runs, not just when introspection
   fails).
-- Status filter & dropdown now share a single `currentStatusOfRaw()` helper so closed issues
-  without an explicit status fall back to "Done" in BOTH places (previously the dropdown
-  showed "Done" but selecting it returned 0 results).
+- Status filter, dropdown, graph color and group-by-Status now share a single
+  `currentStatusOfRaw()` helper that returns ONLY the raw value present on the ticket
+  (`status_display` / `work_item_status` / `Status::` scoped label). No state-based
+  fallbacks — a ticket with no explicit status simply doesn't appear under any status.
 - Filter dropdowns gained per-row ticket counts. Counts are **contextual** (GitLab-style):
   each dropdown's numbers reflect all OTHER active filters, so picking Author=X immediately
   narrows Status / Priority / Milestone / etc. counts to that author's tickets — but the

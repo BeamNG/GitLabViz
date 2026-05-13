@@ -122,13 +122,15 @@ const runFixtureSuite = (fname, fixture) => {
       }
     })
 
-    it('filtering by "Done" matches closed issues without an explicit status (closed→Done fallback)', () => {
-      // Only meaningful if the fixture has closed issues without an explicit work-item status.
-      const closedNoStatus = allNodes.filter(n => n._raw?.state === 'closed' && currentStatusOf(n._raw) === 'Done')
-      if (!closedNoStatus.length) return
+    it('Status filter only matches tickets with the explicit status set in raw data', () => {
+      // currentStatusOfRaw returns '' for tickets without status_display / work_item_status /
+      // Status:: label. Selecting any status must NOT pull in those untagged tickets, even
+      // if they happen to be closed (i.e. no implicit closed→Done).
+      const untagged = allNodes.filter(n => !currentStatusOf(n._raw))
+      if (!untagged.length) return
       const d = buildState({ selectedStatuses: ['Done'] })
-      closedNoStatus.forEach(n => {
-        expect(d.filteredNodes.value[String(n.id)]).toBeTruthy()
+      untagged.forEach(n => {
+        expect(d.filteredNodes.value[String(n.id)]).toBeFalsy()
       })
     })
 
@@ -150,15 +152,12 @@ const runFixtureSuite = (fname, fixture) => {
       for (const [label, total] of Object.entries(labelTotals)) {
         expect(fc.labels.get(label)).toBe(total)
       }
-      // sanity: status count of most-frequent matches predicate count
+      // Status counts: only tickets with an explicit raw status are bucketed (no
+      // closed→Done / opened→To do fallback).
       const statusCounts = {}
       allNodes.forEach(n => {
-        const r = n._raw || {}
-        let s = (typeof r.status_display === 'string' && r.status_display.trim()) || ''
-        if (!s && r.work_item_status) s = String(r.work_item_status).trim()
-        if (!s) s = (r.labels || []).find(l => typeof l === 'string' && l.startsWith('Status::'))?.split('::').slice(1).join('::') || ''
-        if (!s) s = String(r.state || '').toLowerCase() === 'closed' ? 'Done' : 'To do'
-        statusCounts[s] = (statusCounts[s] || 0) + 1
+        const s = currentStatusOf(n._raw)
+        if (s) statusCounts[s] = (statusCounts[s] || 0) + 1
       })
       for (const [status, total] of Object.entries(statusCounts)) {
         expect(fc.status.get(status)).toBe(total)
@@ -184,7 +183,7 @@ const runFixtureSuite = (fname, fixture) => {
 
     it('selectedStatuses with multiple values uses OR semantics', () => {
       const counts = {}
-      allNodes.forEach(n => { const s = currentStatusOf(n._raw); counts[s] = (counts[s] || 0) + 1 })
+      allNodes.forEach(n => { const s = currentStatusOf(n._raw); if (s) counts[s] = (counts[s] || 0) + 1 })
       const top = Object.keys(counts).sort((a, b) => counts[b] - counts[a]).slice(0, 2)
       if (top.length < 2) return
       const d = buildState({ selectedStatuses: top })
