@@ -307,7 +307,7 @@ import { ref, computed, onMounted, onUnmounted, watch, toRaw, nextTick } from 'v
 import * as d3 from 'd3'
 import { useSettingsStore } from '../composables/useSettingsStore'
 import { getScopedLabelValue, getScopedLabelValues } from '../utils/scopedLabels'
-import { getAssigneeNames } from '../utils/issueFields'
+import { getAssigneeNames, filterAssigneeKeys } from '../utils/issueFields'
 
 const emit = defineEmits(['issue-state-change', 'issue-assignee-change'])
 
@@ -326,7 +326,11 @@ const props = defineProps({
   linkDistance: { type: Number, default: 250 },
   centerGravity: { type: Number, default: 0.01 },
   gridStrength: { type: Number, default: 0.08 },
-  gridSpacing: { type: Number, default: 1.5 }
+  gridSpacing: { type: Number, default: 1.5 },
+  cloneMultiAssignee: { type: Boolean, default: true },
+  // { names: Set<string>, wantsUnassigned: boolean } | null — when grouping by assignee,
+  // multi-assignee clones are restricted to assignees that match this filter.
+  assigneeFilter: { type: Object, default: null }
 })
 
 // Defensive: Vuetify can sometimes push item objects into v-model; normalize to a string.
@@ -1104,7 +1108,7 @@ onUnmounted(() => {
   if (saveTimeout) { clearTimeout(saveTimeout); saveTimeout = null }
 })
 
-watch(() => [props.nodes, props.edges, props.colorMode, props.groupBy, props.linkMode, props.hideUnlinked, props.repulsion, props.friction, props.groupGravity, props.linkStrength, props.linkDistance, props.centerGravity, props.gridStrength, props.gridSpacing], () => {
+watch(() => [props.nodes, props.edges, props.colorMode, props.groupBy, props.linkMode, props.hideUnlinked, props.repulsion, props.friction, props.groupGravity, props.linkStrength, props.linkDistance, props.centerGravity, props.gridStrength, props.gridSpacing, props.cloneMultiAssignee, props.assigneeFilter], () => {
   updateGraph()
 }, { deep: true })
 
@@ -1599,8 +1603,8 @@ function updateGraph() {
       groupKeys = keys.length ? keys : ['No Type']
     } else if (groupBy === 'assignee') {
       const names = getAssigneeNames(raw)
-      const all = names.length ? names : ['Unassigned']
-      groupKeys = settings.uiState.view.cloneMultiAssignee ? all : [all[0]]
+      const allowed = filterAssigneeKeys(names.length ? names : ['Unassigned'], props.assigneeFilter)
+      groupKeys = props.cloneMultiAssignee ? allowed : [allowed[0]]
     } else if (groupBy && groupBy.startsWith('scoped:')) {
       const prefix = groupBy.substring('scoped:'.length)
       const keys = getScopedLabelValues(labels, prefix)

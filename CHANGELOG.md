@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.32] - 2026-05-13
+- Fix: when grouping by assignee + filtering by specific assignees, multi-assignee tickets were spawning clones in EVERY co-assignee's group (incl. people not in the filter). Clones are now intersected with the active assignee filter (handles `@me`, `@unassigned`, `@deactivated` correctly).
+- URL share parser: drops legacy `?` / `&` syntax (no backward compatibility) — clearly errors out if such a URL is opened.
+
+## [0.3.31] - 2026-05-13
+- URL share format: switched from query-string (`?key=val&key=val`) to path-style segments (`#/key=val/key=val`) so the URL reads cleanly without `?` or `&` and matches the existing `#/config/...` route style.
+
+## [0.3.30] - 2026-05-13
+- Shareable views via URL: the address bar now always reflects the current filters + view (color mode, grouping, link mode, etc.). Copy the URL to share your exact view.
+- Human-readable params (e.g. `#/group=assignee/color=priority/label=Bug,Critical/due=overdue`). Defaults are omitted to keep URLs short.
+- Opening a shared URL applies the encoded view on top of local settings — back/forward navigation also restores prior views.
+
 ## [0.3.29] - 2026-05-13
 - Type filter now has a "(No type)" entry — same fix as priority/milestone in 0.3.27 (tickets without a Type scoped label were unfindable).
 - Audited the rest of the filters: Status defaults to "To do" when missing so every ticket has a value; Author/Participants are always present; Subscription / MR / Due / Spent / Budget / Estimate / Task already expose explicit "none" options. Labels (Include) intentionally left as-is (different multi-value semantics).

@@ -154,6 +154,8 @@
           :center-gravity="settings.uiState.simulation.centerGravity"
           :grid-strength="settings.uiState.simulation.gridStrength"
           :grid-spacing="settings.uiState.simulation.gridSpacing"
+          :clone-multi-assignee="settings.uiState.view.cloneMultiAssignee"
+          :assignee-filter="assigneeFilter"
           @issue-state-change="onIssueStateChange"
           @issue-assignee-change="onIssueAssigneeChange"
         />
@@ -215,6 +217,8 @@ import { useSettingsStore } from './composables/useSettingsStore'
 import { GLOBAL_PRESETS } from './presets'
 import { getScopedLabelValue, getScopedLabelValues } from './utils/scopedLabels'
 import { getTokenExpiry } from './utils/tokenExpiry'
+import { encodeView, decodeView } from './utils/viewShareCodec'
+import { resolveAssigneeFilter } from './utils/issueFields'
 
 const { settings, init: initSettings } = useSettingsStore()
 
@@ -238,7 +242,7 @@ const svnUrl = computed({
 
 const activePage = ref('main') // 'main' | 'config' | 'chattools'
 const configInitialTab = ref('gitlab')
-useHashRouting({ activePage, configInitialTab })
+const { viewParam, setView } = useHashRouting({ activePage, configInitialTab })
 const loading = ref(false)
 const loadingMessage = ref('')
 const error = ref('')
@@ -585,6 +589,14 @@ const {
   groupStatsText
 } = useGraphDerivedState({ settings, nodes, edges })
 
+// Active assignee filter resolved into a concrete name set + flags. Drives multi-assignee
+// clone restriction in IssueGraph so co-assignees not in the filter don't get spawned groups.
+const assigneeFilter = computed(() => resolveAssigneeFilter(
+  settings.uiState.filters.selectedAssignees,
+  settings.meta.gitlabMeName || '',
+  userStateByName.value
+))
+
 // Token expiry — banner appears for <=7 days or expired; expired also blocks demo data.
 const tokenExpiry = computed(() => getTokenExpiry(settings.meta, 7))
 const tokenExpired = computed(() => tokenExpiry.value.status === 'expired')
@@ -668,6 +680,9 @@ onMounted(async () => {
 
   // Ensure settings are loaded (disk-backed)
   await initSettings()
+
+  // If a shared view is present in the URL, apply it AFTER local settings so the link wins.
+  if (viewParam.value) applyViewFromParam(viewParam.value)
 
   // Keep sidebar "data age" fresh.
   nowTick.value = Date.now()
@@ -880,6 +895,50 @@ const applyPreset = (preset) => {
         snackbar.value = true
     }
 }
+
+// --- URL view sharing -------------------------------------------------------
+// Suppress the encode-from-state watcher while we are applying a decoded view
+// from the URL (otherwise we'd ping-pong: hash → state → hash).
+let isApplyingViewFromUrl = false
+let viewWriteTimer = null
+
+const applyViewFromParam = (param) => {
+  const { snapshot, warnings } = decodeView(param)
+  if (warnings && warnings.length) {
+    console.warn('[ShareURL] ' + warnings.join(' '))
+    // Surface the first warning prominently; rest are in the console.
+    snackbarText.value = `Share URL: ${warnings[0]}${warnings.length > 1 ? ` (+${warnings.length - 1} more)` : ''}`
+    snackbar.value = true
+  }
+  if (!snapshot) return false
+  isApplyingViewFromUrl = true
+  try { applyConfiguration(snapshot) } finally {
+    setTimeout(() => { isApplyingViewFromUrl = false }, 0)
+  }
+  return true
+}
+
+// Hashchange (back/forward, paste-in): keep state in sync with URL.
+watch(viewParam, (v) => {
+  if (isApplyingViewFromUrl) return
+  const cur = encodeView(getCurrentConfigSnapshot())
+  if (v === cur) return // already in sync
+  if (v) applyViewFromParam(v)
+})
+
+// State changes: encode + push to URL (debounced, replaceState only).
+watch(
+  () => [settings.uiState.filters, settings.uiState.view],
+  () => {
+    if (isApplyingViewFromUrl) return
+    if (viewWriteTimer) clearTimeout(viewWriteTimer)
+    viewWriteTimer = setTimeout(() => {
+      setView(encodeView(getCurrentConfigSnapshot()))
+    }, 250)
+  },
+  { deep: true }
+)
+
 </script>
 
 <style>

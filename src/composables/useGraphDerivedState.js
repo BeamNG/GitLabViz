@@ -1,6 +1,6 @@
 import { computed, watch } from 'vue'
 import { getScopedLabelValue, getScopedLabelValues } from '../utils/scopedLabels'
-import { getAssigneeNames } from '../utils/issueFields'
+import { getAssigneeNames, resolveAssigneeFilter, filterAssigneeKeys } from '../utils/issueFields'
 
 export function useGraphDerivedState ({ settings, nodes, edges }) {
   const allLabels = computed(() => {
@@ -496,6 +496,11 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
 
       // 1. Group nodes
       const cloneMultiAssignee = !!settings.uiState.view.cloneMultiAssignee
+      const assigneeFilter = resolveAssigneeFilter(
+        settings.uiState.filters.selectedAssignees,
+        settings.meta.gitlabMeName || '',
+        userStateByName.value
+      )
       const groups = {}
       Object.values(filteredNodes.value).forEach(node => {
         let keys = ['default']
@@ -509,8 +514,8 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
           else if (groupingMode === 'state') keys = [n.state]
           else if (groupingMode === 'assignee') {
             const names = getAssigneeNames(n)
-            if (!names.length) keys = ['Unassigned']
-            else keys = cloneMultiAssignee ? names : [names[0]]
+            const allowed = filterAssigneeKeys(names.length ? names : ['Unassigned'], assigneeFilter)
+            keys = cloneMultiAssignee ? allowed : [allowed[0]]
           }
           else if (groupingMode === 'milestone') keys = [n.milestone ? n.milestone.title : 'No Milestone']
           else if (groupingMode === 'priority') keys = [getScopedLabelValue(n.labels, 'Priority') || 'No Priority']
@@ -640,8 +645,13 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
         keys = [raw.author ? raw.author.name : 'Unknown']
       } else if (mode === 'assignee') {
         const names = getAssigneeNames(raw)
-        if (!names.length) keys = ['Unassigned']
-        else keys = settings.uiState.view.cloneMultiAssignee ? names : [names[0]]
+        const filter = resolveAssigneeFilter(
+          settings.uiState.filters.selectedAssignees,
+          settings.meta.gitlabMeName || '',
+          userStateByName.value
+        )
+        const allowed = filterAssigneeKeys(names.length ? names : ['Unassigned'], filter)
+        keys = settings.uiState.view.cloneMultiAssignee ? allowed : [allowed[0]]
       } else if (mode === 'milestone') {
         keys = [raw.milestone ? raw.milestone.title : 'No Milestone']
       } else if (mode === 'weight') {
