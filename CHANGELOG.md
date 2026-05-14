@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.10.12] - 2026-05-14
+- Changing "Include closed issues" now auto-triggers a full re-sync on the next normal refresh — no more needing Ctrl+Refresh to actually fetch the newly-included history.
+- New options in the dropdown: Last 180 days (6 months), Last 365 days (1 year).
+
+## [0.10.11] - 2026-05-14
+- Graph legend widened from 220 → 250px and its title-bar controls (Groups checkbox + Name / # sort buttons) now wrap onto a second row if needed — the rightmost "#" sort button was being clipped at the default width.
+
 ## [0.10.10] - 2026-05-14
 - Burnup chart fonts bumped for wall readability: Y axis 13→18, X axis 13→16, Today/Due pills 12→16, legend 12→15. Lines bumped to 3px / 3.5px and the ideal-burn dash stretched to 8/6 so they read from across the room.
 - Fix: dropped `preserveAspectRatio="none"` on the burnup SVG — combined with the `ResizeObserver` that already pins viewBox to actual pixel size, this means strokes and text are now rendered at native resolution with no axis-asymmetric stretching.

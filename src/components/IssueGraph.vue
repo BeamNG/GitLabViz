@@ -3658,7 +3658,7 @@ html[data-theme="dark"] .issue-context-menu__chip:hover {
   position: absolute;
   top: 12px;
   right: 12px;
-  width: 220px;
+  width: 250px;
   /* Leave room for the bottom-right scale bar overlay (range/distance). */
   max-height: calc(100% - 24px - 70px);
   overflow-x: hidden;
@@ -3707,7 +3707,9 @@ html[data-theme="dark"] .issue-context-menu__chip:hover {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
 
 .legend-toggle {

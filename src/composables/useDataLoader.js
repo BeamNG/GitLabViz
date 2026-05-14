@@ -1,4 +1,4 @@
-import { toRaw } from 'vue'
+import { toRaw, watch } from 'vue'
 import localforage from 'localforage'
 import {
   createGitLabClient,
@@ -38,6 +38,16 @@ export function useDataLoader ({
   resetFilters,
   createMockIssuesGraph
 }) {
+  // Some config changes (notably gitlabClosedDays) widen the fetch window such that the
+  // incremental sync would skip the newly-included history. Watch them and mark the next
+  // load as "force full" so saving the config or hitting Refresh picks up the new range
+  // without the user needing Ctrl+Refresh.
+  let pendingFullSync = false
+  watch(() => settings.config.gitlabClosedDays, (newVal, oldVal) => {
+    if (oldVal === undefined || newVal === oldVal) return
+    pendingFullSync = true
+  })
+
   const resolveGitLabApiBaseUrl = () => {
     const direct = normalizeGitLabApiBaseUrl(settings.config.gitlabApiBaseUrl)
     if (!direct) return ''
@@ -181,7 +191,8 @@ export function useDataLoader ({
     } catch {}
 
     const only = opts.only || 'both' // 'gitlab' | 'svn' | 'mattermost' | 'both'
-    const forceFull = !!opts.forceFull
+    let forceFull = !!opts.forceFull
+    if (pendingFullSync) { forceFull = true; pendingFullSync = false }
     const doGitLab = (only === 'both' || only === 'gitlab') && settings.config.enableGitLab
     const doSvn = canUseSvn.value && (only === 'both' || only === 'svn') && settings.config.enableSvn
     const doMattermost = isElectron.value && (only === 'both' || only === 'mattermost') && !!settings.config.mattermostUrl && !!settings.config.mattermostToken

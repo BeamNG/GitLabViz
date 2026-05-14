@@ -227,9 +227,11 @@
               { title: 'None (Opened only)', value: 0 },
               { title: 'Last 7 days', value: 7 },
               { title: 'Last 14 days', value: 14 },
-              { title: 'Last 30 days', value: 30 },
+              { title: 'Last 30 days (last month)', value: 30 },
               { title: 'Last 60 days', value: 60 },
-              { title: 'Last 90 days', value: 90 }
+              { title: 'Last 90 days (last quarter)', value: 90 },
+              { title: 'Last 180 days (last 6 months)', value: 180 },
+              { title: 'Last 365 days (last year)', value: 365 }
             ]"
             label="Include closed issues"
             variant="outlined"
@@ -237,7 +239,7 @@
             class="mb-4"
             :disabled="!settings.config.enableGitLab"
             bg-color="surface"
-            hint="Fetch issues closed within the last X days"
+            hint="Fetch issues closed within the last X days. Changing this auto-triggers a full re-sync on the next refresh."
             persistent-hint
           >
             <template #prepend-inner>

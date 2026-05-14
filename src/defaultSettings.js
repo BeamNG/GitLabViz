@@ -96,7 +96,9 @@ export const defaultSettings = () => ({
       targetMilestone: '',
       modes: {
         target: true, burnup: true, blockers: true, wipStale: true,
-        today: true, velocity: true, workload: true, priority: true,
+        today: true, velocity: true,
+        heatmapCreated: true, heatmapClosed: true, heatmapAll: true,
+        workload: true, priority: true,
         status: true, type: true, hotLabels: true,
         milestones: true, aging: true,
         activity: true, closed: true, risks: true
