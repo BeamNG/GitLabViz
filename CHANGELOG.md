@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.38] - 2026-05-14
+- Fix: graph disappeared / flickered while the sidebar was opening or closing. Setting
+  `canvas.width/height` clears the canvas, and the resize was double-deferred through two
+  `requestAnimationFrame` hops, so the canvas stayed blank for ~2 frames every resize tick
+  during Vuetify's drawer transition. The resize now runs synchronously inside the
+  `ResizeObserver` callback (before paint) and redraws immediately, and we skip the work
+  entirely when the size hasn't actually changed.
+
+## [0.3.37] - 2026-05-14
+- Graph legend is now collapsible: click the chevron next to "Legend" to fold it down to
+  just the title row (handy when the swatch list is long and covering nodes). The
+  collapsed/expanded state is persisted in `uiState.view.legendCollapsed` so F5 keeps it.
+
 ## [0.3.36] - 2026-05-13
 - Filter dropdown UX polish: width pinned per-dropdown via JS (no more jitter as long
   labels scroll into view; Vuetify virtualizes the list so CSS-only sizing didn't help),

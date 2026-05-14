@@ -213,10 +213,18 @@
         </div>
       </template>
     </div>
-    <div v-if="(showLegend && (legendItems.length || legendGradient)) || showLinkLegend" ref="legendEl" class="legend">
+    <div v-if="(showLegend && (legendItems.length || legendGradient)) || showLinkLegend" ref="legendEl" class="legend" :class="{ 'is-collapsed': legendCollapsed }">
       <div class="legend-title">
-        <span>Legend</span>
-        <div class="legend-controls">
+        <button
+          type="button"
+          class="legend-collapse-btn"
+          :title="legendCollapsed ? 'Expand legend' : 'Collapse legend'"
+          @click="legendCollapsed = !legendCollapsed"
+        >
+          <v-icon :icon="legendCollapsed ? 'mdi-chevron-down' : 'mdi-chevron-up'" size="small" />
+          <span>Legend</span>
+        </button>
+        <div v-if="!legendCollapsed" class="legend-controls">
           <label v-if="props.groupBy !== 'none' && props.groupBy !== 'svn_revision'" class="legend-toggle" title="Show group labels">
             <input v-model="showGroupLabels" type="checkbox">
             <span>Groups</span>
@@ -227,46 +235,48 @@
           </div>
         </div>
       </div>
-      <div v-if="legendGradient" class="legend-gradient">
-        <div class="legend-gradient-bar" :style="{ background: legendGradient.css }"></div>
-        <div class="legend-gradient-labels">
-          <span class="legend-grad-min">{{ legendGradient.minLabel }}</span>
-          <span class="legend-grad-max">{{ legendGradient.maxLabel }}</span>
-        </div>
-      </div>
-
-      <div v-else-if="showLegend" class="legend-items">
-        <div
-          v-for="it in legendItems"
-          :key="it.label"
-          class="legend-item"
-          @mouseenter="legendHoverKey = it.label"
-          @mouseleave="legendHoverKey = null"
-        >
-          <button
-            type="button"
-            class="legend-swatch-btn"
-            :title="'Set color…'"
-            @click.stop="openLegendColorPopover(it.label, $event)"
-          >
-            <span class="legend-swatch" :style="{ background: it.color }"></span>
-          </button>
-          <span class="legend-label" :title="it.label">{{ it.label }}</span>
-          <span class="legend-count">{{ it.count }}</span>
-        </div>
-      </div>
-
-      <div v-if="showLinkLegend" class="link-legend">
-        <div class="link-legend-title">Links</div>
-        <div class="link-legend-items">
-          <div v-for="(it, idx) in linkLegendItems" :key="idx" class="link-legend-item">
-            <svg class="link-legend-swatch" viewBox="0 0 44 12" aria-hidden="true">
-              <path :d="it.arrow ? 'M2 6 L34 6 M34 6 L29 2 M34 6 L29 10' : 'M2 6 L42 6'" :stroke="it.color" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
-            </svg>
-            <div class="link-legend-label">{{ it.label }}</div>
+      <template v-if="!legendCollapsed">
+        <div v-if="legendGradient" class="legend-gradient">
+          <div class="legend-gradient-bar" :style="{ background: legendGradient.css }"></div>
+          <div class="legend-gradient-labels">
+            <span class="legend-grad-min">{{ legendGradient.minLabel }}</span>
+            <span class="legend-grad-max">{{ legendGradient.maxLabel }}</span>
           </div>
         </div>
-      </div>
+
+        <div v-else-if="showLegend" class="legend-items">
+          <div
+            v-for="it in legendItems"
+            :key="it.label"
+            class="legend-item"
+            @mouseenter="legendHoverKey = it.label"
+            @mouseleave="legendHoverKey = null"
+          >
+            <button
+              type="button"
+              class="legend-swatch-btn"
+              :title="'Set color…'"
+              @click.stop="openLegendColorPopover(it.label, $event)"
+            >
+              <span class="legend-swatch" :style="{ background: it.color }"></span>
+            </button>
+            <span class="legend-label" :title="it.label">{{ it.label }}</span>
+            <span class="legend-count">{{ it.count }}</span>
+          </div>
+        </div>
+
+        <div v-if="showLinkLegend" class="link-legend">
+          <div class="link-legend-title">Links</div>
+          <div class="link-legend-items">
+            <div v-for="(it, idx) in linkLegendItems" :key="idx" class="link-legend-item">
+              <svg class="link-legend-swatch" viewBox="0 0 44 12" aria-hidden="true">
+                <path :d="it.arrow ? 'M2 6 L34 6 M34 6 L29 2 M34 6 L29 10' : 'M2 6 L42 6'" :stroke="it.color" stroke-width="2.8" fill="none" stroke-linecap="round" stroke-linejoin="round" />
+              </svg>
+              <div class="link-legend-label">{{ it.label }}</div>
+            </div>
+          </div>
+        </div>
+      </template>
     </div>
     <div
       v-if="legendColorPopover.visible"
@@ -790,6 +800,10 @@ const legendSort = computed({
   get: () => settings?.uiState?.view?.legendSort || 'name',
   set: (v) => { settings.uiState.view.legendSort = v }
 })
+const legendCollapsed = computed({
+  get: () => !!settings?.uiState?.view?.legendCollapsed,
+  set: (v) => { settings.uiState.view.legendCollapsed = !!v }
+})
 const showGroupLabels = computed({
   get: () => settings?.uiState?.view?.showGroupLabels ?? true,
   set: (v) => { settings.uiState.view.showGroupLabels = !!v }
@@ -1086,11 +1100,11 @@ onMounted(() => {
   window.addEventListener('keydown', onWindowKeyDown)
   window.addEventListener('mousedown', onGlobalMouseDown, true)
 
-  // Canvas needs to resize when the sidebar toggles (container size changes without window resize)
+  // Canvas needs to resize when the sidebar toggles (container size changes without window resize).
+  // Run synchronously: ResizeObserver fires after layout / before paint, and resizeCanvas redraws
+  // immediately so the canvas is never shown blank mid-transition.
   if (typeof ResizeObserver !== 'undefined') {
-    containerResizeObserver = new ResizeObserver(() => {
-      requestAnimationFrame(() => resizeCanvas())
-    })
+    containerResizeObserver = new ResizeObserver(() => resizeCanvas())
     if (container.value) containerResizeObserver.observe(container.value)
   }
 })
@@ -1296,27 +1310,22 @@ function resizeCanvas() {
   if (!container.value || !canvas.value) return
   const width = container.value.clientWidth
   const height = container.value.clientHeight
+  if (width <= 0 || height <= 0) return
   const dpr = window.devicePixelRatio || 1
-  
-  // Set actual size in memory (scaled to account for extra pixel density)
-  canvas.value.width = Math.floor(width * dpr)
-  canvas.value.height = Math.floor(height * dpr)
-  
-  // Normalize coordinate system to use css pixels
-  // canvas.value.getContext('2d').scale(dpr, dpr) 
-  // Wait, if we scale here, we need to handle it in render() differently.
-  // The common pattern is:
-  // 1. width = cssWidth * dpr
-  // 2. height = cssHeight * dpr
-  // 3. style.width = cssWidth
-  // 4. style.height = cssHeight
-  // 5. ctx.scale(dpr, dpr)
-  
-  canvas.value.style.width = width + 'px'
-  canvas.value.style.height = height + 'px'
-  
-  // Trigger re-render to apply scale
-  if (simulation) scheduleRender()
+  const newW = Math.floor(width * dpr)
+  const newH = Math.floor(height * dpr)
+  const sizeChanged = canvas.value.width !== newW || canvas.value.height !== newH
+  if (sizeChanged) {
+    // Setting width/height clears the canvas, so we must redraw before paint.
+    canvas.value.width = newW
+    canvas.value.height = newH
+    canvas.value.style.width = width + 'px'
+    canvas.value.style.height = height + 'px'
+  }
+  if (sizeChanged && simulation) {
+    if (renderRaf) { cancelAnimationFrame(renderRaf); renderRaf = 0 }
+    render()
+  }
 }
 
 // Data refs needed for rendering loop
@@ -3667,6 +3676,26 @@ html[data-theme="dark"] .issue-context-menu__chip:hover {
   font-weight: 700;
   margin-bottom: 8px;
   opacity: 0.9;
+}
+
+.legend.is-collapsed {
+  width: auto;
+}
+.legend.is-collapsed .legend-title {
+  margin-bottom: 0;
+}
+
+.legend-collapse-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  padding: 0;
+  cursor: pointer;
 }
 
 .legend-controls {

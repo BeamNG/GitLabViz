@@ -121,6 +121,7 @@ export const defaultSettings = () => ({
       // Off = ticket appears only in the first assignee's group/color (legacy/cheaper).
       cloneMultiAssignee: true,
       legendSort: 'name', // 'name' | 'count'
+      legendCollapsed: false,
       showGroupLabels: true,
       dueSoonDays: 7,
       issueOpenTarget: '_blank', // '_blank' | '_self' | 'GitlabVizIssueTab'
