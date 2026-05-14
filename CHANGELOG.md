@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.10.10] - 2026-05-14
+- Burnup chart fonts bumped for wall readability: Y axis 13→18, X axis 13→16, Today/Due pills 12→16, legend 12→15. Lines bumped to 3px / 3.5px and the ideal-burn dash stretched to 8/6 so they read from across the room.
+- Fix: dropped `preserveAspectRatio="none"` on the burnup SVG — combined with the `ResizeObserver` that already pins viewBox to actual pixel size, this means strokes and text are now rendered at native resolution with no axis-asymmetric stretching.
+
+## [0.10.9] - 2026-05-14
+- Burnup chart: the future zone (everything right of "today") is now dimmed with a translucent black overlay so the eye stays on the past where the actual data lives. The Today and Due markers are now solid pills (white for Today, red for Due) instead of thin dashed lines + tiny text, so they pop from across the room.
+
+## [0.10.8] - 2026-05-14
+- Burnup chart: SVG viewBox is now matched to the container's actual pixel size via a `ResizeObserver`, so text and stroke widths render uniformly (no horizontal squish / vertical stretch on wide kiosk screens). Axis label font bumped from 10 → 13 to match the new 1:1 scaling, with a wee bit more padding so labels don't crowd the chart edge.
+
 ## [0.10.7] - 2026-05-14
 - Fix: kiosk now operates on the full ticket set instead of inheriting the main sidebar's filters. Click-throughs in earlier sessions left `includeClosed: false` (or other) on the sidebar; closed tickets were never reaching the kiosk dashboard. Kiosk owns its own filters (target milestone / priority / stale / backlog) so the sidebar doesn't need to scope it any more.
 

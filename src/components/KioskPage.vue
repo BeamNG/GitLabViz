@@ -205,7 +205,11 @@
               </span>
             </span>
           </div>
-          <svg class="k-burnup-svg" :viewBox="`0 0 ${targetBurnup.vbWidth} ${targetBurnup.vbHeight}`" preserveAspectRatio="none">
+          <svg
+            ref="burnupSvgRef"
+            class="k-burnup-svg"
+            :viewBox="`0 0 ${targetBurnup.vbWidth} ${targetBurnup.vbHeight}`"
+          >
             <!-- horizontal grid -->
             <line
               v-for="(t, i) in targetBurnup.yTicks" :key="'yg' + i"
@@ -215,50 +219,83 @@
             />
             <text
               v-for="(t, i) in targetBurnup.yTicks" :key="'yt' + i"
-              :x="targetBurnup.innerLeft - 6" :y="t.y + 3"
-              text-anchor="end" font-size="10" fill="rgba(180,180,180,0.7)"
+              :x="targetBurnup.innerLeft - 8" :y="t.y + 6"
+              text-anchor="end" font-size="18" fill="rgba(200,200,200,0.85)"
+              font-weight="600"
             >{{ t.v }}</text>
 
             <!-- open band (area between scope and closed) — coloured amber as the
                  "risk zone": as closures catch up, the colored area shrinks visually. -->
             <path :d="targetBurnup.areaPath" :fill="targetBurnup.onTrack ? 'rgba(255, 179, 0, 0.18)' : 'rgba(239, 83, 80, 0.22)'" />
 
+            <!-- future zone — dims everything to the right of "today" so the eye stays
+                 in the past where the actual data lives. -->
+            <rect
+              v-if="targetBurnup.todayX != null && targetBurnup.todayX < targetBurnup.innerRight"
+              :x="targetBurnup.todayX"
+              :y="targetBurnup.innerTop"
+              :width="targetBurnup.innerRight - targetBurnup.todayX"
+              :height="targetBurnup.innerBottom - targetBurnup.innerTop"
+              fill="rgba(0, 0, 0, 0.35)"
+            />
+
             <!-- ideal burn guideline (dotted) — from (start, baseline-closed) to (due, scope) -->
             <path
               v-if="targetBurnup.idealPath"
               :d="targetBurnup.idealPath"
-              stroke="rgba(255, 255, 255, 0.45)" stroke-width="1.5" fill="none"
-              stroke-dasharray="5 5"
+              stroke="rgba(255, 255, 255, 0.5)" stroke-width="2.5" fill="none"
+              stroke-dasharray="8 6"
             />
 
             <!-- scope line -->
-            <path :d="targetBurnup.scopePath" stroke="#5c6bc0" stroke-width="2" fill="none" stroke-linejoin="round" />
+            <path :d="targetBurnup.scopePath" stroke="#5c6bc0" stroke-width="3" fill="none" stroke-linejoin="round" />
             <!-- closed line -->
-            <path :d="targetBurnup.closedPath" stroke="#66bb6a" stroke-width="2.5" fill="none" stroke-linejoin="round" />
+            <path :d="targetBurnup.closedPath" stroke="#66bb6a" stroke-width="3.5" fill="none" stroke-linejoin="round" />
 
             <!-- today / due markers -->
             <g v-if="targetBurnup.todayX != null">
               <line
                 :x1="targetBurnup.todayX" :x2="targetBurnup.todayX"
                 :y1="targetBurnup.innerTop" :y2="targetBurnup.innerBottom"
-                stroke="rgba(255, 255, 255, 0.5)" stroke-dasharray="4 4"
+                stroke="#ffffff" stroke-width="2"
               />
-              <text :x="targetBurnup.todayX + 4" :y="targetBurnup.innerTop + 12" font-size="10" fill="rgba(255,255,255,0.7)">Today</text>
+              <rect
+                :x="targetBurnup.todayX - 42" :y="targetBurnup.innerTop - 4"
+                width="84" height="26" rx="5" ry="5"
+                fill="rgba(255, 255, 255, 0.92)"
+              />
+              <text
+                :x="targetBurnup.todayX" :y="targetBurnup.innerTop + 14"
+                text-anchor="middle" font-size="16" font-weight="800"
+                fill="#212121"
+                letter-spacing="0.5"
+              >TODAY</text>
             </g>
             <g v-if="targetBurnup.dueX != null">
               <line
                 :x1="targetBurnup.dueX" :x2="targetBurnup.dueX"
                 :y1="targetBurnup.innerTop" :y2="targetBurnup.innerBottom"
-                stroke="#ef5350" stroke-dasharray="4 4"
+                stroke="#ef5350" stroke-width="2"
               />
-              <text :x="targetBurnup.dueX + 4" :y="targetBurnup.innerTop + 26" font-size="10" fill="#ef5350">Due</text>
+              <rect
+                :x="targetBurnup.dueX - 32" :y="targetBurnup.innerTop + 28"
+                width="64" height="26" rx="5" ry="5"
+                fill="#ef5350"
+              />
+              <text
+                :x="targetBurnup.dueX" :y="targetBurnup.innerTop + 46"
+                text-anchor="middle" font-size="16" font-weight="800"
+                fill="#ffffff"
+                letter-spacing="0.5"
+              >DUE</text>
             </g>
 
             <!-- x axis ticks -->
             <text
               v-for="(t, i) in targetBurnup.ticks" :key="'xt' + i"
-              :x="t.x" :y="targetBurnup.innerBottom + 16"
-              text-anchor="middle" font-size="10" fill="rgba(180,180,180,0.7)"
+              :x="t.x" :y="targetBurnup.innerBottom + 28"
+              text-anchor="middle" font-size="16" fill="rgba(200,200,200,0.85)"
+              font-weight="600"
             >{{ t.label }}</text>
           </svg>
           <div class="k-burnup-legend">
@@ -673,7 +710,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useSettingsStore } from '../composables/useSettingsStore'
 import { HOTKEY_ACTIONS, getEventCombo } from '../composables/useHotkeys'
 import { getAssigneeNames } from '../utils/issueFields'
@@ -845,18 +882,38 @@ const handleWindowKey = (e) => {
   }
 }
 
+// Track the burnup SVG's actual pixel size — keeps viewBox 1:1 with screen so text
+// and strokes never get squished. Observer is rebuilt when burnup becomes the current
+// mode (the ref doesn't exist on other modes).
+let burnupRO = null
+const watchBurnupSvg = () => {
+  if (burnupRO) { burnupRO.disconnect(); burnupRO = null }
+  const el = burnupSvgRef.value
+  if (!el || typeof ResizeObserver === 'undefined') return
+  const update = () => {
+    const r = el.getBoundingClientRect()
+    if (r.width && r.height) burnupSize.value = { w: Math.round(r.width), h: Math.round(r.height) }
+  }
+  update()
+  burnupRO = new ResizeObserver(update)
+  burnupRO.observe(el)
+}
+watch(() => [currentMode.value, burnupSvgRef.value], () => nextTick(watchBurnupSvg))
+
 onMounted(() => {
   startCycle()
   startRefresh()
   nowTickTimer = setInterval(() => { nowTick.value = Date.now() }, 1000)
   window.addEventListener('keydown', handleWindowKey)
   if (root.value && typeof root.value.focus === 'function') root.value.focus()
+  nextTick(watchBurnupSvg)
 })
 onUnmounted(() => {
   if (cycleTimer) clearInterval(cycleTimer)
   if (refreshTimer) clearInterval(refreshTimer)
   if (nowTickTimer) clearInterval(nowTickTimer)
   window.removeEventListener('keydown', handleWindowKey)
+  if (burnupRO) { burnupRO.disconnect(); burnupRO = null }
 })
 
 // Priority buckets — declared up here because the global `priorityFilter` setting
@@ -1357,9 +1414,12 @@ const targetForecast = computed(() => {
 // We rebuild the lines from `created_at` / `closed_at` events on the currently-loaded
 // ticket data — there are no historical snapshots, so retroactive label changes etc.
 // can't be reconstructed.
-const BURNUP_VB_W = 800
-const BURNUP_VB_H = 280
-const BURNUP_PAD = { top: 16, right: 20, bottom: 32, left: 36 }
+// viewBox dimensions are matched to the container's actual pixel size (via the
+// ResizeObserver below) so `preserveAspectRatio="none"` doesn't squish text or strokes.
+// Padding sized for the larger kiosk font sizes used in the labels below.
+const burnupSize = ref({ w: 800, h: 320 })
+const burnupSvgRef = ref(null)
+const BURNUP_PAD = { top: 28, right: 28, bottom: 48, left: 58 }
 const burnupCfg = computed(() => settings.uiState.kiosk?.modeConfig?.burnup || {})
 const targetBurnup = computed(() => {
   const td = targetData.value
@@ -1410,10 +1470,12 @@ const targetBurnup = computed(() => {
   }
   if (sampleEnd < end) points.push({ ts: end, scope: scopeAcc, closed: closedAcc })
 
-  // Scales
+  // Scales — driven by current container size so 1 user-space unit = 1 screen pixel.
+  const vbW = Math.max(400, burnupSize.value.w)
+  const vbH = Math.max(200, burnupSize.value.h)
   const maxY = Math.max(1, scopeAcc)
-  const innerW = BURNUP_VB_W - BURNUP_PAD.left - BURNUP_PAD.right
-  const innerH = BURNUP_VB_H - BURNUP_PAD.top - BURNUP_PAD.bottom
+  const innerW = vbW - BURNUP_PAD.left - BURNUP_PAD.right
+  const innerH = vbH - BURNUP_PAD.top - BURNUP_PAD.bottom
   const xFor = (ts) => BURNUP_PAD.left + ((ts - start) / (end - start)) * innerW
   const yFor = (n)  => BURNUP_PAD.top + innerH - (n / maxY) * innerH
 
@@ -1489,9 +1551,9 @@ const targetBurnup = computed(() => {
     scopeBaseline, closedBaseline,
     windowDays,
     maxY,
-    vbWidth: BURNUP_VB_W, vbHeight: BURNUP_VB_H,
+    vbWidth: vbW, vbHeight: vbH,
     innerLeft: BURNUP_PAD.left, innerTop: BURNUP_PAD.top,
-    innerRight: BURNUP_VB_W - BURNUP_PAD.right, innerBottom: BURNUP_VB_H - BURNUP_PAD.bottom
+    innerRight: vbW - BURNUP_PAD.right, innerBottom: vbH - BURNUP_PAD.bottom
   }
 })
 
@@ -2296,8 +2358,8 @@ const relTime = (ts) => {
 .k-burnup-section { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
 .k-burnup-title { display: flex; align-items: center; gap: 8px; text-transform: none; font-size: clamp(18px, 1.8vw, 24px); letter-spacing: 0; opacity: 1; }
 .k-burnup-svg { flex: 1; min-height: 0; width: 100%; height: 100%; }
-.k-burnup-legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; opacity: 0.85; }
-.k-burnup-legend .k-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 5px; vertical-align: middle; }
+.k-burnup-legend { display: flex; gap: 20px; flex-wrap: wrap; font-size: 15px; opacity: 0.9; font-weight: 500; }
+.k-burnup-legend .k-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
 .k-burnup-legend .k-swatch-dotted {
   background: transparent !important;
   border-top: 2px dashed rgba(255, 255, 255, 0.55);
