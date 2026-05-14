@@ -73,8 +73,10 @@ export const defaultSettings = () => ({
       showDisplay: true,
       showAdvancedSim: false,
       theme: 'system', // 'system' | 'dark' | 'light'
-      currentTemplateName: ''
+      currentTemplateName: '',
+      focusMode: false // hides sidebar + banners, leaving only the graph
     },
+    hotkeys: {}, // action id -> combo string; empty = use built-in defaults
     presets: {
       custom: [] // [{ name, config }]
     },
@@ -122,6 +124,7 @@ export const defaultSettings = () => ({
       cloneMultiAssignee: true,
       legendSort: 'name', // 'name' | 'count'
       legendCollapsed: false,
+      legendHidden: false,
       showGroupLabels: true,
       dueSoonDays: 7,
       issueOpenTarget: '_blank', // '_blank' | '_self' | 'GitlabVizIssueTab'

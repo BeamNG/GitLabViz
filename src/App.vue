@@ -1,7 +1,7 @@
 <template>
   <v-app>
     <AppSidebar
-      v-if="activePage === 'main'"
+      v-if="activePage === 'main' && !settings.uiState.ui.focusMode"
       v-model:vizMode="vizMode"
       v-model:svnVizLimit="svnVizLimit"
       :settings="settings"
@@ -56,7 +56,7 @@
     </v-app-bar> -->
 
     <v-app-bar
-      v-if="tokenExpired || tokenExpiringSoon"
+      v-if="(tokenExpired || tokenExpiringSoon) && !settings.uiState.ui.focusMode"
       :color="tokenExpired ? 'error' : 'warning'"
       density="compact"
       :elevation="0"
@@ -80,7 +80,7 @@
     </v-app-bar>
 
     <v-app-bar
-      v-if="isMockGraph && !tokenExpired"
+      v-if="isMockGraph && !tokenExpired && !settings.uiState.ui.focusMode"
       color="info"
       density="compact"
       :elevation="0"
@@ -191,6 +191,38 @@
 
     <SvnLogDialog v-if="isElectron" v-model="showSvnLog" :repo-url="svnUrl" />
 
+    <button
+      v-if="settings.uiState.ui.focusMode && activePage === 'main'"
+      type="button"
+      class="focus-exit-btn"
+      title="Exit focus mode (F)"
+      @click="settings.uiState.ui.focusMode = false"
+    >×</button>
+
+    <v-dialog v-model="showHotkeyHelp" max-width="520">
+      <v-card>
+        <v-card-title class="d-flex align-center">
+          <v-icon icon="mdi-keyboard-outline" class="mr-2" />
+          Keyboard shortcuts
+          <v-spacer />
+          <v-btn icon="mdi-close" variant="text" size="small" @click="showHotkeyHelp = false" />
+        </v-card-title>
+        <v-divider />
+        <v-card-text class="hotkey-help-list">
+          <div v-for="g in hotkeyHelpGroups" :key="g.id" class="hotkey-help-group">
+            <div class="hotkey-help-group-title">{{ g.label }}</div>
+            <div v-for="row in g.items" :key="row.id" class="hotkey-help-row">
+              <span class="hotkey-help-label">{{ row.label }}</span>
+              <kbd class="hotkey-help-combo">{{ row.combo }}</kbd>
+            </div>
+          </div>
+          <div class="text-caption text-medium-emphasis mt-3">
+            Customize in Configuration → Hotkeys.
+          </div>
+        </v-card-text>
+      </v-card>
+    </v-dialog>
+
     <v-snackbar
       v-model="snackbar"
       :timeout="2000"
@@ -227,6 +259,7 @@ import { useGraphDerivedState } from './composables/useGraphDerivedState'
 import { useSvnVizMode } from './composables/useSvnVizMode'
 import { useGitLabIssueMutations } from './composables/useGitLabIssueMutations'
 import { useSettingsStore } from './composables/useSettingsStore'
+import { useHotkeys, formatCombo, groupedHotkeyActions } from './composables/useHotkeys'
 import { GLOBAL_PRESETS } from './presets'
 import { getScopedLabelValue, getScopedLabelValues } from './utils/scopedLabels'
 import { getTokenExpiry } from './utils/tokenExpiry'
@@ -854,6 +887,69 @@ const reflowGraph = () => {
     }
 }
 
+const showHotkeyHelp = ref(false)
+
+const setAllSections = (open) => {
+  settings.uiState.ui.showFilters = open
+  settings.uiState.ui.showTemplates = open
+  settings.uiState.ui.showDisplay = open
+  settings.uiState.ui.showAdvancedSim = open
+}
+
+// Cycle to the next value in a list, wrapping at the end. Skips subheaders / items
+// without a usable scalar `.value` (groupingModeOptions has `{ type: 'subheader' }`
+// entries that must not be selectable).
+const cycleValue = (list, current) => {
+  if (!Array.isArray(list)) return current
+  const values = list
+    .map(o => (o && typeof o === 'object') ? o.value : o)
+    .filter(v => v !== undefined && v !== null && typeof v !== 'object')
+  if (!values.length) return current
+  const idx = values.indexOf(current)
+  return values[(idx + 1 + values.length) % values.length]
+}
+
+const hotkeyHandlers = {
+  toggleSidebar: () => { settings.uiState.ui.isDrawerExpanded = !settings.uiState.ui.isDrawerExpanded },
+  toggleFocus:   () => { settings.uiState.ui.focusMode = !settings.uiState.ui.focusMode },
+  toggleLegend:  () => { settings.uiState.view.legendHidden = !settings.uiState.view.legendHidden },
+  toggleLegendCollapse: () => { settings.uiState.view.legendCollapsed = !settings.uiState.view.legendCollapsed },
+  togglePhysics,
+  refocusGraph,
+  fitGraph,
+  reflowGraph,
+  cycleColorMode: () => { settings.uiState.view.viewMode = cycleValue(viewModeOptions, settings.uiState.view.viewMode) },
+  cycleGrouping:  () => { settings.uiState.view.groupingMode = cycleValue(groupingModeOptions.value || [], settings.uiState.view.groupingMode) },
+  cycleLinkMode:  () => { settings.uiState.view.linkMode = cycleValue(linkModeOptions, settings.uiState.view.linkMode) },
+  toggleHideUnlinked: () => { settings.uiState.view.hideUnlinked = !settings.uiState.view.hideUnlinked },
+  expandAllSections:   () => setAllSections(true),
+  collapseAllSections: () => setAllSections(false),
+  resetFilters,
+  toggleTheme: () => {
+    const order = ['light', 'dark', 'system']
+    const i = order.indexOf(settings.uiState.ui.theme)
+    settings.uiState.ui.theme = order[(i + 1 + order.length) % order.length]
+  },
+  openConfig,
+  showHotkeyHelp: () => { showHotkeyHelp.value = !showHotkeyHelp.value }
+}
+
+useHotkeys({
+  getBindings: () => settings.uiState.hotkeys,
+  handlers: hotkeyHandlers,
+  isEnabled: () => activePage.value === 'main' && !showHotkeyHelp.value
+})
+
+const hotkeyHelpGroups = computed(() => groupedHotkeyActions().map(g => ({
+  id: g.id,
+  label: g.label,
+  items: g.items.map(a => ({
+    id: a.id,
+    label: a.label,
+    combo: formatCombo(settings.uiState.hotkeys[a.id] || a.default)
+  }))
+})))
+
 const applyConfiguration = (config) => {
     // Reset filters first (especially for templates that assume clean state)
     resetFilters()
@@ -1060,6 +1156,71 @@ body {
 
 .token-banner {
   cursor: pointer;
+}
+
+.focus-exit-btn {
+  position: fixed;
+  left: 10px;
+  bottom: 10px;
+  z-index: 30;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.35;
+  transition: opacity 0.15s ease, background 0.15s ease;
+  backdrop-filter: blur(4px);
+}
+.focus-exit-btn:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.hotkey-help-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.hotkey-help-group + .hotkey-help-group { margin-top: 12px; }
+.hotkey-help-group-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.7;
+  margin-bottom: 4px;
+}
+.hotkey-help-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 4px 0;
+}
+.hotkey-help-row + .hotkey-help-row {
+  border-top: 1px dashed rgba(127, 127, 127, 0.2);
+}
+.hotkey-help-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  opacity: 0.9;
+}
+.hotkey-help-combo {
+  flex: 0 0 auto;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(127, 127, 127, 0.35);
+  background: rgba(127, 127, 127, 0.08);
 }
 
 .token-expired-overlay {

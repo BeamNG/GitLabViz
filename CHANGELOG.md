@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.4.6] - 2026-05-14
+- Hotkeys settings: widened the column gap (24 → 56px) and added a faint dashed rule
+  between the two columns so they don't crowd in the middle.
+
+## [0.4.5] - 2026-05-14
+- Fix: `C` / `Shift+C` / `N` cycle hotkeys now wrap around at the end instead of getting
+  stuck. The grouping list contains v-select subheader items (`{ type: 'subheader' }`)
+  with no `.value`; the old `cycleValue` would land on one, return the subheader object
+  itself, and from that point on no further mode would ever match — looked like the cycle
+  "stopped at the end". `cycleValue` now filters those out before iterating.
+- New hotkeys: `]` expand all sidebar sections, `[` collapse all sidebar sections
+  (Templates, Filters, Display, Advanced simulation).
+
+## [0.4.4] - 2026-05-14
+- Focus mode now shows a tiny faded `×` in the bottom-left corner so it's discoverable how
+  to exit when you forget the `F` hotkey. It brightens on hover and disappears as soon as
+  focus mode is off.
+
+## [0.4.3] - 2026-05-14
+- The `L` hotkey (hide / show legend) now also hides the bottom-right scale bar overlay
+  so the canvas is left completely bare instead of just losing the legend panel.
+
+## [0.4.2] - 2026-05-14
+- Hotkeys settings tab is much more compact: groups now flow into two CSS columns
+  (auto-balanced), rows are indented under their group header, and per-row vertical
+  padding is tightened so the whole list fits without scrolling on a typical screen.
+  Falls back to a single column under ~700px width.
+
+## [0.4.1] - 2026-05-14
+- Hotkeys are now grouped (Layout / Graph view / View modes / App) in both the
+  Configuration → Hotkeys tab and the `?` cheatsheet popup, so related shortcuts sit
+  together instead of scrolling as one flat list.
+
+## [0.4.0] - 2026-05-14
+- Keyboard shortcuts. New `useHotkeys` composable + Configuration → **Hotkeys** tab where
+  every binding is listed, rebindable (click → press combo), resettable, and clearable.
+  Conflicts are flagged. Bindings persist in `uiState.hotkeys` (overrides only) so F5 keeps
+  them and unset actions fall back to built-in defaults. Press `?` anywhere for a quick
+  cheat-sheet popup. Hotkeys are ignored while typing in inputs and while the Config /
+  ChatTools page is open.
+
+  Defaults:
+  - `B` toggle sidebar
+  - `F` focus mode (hide sidebar + banners, show only the graph) — also hides
+    token-expiry / sample-data banners
+  - `L` hide / show legend entirely, `Shift+L` collapse / expand it
+  - `P` pause / resume physics, `R` recenter, `Shift+F` fit to screen,
+    `Shift+R` reflow (restart physics)
+  - `C` cycle color mode, `Shift+C` cycle grouping, `N` cycle link mode,
+    `U` toggle "hide unlinked", `Shift+X` reset filters
+  - `T` cycle theme, `,` open Configuration, `?` show shortcuts
+
 ## [0.3.39] - 2026-05-14
 - Reflow Graph button now uses `mdi-atom` instead of `mdi-refresh` so it doesn't visually
   clash with the data Refresh button two rows above. Tooltip clarified to

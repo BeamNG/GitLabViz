@@ -47,6 +47,7 @@ export function useSettingsStore() {
       Object.assign(settings.uiState.presets, savedData.uiState?.presets || {})
       Object.assign(settings.uiState.view, savedData.uiState?.view || {})
       Object.assign(settings.uiState.simulation, savedData.uiState?.simulation || {})
+      Object.assign(settings.uiState.hotkeys, savedData.uiState?.hotkeys || {})
 
       // Backward-compat: migrate old sim* keys to the new names
       const sim = settings.uiState.simulation

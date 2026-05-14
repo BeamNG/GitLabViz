@@ -213,7 +213,7 @@
         </div>
       </template>
     </div>
-    <div v-if="(showLegend && (legendItems.length || legendGradient)) || showLinkLegend" ref="legendEl" class="legend" :class="{ 'is-collapsed': legendCollapsed }">
+    <div v-if="!legendHidden && ((showLegend && (legendItems.length || legendGradient)) || showLinkLegend)" ref="legendEl" class="legend" :class="{ 'is-collapsed': legendCollapsed }">
       <div class="legend-title">
         <button
           type="button"
@@ -804,6 +804,7 @@ const legendCollapsed = computed({
   get: () => !!settings?.uiState?.view?.legendCollapsed,
   set: (v) => { settings.uiState.view.legendCollapsed = !!v }
 })
+const legendHidden = computed(() => !!settings?.uiState?.view?.legendHidden)
 const showGroupLabels = computed({
   get: () => settings?.uiState?.view?.showGroupLabels ?? true,
   set: (v) => { settings.uiState.view.showGroupLabels = !!v }
@@ -3147,7 +3148,9 @@ function render() {
     ctx.restore()
   }
 
-  // Bottom-right scale bar (screen-space): "N tickets" wide, like a map scale
+  // Bottom-right scale bar (screen-space): "N tickets" wide, like a map scale.
+  // Hidden together with the legend (the `L` hotkey toggles both as one "chrome" group).
+  if (!legendHidden.value) {
   ctx.save()
   ctx.setTransform(1, 0, 0, 1, 0, 0)
 
@@ -3218,6 +3221,7 @@ function render() {
   ctx.lineTo(barX + barW, barY + tickH / 2)
   ctx.stroke()
   ctx.restore()
+  }
 
   ctx.restore()
 }

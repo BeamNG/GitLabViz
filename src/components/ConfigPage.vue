@@ -14,6 +14,7 @@
         <v-tab v-if="canUseSvn" value="svn" prepend-icon="mdi-folder-network">SVN</v-tab>
         <v-tab v-if="isElectron" value="mattermost" prepend-icon="mdi-message-text">Mattermost</v-tab>
         <v-tab value="cache" prepend-icon="mdi-database">Cache</v-tab>
+        <v-tab value="hotkeys" prepend-icon="mdi-keyboard-outline">Hotkeys</v-tab>
         <v-tab value="about" prepend-icon="mdi-information-outline">About</v-tab>
         <v-tab value="changelog" prepend-icon="mdi-text-box-outline">Changelog</v-tab>
       </v-tabs>
@@ -670,6 +671,13 @@
         </v-container>
       </v-window-item>
 
+      <!-- Hotkeys -->
+      <v-window-item value="hotkeys">
+        <v-container class="py-6 config-max">
+          <HotkeysSettings />
+        </v-container>
+      </v-window-item>
+
       <!-- About -->
       <v-window-item value="about">
         <v-container class="py-6 config-max">
@@ -870,6 +878,7 @@ import { mattermostLogin } from '../services/mattermost'
 import { createGitLabClient, fetchTokenInfo, normalizeGitLabApiBaseUrl } from '../services/gitlab'
 import { getTokenExpiry } from '../utils/tokenExpiry'
 import { useSettingsStore } from '../composables/useSettingsStore'
+import HotkeysSettings from './HotkeysSettings.vue'
 import localforage from 'localforage'
 import pkg from '../../package.json'
 import changelogRaw from '../../CHANGELOG.md?raw'
