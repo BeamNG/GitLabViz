@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.12.0] - 2026-05-14
+- New kiosk mode **Activity by label** — GitHub-style heatmap where each row is one of the top labels (department / component / area / customer / …) and columns are weeks within the window. Cell intensity = events touching that label in that week. Great for spotting which areas of the project have been moving over the past year. Configurable in Configuration → Kiosk: window (60–730 days, default 365), top-N (3–30, default 10), include-scoped-labels toggle.
+- Year labels added to both heatmaps (Activity heatmap + Activity by label) and the burnup chart's x-axis ticks. First label and any year transition now show `Jan 2026` instead of bare `Jan`, so multi-year windows (730d) and year-spanning 365d charts aren't ambiguous.
+
 ## [0.11.9] - 2026-05-14
 - Fix: Activity heatmap kiosk page was hanging the browser. Three layers stacked into a perfect ResizeObserver loop: the v-for'd SVG used a function ref that called `nextTick(watchModeSvgs)` on every render, the watcher re-attached the observer, the observer's synchronous `update()` could shift `heatmapSize` by a subpixel from layout rounding, that re-rendered the SVG, the function ref fired again, … forever. Stripped the function ref down to just setting the ref value; the existing watcher already handles observer attachment when the ref changes.
 - Also reduced heatmap DOM weight: skip the `<title>` tooltip and the `new Date().toLocaleDateString()` formatting on empty cells (most of the ~1100 cells per render). The grid stays visually identical but the DOM is roughly half the elements and the recompute is faster.

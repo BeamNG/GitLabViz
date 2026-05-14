@@ -97,7 +97,7 @@ export const defaultSettings = () => ({
       modes: {
         target: true, burnup: true, blockers: true, wipStale: true,
         today: true, velocity: true,
-        heatmap: true,
+        heatmap: true, heatmapByLabel: true,
         workload: true, priority: true,
         status: true, type: true, hotLabels: true,
         milestones: true, aging: true,
@@ -113,6 +113,7 @@ export const defaultSettings = () => ({
         milestones: { topN: 8 },
         burnup:     { windowDays: 90 },
         heatmap:    { days: 365 },
+        heatmapByLabel: { days: 365, topN: 10, includeScoped: false },
         aging:      {},
         activity:   { limit: 22, includeUpdates: true },
         hotLabels:  { hours: 24, topN: 15, includeScoped: false },

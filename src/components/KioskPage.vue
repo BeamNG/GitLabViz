@@ -285,8 +285,8 @@
               stroke-dasharray="8 6"
             />
 
-            <!-- scope line -->
-            <path :d="targetBurnup.scopePath" stroke="#5c6bc0" stroke-width="3" fill="none" stroke-linejoin="round" />
+            <!-- scope line — cumulative created tickets = red across the kiosk -->
+            <path :d="targetBurnup.scopePath" stroke="#ef5350" stroke-width="3" fill="none" stroke-linejoin="round" />
             <!-- closed line -->
             <path :d="targetBurnup.closedPath" stroke="#66bb6a" stroke-width="3.5" fill="none" stroke-linejoin="round" />
 
@@ -338,7 +338,7 @@
             </template>
           </svg>
           <div v-if="targetBurnup" class="k-burnup-legend">
-            <span><i class="k-swatch" style="background: #5c6bc0;" />Scope — {{ fmtNum(targetBurnup.totalScope) }}</span>
+            <span><i class="k-swatch" style="background: #ef5350;" />Scope — {{ fmtNum(targetBurnup.totalScope) }}</span>
             <span><i class="k-swatch" style="background: #66bb6a;" />Closed — {{ fmtNum(targetBurnup.totalClosed) }}</span>
             <span><i class="k-swatch" :style="{ background: targetBurnup.onTrack ? 'rgba(255, 179, 0, 0.6)' : 'rgba(239, 83, 80, 0.65)' }" />Remaining (risk zone)</span>
             <span v-if="targetBurnup.idealPath"><i class="k-swatch k-swatch-dotted" />Ideal burn</span>
@@ -423,12 +423,12 @@
 
       <!-- Today's pulse -->
       <section v-else-if="currentMode === 'today'" class="k-today">
-        <div class="k-stat k-stat-pos k-stat-click" @click="filterCreatedToday" title="Filter graph to issues created today">
+        <div class="k-stat k-stat-neg k-stat-click" @click="filterCreatedToday" title="Filter graph to issues created today">
           <v-icon icon="mdi-plus-circle" size="28" class="k-stat-icon" />
           <div class="k-stat-num">{{ fmtNum(today.opened) }}</div>
           <div class="k-stat-lbl">Opened today</div>
         </div>
-        <div class="k-stat k-stat-neg">
+        <div class="k-stat k-stat-pos">
           <v-icon icon="mdi-check-circle" size="28" class="k-stat-icon" />
           <div class="k-stat-num">{{ fmtNum(today.closed) }}</div>
           <div class="k-stat-lbl">Closed today</div>
@@ -544,6 +544,53 @@
           <span>Less</span>
           <i v-for="i in [0, 1, 2, 3, 4]" :key="'hm-leg-' + i" class="k-hm-swatch" :style="{ background: HEATMAP_CONFIGS.heatmapAll.palette[i] }" />
           <span>More</span>
+        </div>
+      </section>
+
+      <!-- Activity by label heatmap: rows = top-N labels, cols = weeks -->
+      <section v-else-if="currentMode === 'heatmapByLabel'" class="k-heatmap-section">
+        <div class="k-section-title">
+          <v-icon icon="mdi-view-grid-outline" />
+          Activity by label · top {{ heatmapByLabel?.topN || 10 }} · last {{ heatmapByLabel?.days || 365 }} days
+          <span v-if="heatmapByLabel" class="k-section-sub">Σ {{ fmtNum(heatmapByLabel.total) }} events · peak {{ fmtNum(heatmapByLabel.max) }}/week</span>
+        </div>
+        <svg
+          :ref="setHeatmapByLabelSvgRef"
+          class="k-heatmap-svg"
+          :viewBox="heatmapByLabel ? `0 0 ${heatmapByLabel.vbW} ${heatmapByLabel.vbH}` : '0 0 800 320'"
+        >
+          <template v-if="heatmapByLabel">
+            <!-- Month labels along the top -->
+            <text
+              v-for="m in heatmapByLabel.monthLabels" :key="'hbl-m-' + m.week"
+              :x="m.x" :y="heatmapByLabel.padTop - 8"
+              font-size="11" fill="rgba(200,200,200,0.7)" font-weight="600"
+            >{{ m.label }}</text>
+
+            <!-- Each row: label name on left + week cells, all in the row's hashed hue -->
+            <g v-for="row in heatmapByLabel.rows" :key="'hbl-r-' + row.label">
+              <text
+                :x="heatmapByLabel.padLeft - 8"
+                :y="row.y + row.height / 2 + 4"
+                text-anchor="end"
+                font-size="12" font-weight="600"
+                :fill="`hsl(${row.hue}, 70%, 75%)`"
+              >{{ row.label }}</text>
+              <rect
+                v-for="(c, ci) in row.cells" :key="'hbl-c-' + ci"
+                :x="c.x" :y="c.y"
+                :width="c.w" :height="c.h"
+                rx="2" ry="2"
+                :fill="row.palette[c.level]"
+              ><title v-if="c.count > 0">{{ row.label }}: {{ c.count }} events</title></rect>
+            </g>
+          </template>
+        </svg>
+        <div v-if="heatmapByLabel" class="k-heatmap-legend">
+          <span>Less</span>
+          <i v-for="i in [0, 1, 2, 3, 4]" :key="'hbl-leg-' + i" class="k-hm-swatch" :style="{ background: HEATMAP_BY_LABEL_LEGEND[i] }" />
+          <span>More</span>
+          <span style="opacity: 0.6; margin-left: 12px;">· each row tinted by label hash</span>
         </div>
       </section>
 
@@ -877,6 +924,7 @@ const ALL_MODES = [
   { id: 'today',          label: "Today's pulse" },
   { id: 'velocity',       label: 'Velocity' },
   { id: 'heatmap',        label: 'Activity heatmap' },
+  { id: 'heatmapByLabel', label: 'Activity by label' },
   { id: 'workload',   label: 'Workload by assignee' },
   { id: 'priority',   label: 'Priority overview' },
   { id: 'status',     label: 'Status breakdown' },
@@ -1026,6 +1074,7 @@ const handleWindowKey = (e) => {
 // and strokes never get squished. Re-attaches when the relevant mode becomes current.
 let burnupRO = null
 let heatmapRO = null
+let heatmapByLabelRO = null
 const observeSize = (existing, el, sizeRef) => {
   if (existing) existing.disconnect()
   if (!el || typeof ResizeObserver === 'undefined') return null
@@ -1044,16 +1093,23 @@ const burnupSvgRef = ref(null)
 const burnupSize = ref(null)  // null until ResizeObserver has measured the SVG
 const heatmapSvgRef = ref(null)
 const heatmapSize = ref(null)
-// Function ref used inside the v-for'd <svg>. Only sets the ref — the watcher on
-// `heatmapSvgRef.value` (further down) handles attaching the ResizeObserver. Doing
-// any extra work here would re-run on every component update and trigger an RO loop.
-const setHeatmapSvgRef = (el) => { heatmapSvgRef.value = el }
+const heatmapByLabelSvgRef = ref(null)
+const heatmapByLabelSize = ref(null)
+// Function refs used inside v-for'd <svg>s. Only set the ref — observer attachment is
+// handled by the watcher below. Doing extra work here re-runs on every component
+// update and trips a ResizeObserver loop (subpixel rounding feedback).
+const setHeatmapSvgRef        = (el) => { heatmapSvgRef.value = el }
+const setHeatmapByLabelSvgRef = (el) => { heatmapByLabelSvgRef.value = el }
 
 const watchModeSvgs = () => {
-  burnupRO  = observeSize(burnupRO,  burnupSvgRef.value,  burnupSize)
-  heatmapRO = observeSize(heatmapRO, heatmapSvgRef.value, heatmapSize)
+  burnupRO         = observeSize(burnupRO,         burnupSvgRef.value,         burnupSize)
+  heatmapRO        = observeSize(heatmapRO,        heatmapSvgRef.value,        heatmapSize)
+  heatmapByLabelRO = observeSize(heatmapByLabelRO, heatmapByLabelSvgRef.value, heatmapByLabelSize)
 }
-watch(() => [currentMode.value, burnupSvgRef.value, heatmapSvgRef.value], () => nextTick(watchModeSvgs))
+watch(
+  () => [currentMode.value, burnupSvgRef.value, heatmapSvgRef.value, heatmapByLabelSvgRef.value],
+  () => nextTick(watchModeSvgs)
+)
 
 onMounted(() => {
   startCycle()
@@ -1068,8 +1124,9 @@ onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
   if (nowTickTimer) clearInterval(nowTickTimer)
   window.removeEventListener('keydown', handleWindowKey)
-  if (burnupRO)  { burnupRO.disconnect();  burnupRO = null }
-  if (heatmapRO) { heatmapRO.disconnect(); heatmapRO = null }
+  if (burnupRO)         { burnupRO.disconnect();         burnupRO = null }
+  if (heatmapRO)        { heatmapRO.disconnect();        heatmapRO = null }
+  if (heatmapByLabelRO) { heatmapByLabelRO.disconnect(); heatmapByLabelRO = null }
 })
 
 // Priority buckets — declared up here because the global `priorityFilter` setting
@@ -1668,12 +1725,23 @@ const targetBurnup = computed(() => {
     idealPath = `M${x0},${y0} L${x1},${y1}`
   }
 
-  // Date ticks: ~5 evenly across the window
+  // Date ticks: ~5 evenly across the window. Year is shown on the first tick and
+  // whenever a tick crosses into a new calendar year so multi-year windows aren't
+  // ambiguous.
   const ticks = []
   const tickCount = 5
+  let lastTickYear = -1
   for (let i = 0; i <= tickCount; i++) {
     const ts = start + (i / tickCount) * (end - start)
-    ticks.push({ ts, x: xFor(ts), label: new Date(ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) })
+    const d = new Date(ts)
+    const showYear = d.getFullYear() !== lastTickYear
+    ticks.push({
+      ts, x: xFor(ts),
+      label: showYear
+        ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+        : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    })
+    lastTickYear = d.getFullYear()
   }
   const yTicks = []
   for (let i = 0; i <= 4; i++) {
@@ -1784,11 +1852,13 @@ const activityFeed = computed(() => {
 // --- Activity heatmap (GitHub contribution-graph style) ----------------------------
 // Three sibling modes (heatmapCreated / heatmapClosed / heatmapAll) share one helper
 // and only differ in which event kinds they count + which palette they use.
+// Color semantics across the kiosk: created = red (incoming work / backlog growth),
+// closed = green (completed / good), all-activity = purple (neutral).
 const HEATMAP_CONFIGS = {
   heatmapCreated: { kinds: ['opened'], label: 'Tickets created',
-    palette: ['rgba(127,127,127,0.12)', '#0e4429', '#006d32', '#26a641', '#39d353'] },
+    palette: ['rgba(127,127,127,0.12)', '#5d1a1a', '#8c1d1d', '#d32f2f', '#ef5350'] },
   heatmapClosed:  { kinds: ['closed'],  label: 'Tickets closed',
-    palette: ['rgba(127,127,127,0.12)', '#0d2f4d', '#1f4e8b', '#388bfd', '#79c0ff'] },
+    palette: ['rgba(127,127,127,0.12)', '#0e4429', '#006d32', '#26a641', '#39d353'] },
   heatmapAll:     { kinds: ['opened', 'closed'], label: 'All ticket activity',
     palette: ['rgba(127,127,127,0.12)', '#3a1d5b', '#553098', '#a371f7', '#d2a8ff'] }
 }
@@ -1849,15 +1919,21 @@ const computeHeatmapFor = (modeId) => {
   }
 
   // Month labels at the top: position at the first cell of each new month (week column).
+  // Year is appended at the first label and whenever a new year starts so a 365 / 730d
+  // window doesn't leave the viewer wondering which year a "Jan" tick refers to.
   const monthLabels = []
   let lastMonth = -1
+  let lastYear = -1
   for (let w = 0; w < totalWeeks; w++) {
     const cell = cells[w * 7]
     if (!cell) continue
     const d = new Date(cell.ts)
     if (d.getMonth() !== lastMonth) {
-      monthLabels.push({ week: w, label: d.toLocaleDateString(undefined, { month: 'short' }) })
+      const month = d.toLocaleDateString(undefined, { month: 'short' })
+      const showYear = d.getFullYear() !== lastYear
+      monthLabels.push({ week: w, label: showYear ? `${month} ${d.getFullYear()}` : month })
       lastMonth = d.getMonth()
+      lastYear = d.getFullYear()
     }
   }
 
@@ -1866,10 +1942,12 @@ const computeHeatmapFor = (modeId) => {
   const vbW = Math.max(400, heatmapSize.value.w)
   const vbH = Math.max(160, heatmapSize.value.h)
   const padLeft = 36, padTop = 28, padRight = 8, padBottom = 8, gap = 3
-  const cellSize = Math.floor(Math.min(
+  // Cap cell size so the grid stays tight on wide kiosk screens (GitHub-style cell
+  // density rather than chunky squares).
+  const cellSize = Math.max(4, Math.min(14, Math.floor(Math.min(
     (vbW - padLeft - padRight - gap * (totalWeeks - 1)) / totalWeeks,
     (vbH - padTop - padBottom - gap * 6) / 7
-  ))
+  ))))
   const xFor = (w) => padLeft + w * (cellSize + gap)
   const yFor = (dow) => padTop + dow * (cellSize + gap)
   // Skip the date label format for cells that won't render a <title> (empty days)
@@ -1900,6 +1978,140 @@ const heatmapSummary = computed(() => {
   const total = heatmaps.value.reduce((s, h) => s + (h.data?.total || 0), 0)
   const peak = Math.max(0, ...heatmaps.value.map(h => h.data?.maxCount || 0))
   return { total, peak, days: (heatmaps.value[0]?.data?.days) || 0 }
+})
+
+// "Activity by label" — heatmap rows are top-N labels, columns are weeks within the
+// window. Each row gets its OWN palette derived from a hash of the label name so labels
+// have stable, distinguishable colors across renders without us maintaining a palette
+// map. Intensity is still global (max events/week across all rows) so a busy week
+// reads brighter regardless of which label it's on.
+const _labelHueCache = new Map()
+const labelHue = (s) => {
+  const key = String(s || '')
+  let v = _labelHueCache.get(key)
+  if (v !== undefined) return v
+  let h = 0
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0
+  // Golden-ratio multiplier spreads hues evenly around the wheel for nearby names.
+  v = Math.floor((Math.abs(h) * 137.508) % 360)
+  _labelHueCache.set(key, v)
+  return v
+}
+const labelHashedPalette = (label) => {
+  const hue = labelHue(label)
+  return [
+    'rgba(127,127,127,0.12)',
+    `hsl(${hue}, 45%, 22%)`,
+    `hsl(${hue}, 55%, 36%)`,
+    `hsl(${hue}, 65%, 52%)`,
+    `hsl(${hue}, 72%, 68%)`
+  ]
+}
+const HEATMAP_BY_LABEL_LEGEND = ['rgba(127,127,127,0.12)', 'rgba(160,160,160,0.25)', 'rgba(180,180,180,0.45)', 'rgba(200,200,200,0.65)', 'rgba(220,220,220,0.85)']
+const heatmapByLabelCfg = computed(() => settings.uiState.kiosk?.modeConfig?.heatmapByLabel || {})
+const heatmapByLabel = computed(() => {
+  if (currentMode.value !== 'heatmapByLabel') return null
+  if (!heatmapByLabelSize.value) return null
+  const cfg = heatmapByLabelCfg.value
+  const days = Math.max(60, Math.min(730, Number(cfg.days) || 365))
+  const topN = Math.max(3, Math.min(30, Number(cfg.topN) || 10))
+  const includeScoped = !!cfg.includeScoped
+  const dayMs = 24 * 60 * 60 * 1000
+  const weekMs = 7 * dayMs
+  const today0 = startOfToday()
+  const earliest = today0 - (days - 1) * dayMs
+  // Week-aligned start (Mon) so columns line up with calendar weeks.
+  const dowMon = (ts) => (new Date(ts).getDay() + 6) % 7
+  const alignedStart = earliest - dowMon(earliest) * dayMs
+  const totalWeeks = Math.max(1, Math.ceil((today0 - alignedStart + dayMs) / weekMs))
+
+  // Per-label tally
+  const labelStats = new Map()
+  for (const n of items.value) {
+    const raw = n._raw || {}
+    const labels = Array.isArray(raw.labels) ? raw.labels : []
+    if (!labels.length) continue
+    const stamps = []
+    const c = safeDate(raw.created_at); if (c) stamps.push(c)
+    const cl = safeDate(raw.closed_at); if (cl) stamps.push(cl)
+    const u = safeDate(raw.updated_at); if (u && u !== c && u !== cl) stamps.push(u)
+    for (const ts of stamps) {
+      if (ts < alignedStart || ts > today0 + dayMs) continue
+      const weekIdx = Math.floor((ts - alignedStart) / weekMs)
+      if (weekIdx < 0 || weekIdx >= totalWeeks) continue
+      for (const l of labels) {
+        if (typeof l !== 'string' || !l) continue
+        if (!includeScoped && isScopedLabel(l)) continue
+        let entry = labelStats.get(l)
+        if (!entry) { entry = { total: 0, weekly: new Array(totalWeeks).fill(0) }; labelStats.set(l, entry) }
+        entry.total++
+        entry.weekly[weekIdx]++
+      }
+    }
+  }
+
+  const sorted = [...labelStats.entries()]
+    .sort((a, b) => b[1].total - a[1].total)
+    .slice(0, topN)
+  if (!sorted.length) return { rows: [], totalWeeks: 0, monthLabels: [], total: 0, max: 0, days, topN, vbW: heatmapByLabelSize.value.w, vbH: heatmapByLabelSize.value.h }
+
+  // Global max so all rows share the same intensity scale (label X with 50 events/week
+  // looks busier than label Y with 5/week even though both have data).
+  let max = 1
+  for (const [, e] of sorted) for (const v of e.weekly) if (v > max) max = v
+  const t1 = Math.max(1, Math.round(max * 0.10))
+  const t2 = Math.max(t1 + 1, Math.round(max * 0.25))
+  const t3 = Math.max(t2 + 1, Math.round(max * 0.50))
+
+  // Pixel layout
+  const vbW = Math.max(400, heatmapByLabelSize.value.w)
+  const vbH = Math.max(160, heatmapByLabelSize.value.h)
+  const padLeft = 150, padTop = 26, padRight = 8, padBottom = 8, gap = 3
+  const cellW = Math.max(2, Math.floor((vbW - padLeft - padRight - gap * (totalWeeks - 1)) / totalWeeks))
+  const cellH = Math.max(8, Math.floor((vbH - padTop - padBottom - gap * (sorted.length - 1)) / sorted.length))
+
+  const rows = sorted.map(([label, e], rowIdx) => {
+    const y = padTop + rowIdx * (cellH + gap)
+    const palette = labelHashedPalette(label)
+    const cells = e.weekly.map((count, w) => {
+      let level = 0
+      if (count > 0) {
+        if (count <= t1) level = 1
+        else if (count <= t2) level = 2
+        else if (count <= t3) level = 3
+        else level = 4
+      }
+      return { x: padLeft + w * (cellW + gap), y, w: cellW, h: cellH, count, level }
+    })
+    return { label, total: e.total, cells, y, height: cellH, palette, hue: labelHue(label) }
+  })
+
+  // Month labels along the top, with year on transitions.
+  const monthLabels = []
+  let lastMonth = -1
+  let lastYear = -1
+  for (let w = 0; w < totalWeeks; w++) {
+    const ts = alignedStart + w * weekMs
+    const d = new Date(ts)
+    if (d.getMonth() !== lastMonth) {
+      const month = d.toLocaleDateString(undefined, { month: 'short' })
+      const showYear = d.getFullYear() !== lastYear
+      monthLabels.push({
+        week: w,
+        x: padLeft + w * (cellW + gap),
+        label: showYear ? `${month} ${d.getFullYear()}` : month
+      })
+      lastMonth = d.getMonth()
+      lastYear = d.getFullYear()
+    }
+  }
+
+  return {
+    rows, monthLabels, totalWeeks, days, topN,
+    total: sorted.reduce((s, [, e]) => s + e.total, 0),
+    max,
+    cellW, cellH, padLeft, padTop, vbW, vbH
+  }
 })
 
 const FEED_ICON  = { opened: 'mdi-plus-circle', closed: 'mdi-check-circle', updated: 'mdi-pencil-circle' }
@@ -2568,8 +2780,10 @@ const relTime = (ts) => {
   position: relative;
   transition: height 0.4s ease;
 }
-.k-vel-created { background: #66bb6a; }
-.k-vel-closed { background: #9e9e9e; }
+/* Tickets created = red (incoming work), closed = green (completed). Consistent
+   with the heatmap palettes and activity-feed colors throughout the kiosk. */
+.k-vel-created { background: #ef5350; }
+.k-vel-closed { background: #66bb6a; }
 .k-vel-num {
   position: absolute;
   top: -22px;
@@ -2606,8 +2820,8 @@ const relTime = (ts) => {
   border-radius: 3px;
   vertical-align: middle;
 }
-.k-swatch.k-vel-created { background: #66bb6a; }
-.k-swatch.k-vel-closed { background: #9e9e9e; }
+.k-swatch.k-vel-created { background: #ef5350; }
+.k-swatch.k-vel-closed { background: #66bb6a; }
 
 /* Bar lists (workload, priority) */
 .k-bar-list { display: flex; flex-direction: column; gap: 10px; overflow: auto; }
@@ -2774,12 +2988,12 @@ const relTime = (ts) => {
   border-left: 3px solid transparent;
   align-items: center;
 }
-.k-feed-opened  { border-left-color: #66bb6a; }
-.k-feed-closed  { border-left-color: #5c6bc0; }
+.k-feed-opened  { border-left-color: #ef5350; }
+.k-feed-closed  { border-left-color: #66bb6a; }
 .k-feed-updated { border-left-color: #ffb300; }
 .k-feed-icon { opacity: 0.9; }
-.k-feed-opened  .k-feed-icon { color: #66bb6a; }
-.k-feed-closed  .k-feed-icon { color: #7986cb; }
+.k-feed-opened  .k-feed-icon { color: #ef5350; }
+.k-feed-closed  .k-feed-icon { color: #66bb6a; }
 .k-feed-updated .k-feed-icon { color: #ffb300; }
 .k-feed-tag {
   font-size: 10px;
@@ -2789,8 +3003,8 @@ const relTime = (ts) => {
   border-radius: 4px;
   text-align: center;
 }
-.k-feed-opened  .k-feed-tag { background: rgba(76, 175, 80, 0.18);  color: #66bb6a; }
-.k-feed-closed  .k-feed-tag { background: rgba(92, 107, 192, 0.18); color: #7986cb; }
+.k-feed-opened  .k-feed-tag { background: rgba(239, 83, 80, 0.18); color: #ef5350; }
+.k-feed-closed  .k-feed-tag { background: rgba(102, 187, 106, 0.18); color: #66bb6a; }
 .k-feed-updated .k-feed-tag { background: rgba(255, 179, 0, 0.18);  color: #ffb300; }
 .k-feed-notes {
   display: inline-flex;

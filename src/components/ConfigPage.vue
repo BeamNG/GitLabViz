@@ -887,6 +887,29 @@
                     density="compact" variant="outlined"
                   />
                 </v-col>
+                <v-col v-if="m.id === 'heatmapByLabel'" cols="6" sm="3">
+                  <v-text-field
+                    v-model.number="settings.uiState.kiosk.modeConfig.heatmapByLabel.days"
+                    type="number" min="60" max="730"
+                    label="Window (days)"
+                    density="compact" variant="outlined" hide-details
+                  />
+                </v-col>
+                <v-col v-if="m.id === 'heatmapByLabel'" cols="6" sm="3">
+                  <v-text-field
+                    v-model.number="settings.uiState.kiosk.modeConfig.heatmapByLabel.topN"
+                    type="number" min="3" max="30"
+                    label="Top N labels"
+                    density="compact" variant="outlined" hide-details
+                  />
+                </v-col>
+                <v-col v-if="m.id === 'heatmapByLabel'" cols="12" sm="6">
+                  <v-checkbox
+                    v-model="settings.uiState.kiosk.modeConfig.heatmapByLabel.includeScoped"
+                    label="Include scoped labels (Priority:: / Type:: / …)"
+                    hide-details density="compact"
+                  />
+                </v-col>
                 <v-col v-if="m.id === 'activity'" cols="6" sm="3">
                   <v-text-field
                     v-model.number="settings.uiState.kiosk.modeConfig.activity.limit"
@@ -1214,6 +1237,7 @@ const kioskAllModes = [
   { id: 'today',      label: "Today's pulse",            icon: 'mdi-pulse',                description: 'Opened / closed / updated / totals.' },
   { id: 'velocity',   label: 'Velocity',                 icon: 'mdi-trending-up',          description: 'Created vs closed per day.' },
   { id: 'heatmap',    label: 'Activity heatmap',         icon: 'mdi-view-grid',            description: 'GitHub-style activity grid — three stacked rows for created (green), closed (blue), and all activity (purple).' },
+  { id: 'heatmapByLabel', label: 'Activity by label',    icon: 'mdi-view-grid-outline',    description: 'Heatmap rows = top labels (departments / components), columns = weeks. See which areas have been worked on across the year.' },
   { id: 'workload',   label: 'Workload by assignee',     icon: 'mdi-account-multiple',     description: 'Top assignees by active open count.' },
   { id: 'priority',   label: 'Priority overview',        icon: 'mdi-alert-circle-outline', description: 'Open per Priority:: label.' },
   { id: 'status',     label: 'Status breakdown',         icon: 'mdi-list-status',          description: 'Open per work-item status.' },
@@ -1225,7 +1249,7 @@ const kioskAllModes = [
   { id: 'closed',     label: 'Recently closed',          icon: 'mdi-party-popper',         description: 'Celebration view — tickets closed in the last N hours.' },
   { id: 'risks',      label: 'Ticket health',            icon: 'mdi-stethoscope',          description: 'Problem dashboard — overdue / stale / unassigned / no priority / no due date / blocked, plus the worst offenders.' }
 ]
-const kioskHasOptions = (id) => ['velocity', 'workload', 'priority', 'status', 'type', 'hotLabels', 'milestones', 'burnup', 'activity', 'blockers', 'wipStale', 'closed', 'risks', 'heatmap'].includes(id)
+const kioskHasOptions = (id) => ['velocity', 'workload', 'priority', 'status', 'type', 'hotLabels', 'milestones', 'burnup', 'activity', 'blockers', 'wipStale', 'closed', 'risks', 'heatmap', 'heatmapByLabel'].includes(id)
 const kioskPriorityBuckets = [
   { value: 'blocking', label: 'Blocking / Critical' },
   { value: 'high',     label: 'High' },

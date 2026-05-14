@@ -13,7 +13,7 @@
   ],
   "author": "Thomas Fischer <tfischer@beamng.gmbh>",
   "private": true,
-  "version": "0.11.9",
+  "version": "0.12.0",
   "license": "MIT",
   "engines": {
     "node": ">=20"
