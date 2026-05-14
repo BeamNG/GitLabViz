@@ -1,5 +1,10 @@
 # Changelog
 
+## [0.3.39] - 2026-05-14
+- Reflow Graph button now uses `mdi-atom` instead of `mdi-refresh` so it doesn't visually
+  clash with the data Refresh button two rows above. Tooltip clarified to
+  "Reflow Graph (restart physics)".
+
 ## [0.3.38] - 2026-05-14
 - Fix: graph disappeared / flickered while the sidebar was opening or closing. Setting
   `canvas.width/height` clears the canvas, and the resize was double-deferred through two

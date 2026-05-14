@@ -127,10 +127,10 @@
               size="x-small"
               color="medium-emphasis"
               @click="onReflowGraph"
-              title="Reflow Graph"
+              title="Reflow Graph (restart physics)"
               class="mr-1"
             >
-              <v-icon icon="mdi-refresh" size="small"></v-icon>
+              <v-icon icon="mdi-atom" size="small"></v-icon>
             </v-btn>
           </div>
         </div>
