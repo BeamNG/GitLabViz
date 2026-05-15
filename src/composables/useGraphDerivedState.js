@@ -246,7 +246,13 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
     }
     const resolveMe = (list) => list.includes('@me') ? (meName ? list.map(v => v === '@me' ? meName : v) : []) : list
 
-    if (!skip.has('includeClosed') && !f.includeClosed && r.state === 'closed') return false
+    // `selectedState` is the precise state filter (overrides includeClosed when set).
+    // `includeClosed` stays as the existing "show closed alongside open" toggle.
+    if (!skip.has('state')) {
+      if (f.selectedState === 'closed' && r.state !== 'closed') return false
+      if (f.selectedState === 'opened' && r.state !== 'opened') return false
+    }
+    if (!skip.has('includeClosed') && !f.selectedState && !f.includeClosed && r.state === 'closed') return false
 
     if (!skip.has('status') && f.selectedStatuses?.length > 0) {
       if (!f.selectedStatuses.includes(currentStatusOfRaw(r))) return false

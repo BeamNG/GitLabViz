@@ -1,5 +1,5 @@
 <template>
-  <div class="kiosk" tabindex="0" ref="root">
+  <div class="kiosk" :class="{ 'is-refreshed': justRefreshed }" tabindex="0" ref="root">
     <header class="kiosk-head">
       <div class="kiosk-head-left">
         <span class="kiosk-tag">KIOSK</span>
@@ -31,7 +31,7 @@
         </button>
         <button class="kiosk-icon-btn" title="Previous (←)" @click="prevMode">‹</button>
         <button class="kiosk-icon-btn" title="Next (→)" @click="nextMode">›</button>
-        <button class="kiosk-icon-btn" :title="paused ? 'Resume cycling (Space)' : 'Pause cycling (Space)'" @click="paused = !paused">
+        <button class="kiosk-icon-btn" :class="{ 'pulse-attention': pauseFlash }" :title="paused ? 'Resume cycling (Space)' : 'Pause cycling (Space)'" @click="togglePause">
           <v-icon :icon="paused ? 'mdi-play' : 'mdi-pause'" size="small" />
         </button>
         <button class="kiosk-icon-btn" title="Open kiosk settings" @click="$emit('open-config')">
@@ -59,9 +59,12 @@
                 {{ targetData.title }}
                 <span v-if="targetData.state && targetData.state !== 'active'" class="k-target-state">{{ targetData.state }}</span>
               </div>
-              <div v-if="targetData.dueLabel" class="k-target-due" :class="targetData.dueClass">
+              <div v-if="targetData.dueLabel || targetData.ageLabel" class="k-target-due" :class="targetData.dueClass">
                 <v-icon icon="mdi-calendar" size="small" />
-                {{ targetData.dueLabel }}{{ targetData.due ? ' · ' + targetData.due : '' }}
+                <template v-if="targetData.ageLabel">{{ targetData.ageLabel }}</template>
+                <template v-if="targetData.ageLabel && targetData.dueLabel"> · </template>
+                <template v-if="targetData.dueLabel">{{ targetData.dueLabel }}</template>
+                <template v-if="targetData.due"> · {{ targetData.due }}</template>
               </div>
             </div>
             <div class="k-target-pct">{{ targetData.pct }}<span>%</span></div>
@@ -97,19 +100,31 @@
           </div>
 
           <div class="k-target-stats">
-            <div class="k-stat k-stat-pos">
+            <div
+              class="k-stat k-stat-pos k-stat-click"
+              @click="applyFilter({ selectedState: 'closed' })"
+              :title="`Show the ${fmtNum(targetData.closed)} closed tickets in this milestone`"
+            >
               <v-icon icon="mdi-check-circle" size="24" class="k-stat-icon" />
               <div class="k-stat-num">{{ fmtNum(targetData.closed) }}</div>
               <div class="k-stat-lbl">Closed</div>
               <div v-if="targetForecast" class="k-stat-sub">+{{ fmtNum(targetForecast.closedRecent) }} last {{ targetForecast.lookbackDays }}d</div>
             </div>
-            <div class="k-stat">
+            <div
+              class="k-stat k-stat-click"
+              @click="applyFilter({ selectedState: 'opened' })"
+              :title="`Show the ${fmtNum(targetData.open)} open tickets in this milestone`"
+            >
               <v-icon icon="mdi-circle-outline" size="24" class="k-stat-icon" />
               <div class="k-stat-num">{{ fmtNum(targetData.open) }}</div>
               <div class="k-stat-lbl">Open</div>
               <div v-if="targetForecast" class="k-stat-sub">{{ targetForecast.closedPerWeek }} closed/wk · {{ targetForecast.addedPerWeek }} added/wk</div>
             </div>
-            <div class="k-stat">
+            <div
+              class="k-stat k-stat-click"
+              @click="applyFilter({ includeClosed: true })"
+              :title="`Show all ${fmtNum(targetData.total)} tickets in this milestone`"
+            >
               <v-icon icon="mdi-sigma" size="24" class="k-stat-icon" />
               <div class="k-stat-num">{{ fmtNum(targetData.total) }}</div>
               <div class="k-stat-lbl">Total</div>
@@ -189,8 +204,8 @@
         </template>
       </section>
 
-      <!-- Milestone burnup: cumulative scope vs closed over lifetime -->
-      <section v-else-if="currentMode === 'burnup'" class="k-burnup-section">
+      <!-- Milestone burndown: remaining open work over time, with ideal-burn guideline -->
+      <section v-else-if="currentMode === 'burndown'" class="k-burndown-section">
         <div v-if="!targetMilestone" class="k-empty">
           <v-icon icon="mdi-flag-outline" size="48" />
           <div>No target milestone set (Configuration → Kiosk).</div>
@@ -200,160 +215,140 @@
           <div>No tickets in this milestone yet.</div>
         </div>
         <template v-else>
-          <div class="k-section-title k-burnup-title">
+          <div class="k-section-title k-burndown-title">
             <v-icon icon="mdi-chart-areaspline" />
-            {{ targetMilestone }} · burnup
-            <span v-if="targetBurnup" class="k-section-sub">
-              {{ targetBurnup.startLabel }} → {{ targetBurnup.endLabel }} ({{ targetBurnup.windowDays }}d window)
-              <span v-if="targetBurnup.scopeBaseline || targetBurnup.closedBaseline">
-                · baseline {{ targetBurnup.closedBaseline }} / {{ targetBurnup.scopeBaseline }}
-              </span>
+            {{ targetMilestone }} · burndown
+            <span v-if="targetBurndown" class="k-section-sub">
+              {{ targetBurndown.startLabel }} → today ({{ targetBurndown.windowDays }}d window)
+              · {{ targetBurndown.initialOpen }} open at start → {{ targetBurndown.currentOpen }} now
+              <template v-if="targetBurndown.dueLabel"> · due {{ targetBurndown.dueLabel }}</template>
             </span>
           </div>
           <svg
-            ref="burnupSvgRef"
-            class="k-burnup-svg"
-            :viewBox="targetBurnup ? `0 0 ${targetBurnup.vbWidth} ${targetBurnup.vbHeight}` : '0 0 800 320'"
+            ref="burndownSvgRef"
+            class="k-burndown-svg"
+            :viewBox="targetBurndown ? `0 0 ${targetBurndown.vbWidth} ${targetBurndown.vbHeight}` : '0 0 800 320'"
           >
-            <template v-if="targetBurnup">
+            <template v-if="targetBurndown">
             <!-- horizontal grid -->
             <line
-              v-for="(t, i) in targetBurnup.yTicks" :key="'yg' + i"
-              :x1="targetBurnup.innerLeft" :x2="targetBurnup.innerRight"
+              v-for="(t, i) in targetBurndown.yTicks" :key="'yg' + i"
+              :x1="targetBurndown.innerLeft" :x2="targetBurndown.innerRight"
               :y1="t.y" :y2="t.y"
               stroke="rgba(127,127,127,0.18)" stroke-dasharray="3 4"
             />
             <text
-              v-for="(t, i) in targetBurnup.yTicks" :key="'yt' + i"
-              :x="targetBurnup.innerLeft - 8" :y="t.y + 6"
+              v-for="(t, i) in targetBurndown.yTicks" :key="'yt' + i"
+              :x="targetBurndown.innerLeft - 8" :y="t.y + 6"
               text-anchor="end" font-size="18" fill="rgba(200,200,200,0.85)"
               font-weight="600"
             >{{ t.v }}</text>
 
-            <!-- open band (area between scope and closed) — coloured amber as the
-                 "risk zone": as closures catch up, the colored area shrinks visually. -->
-            <path :d="targetBurnup.areaPath" :fill="targetBurnup.onTrack ? 'rgba(255, 179, 0, 0.18)' : 'rgba(239, 83, 80, 0.22)'" />
-
-            <!-- future zone — dims everything to the right of "today" so the eye stays
-                 in the past where the actual data lives. -->
-            <rect
-              v-if="targetBurnup.todayX != null && targetBurnup.todayX < targetBurnup.innerRight"
-              :x="targetBurnup.todayX"
-              :y="targetBurnup.innerTop"
-              :width="targetBurnup.innerRight - targetBurnup.todayX"
-              :height="targetBurnup.innerBottom - targetBurnup.innerTop"
-              fill="rgba(0, 0, 0, 0.35)"
-            />
+            <!-- remaining work area (under the burndown line). Amber when on track,
+                 red-tinted when actual is visibly above ideal at today. -->
+            <path :d="targetBurndown.areaPath" :fill="targetBurndown.onTrack ? 'rgba(255, 179, 0, 0.22)' : 'rgba(239, 83, 80, 0.26)'" />
 
             <!-- "Incomplete closed history" zone — left of the gitlabClosedDays cutoff.
-                 Hatched + dim so users know the closed line in that range is unreliable. -->
-            <pattern id="k-burnup-hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
+                 Hatched + dim so users know the remaining line in that range is unreliable
+                 (closures from before the cutoff are missing, inflating the line). -->
+            <pattern id="k-burndown-hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
               <rect width="8" height="8" fill="rgba(0, 0, 0, 0.25)" />
               <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(255, 179, 0, 0.35)" stroke-width="2" />
             </pattern>
             <rect
-              v-if="targetBurnup.closedCutoffX != null"
-              :x="targetBurnup.innerLeft"
-              :y="targetBurnup.innerTop"
-              :width="targetBurnup.closedCutoffX - targetBurnup.innerLeft"
-              :height="targetBurnup.innerBottom - targetBurnup.innerTop"
-              fill="url(#k-burnup-hatch)"
+              v-if="targetBurndown.closedCutoffX != null"
+              :x="targetBurndown.innerLeft"
+              :y="targetBurndown.innerTop"
+              :width="targetBurndown.closedCutoffX - targetBurndown.innerLeft"
+              :height="targetBurndown.innerBottom - targetBurndown.innerTop"
+              fill="url(#k-burndown-hatch)"
             />
-            <g v-if="targetBurnup.closedCutoffX != null">
+            <g v-if="targetBurndown.closedCutoffX != null">
               <line
-                :x1="targetBurnup.closedCutoffX" :x2="targetBurnup.closedCutoffX"
-                :y1="targetBurnup.innerTop" :y2="targetBurnup.innerBottom"
+                :x1="targetBurndown.closedCutoffX" :x2="targetBurndown.closedCutoffX"
+                :y1="targetBurndown.innerTop" :y2="targetBurndown.innerBottom"
                 stroke="#ffb300" stroke-width="2" stroke-dasharray="6 4"
               />
               <rect
-                :x="targetBurnup.closedCutoffX - 78" :y="targetBurnup.innerTop + 56"
+                :x="targetBurndown.closedCutoffX - 78" :y="targetBurndown.innerTop + 56"
                 width="156" height="22" rx="4" ry="4"
                 fill="rgba(255, 179, 0, 0.9)"
               />
               <text
-                :x="targetBurnup.closedCutoffX" :y="targetBurnup.innerTop + 71"
+                :x="targetBurndown.closedCutoffX" :y="targetBurndown.innerTop + 71"
                 text-anchor="middle" font-size="13" font-weight="700"
                 fill="#212121"
-              >Closed data starts here</text>
+              >Data available from here</text>
             </g>
 
-            <!-- ideal burn guideline (dotted) — from (start, baseline-closed) to (due, scope) -->
+            <!-- ideal burn guideline (dotted) — straight line from (start, initialOpen)
+                 toward (due, 0), capped at today so it never projects into the future. -->
             <path
-              v-if="targetBurnup.idealPath"
-              :d="targetBurnup.idealPath"
-              stroke="rgba(255, 255, 255, 0.5)" stroke-width="2.5" fill="none"
+              v-if="targetBurndown.idealPath"
+              :d="targetBurndown.idealPath"
+              stroke="rgba(255, 255, 255, 0.55)" stroke-width="2.5" fill="none"
               stroke-dasharray="8 6"
             />
 
-            <!-- scope line — cumulative created tickets = red across the kiosk -->
-            <path :d="targetBurnup.scopePath" stroke="#ef5350" stroke-width="3" fill="none" stroke-linejoin="round" />
-            <!-- closed line -->
-            <path :d="targetBurnup.closedPath" stroke="#66bb6a" stroke-width="3.5" fill="none" stroke-linejoin="round" />
+            <!-- cumulative closed line — green, shows shipping momentum -->
+            <path
+              :d="targetBurndown.closedPath"
+              stroke="#66bb6a" stroke-width="2.5" fill="none" stroke-linejoin="round"
+              opacity="0.85"
+            />
 
-            <!-- today / due markers -->
-            <g v-if="targetBurnup.todayX != null">
+            <!-- actual remaining line — green when on track, red when behind ideal -->
+            <path
+              :d="targetBurndown.remainingPath"
+              :stroke="targetBurndown.onTrack ? '#66bb6a' : '#ef5350'"
+              stroke-width="3.5" fill="none" stroke-linejoin="round"
+            />
+
+            <!-- today marker at the right edge of the chart -->
+            <g>
               <line
-                :x1="targetBurnup.todayX" :x2="targetBurnup.todayX"
-                :y1="targetBurnup.innerTop" :y2="targetBurnup.innerBottom"
+                :x1="targetBurndown.todayX" :x2="targetBurndown.todayX"
+                :y1="targetBurndown.innerTop" :y2="targetBurndown.innerBottom"
                 stroke="#ffffff" stroke-width="2"
               />
               <rect
-                :x="targetBurnup.todayX - 42" :y="targetBurnup.innerTop - 4"
+                :x="targetBurndown.todayX - 42" :y="targetBurndown.innerTop - 4"
                 width="84" height="26" rx="5" ry="5"
                 fill="rgba(255, 255, 255, 0.92)"
               />
               <text
-                :x="targetBurnup.todayX" :y="targetBurnup.innerTop + 14"
+                :x="targetBurndown.todayX" :y="targetBurndown.innerTop + 14"
                 text-anchor="middle" font-size="16" font-weight="800"
                 fill="#212121"
                 letter-spacing="0.5"
               >TODAY</text>
             </g>
-            <g v-if="targetBurnup.dueX != null">
-              <line
-                :x1="targetBurnup.dueX" :x2="targetBurnup.dueX"
-                :y1="targetBurnup.innerTop" :y2="targetBurnup.innerBottom"
-                stroke="#ef5350" stroke-width="2"
-              />
-              <rect
-                :x="targetBurnup.dueX - 32" :y="targetBurnup.innerTop + 28"
-                width="64" height="26" rx="5" ry="5"
-                fill="#ef5350"
-              />
-              <text
-                :x="targetBurnup.dueX" :y="targetBurnup.innerTop + 46"
-                text-anchor="middle" font-size="16" font-weight="800"
-                fill="#ffffff"
-                letter-spacing="0.5"
-              >DUE</text>
-            </g>
 
             <!-- x axis ticks -->
             <text
-              v-for="(t, i) in targetBurnup.ticks" :key="'xt' + i"
-              :x="t.x" :y="targetBurnup.innerBottom + 28"
+              v-for="(t, i) in targetBurndown.ticks" :key="'xt' + i"
+              :x="t.x" :y="targetBurndown.innerBottom + 28"
               text-anchor="middle" font-size="16" fill="rgba(200,200,200,0.85)"
               font-weight="600"
             >{{ t.label }}</text>
             </template>
           </svg>
-          <div v-if="targetBurnup" class="k-burnup-legend">
-            <span><i class="k-swatch" style="background: #ef5350;" />Scope — {{ fmtNum(targetBurnup.totalScope) }}</span>
-            <span><i class="k-swatch" style="background: #66bb6a;" />Closed — {{ fmtNum(targetBurnup.totalClosed) }}</span>
-            <span><i class="k-swatch" :style="{ background: targetBurnup.onTrack ? 'rgba(255, 179, 0, 0.6)' : 'rgba(239, 83, 80, 0.65)' }" />Remaining (risk zone)</span>
-            <span v-if="targetBurnup.idealPath"><i class="k-swatch k-swatch-dotted" />Ideal burn</span>
-            <span v-if="!targetBurnup.closedHistoryComplete" class="k-burnup-warn-data">
+          <div v-if="targetBurndown" class="k-burndown-legend">
+            <span><i class="k-swatch" :style="{ background: targetBurndown.onTrack ? '#66bb6a' : '#ef5350' }" />Remaining — {{ fmtNum(targetBurndown.currentOpen) }}</span>
+            <span><i class="k-swatch" style="background: #66bb6a; opacity: 0.85;" />Closed — {{ fmtNum(targetBurndown.totalClosed) }}</span>
+            <span v-if="targetBurndown.idealPath"><i class="k-swatch k-swatch-dotted" />Ideal burn (to today)</span>
+            <span v-if="!targetBurndown.closedHistoryComplete" class="k-burndown-warn-data">
               <v-icon icon="mdi-alert-outline" size="x-small" />
-              <template v-if="targetBurnup.closedDays === 0">
-                Closed data not loaded — set "Include closed issues" in Configuration → GitLab.
+              <template v-if="targetBurndown.closedDays === 0">
+                No historical data — set "Include closed issues" in Configuration → GitLab.
               </template>
               <template v-else>
-                Closed data only available since {{ targetBurnup.closedCutoffLabel }} (last {{ targetBurnup.closedDays }}d) — earlier portion may be incomplete.
+                Data only available since {{ targetBurndown.closedCutoffLabel }} (last {{ targetBurndown.closedDays }}d) — earlier portion may be incomplete.
               </template>
             </span>
             <span class="k-legend-spacer" />
-            <span :class="targetBurnup.onTrack ? '' : 'k-burnup-warn'">
-              {{ targetBurnup.onTrack ? 'Tracking ideal burn' : 'Behind ideal burn' }}
+            <span :class="targetBurndown.onTrack ? '' : 'k-burndown-warn'">
+              {{ targetBurndown.onTrack ? 'Tracking ideal burn' : 'Behind ideal burn' }}
             </span>
           </div>
         </template>
@@ -456,33 +451,42 @@
       </section>
 
       <!-- Velocity (N-day created vs closed) -->
+      <!-- Velocity = month-view calendar over the last N weeks (default 8 ≈
+           2 months). Rows = ISO weeks (number on left), columns = Mon..Sun.
+           Each cell shows the date plus the daily NET: green = more closed
+           than created, red = more created than closed, grey = balanced/quiet.
+           Cells are clickable to filter the main graph to that day. -->
       <section v-else-if="currentMode === 'velocity'" class="k-velocity">
-        <div class="k-section-title">Last {{ velocity.buckets.length }} days · created vs closed</div>
-        <div class="k-velocity-chart" :style="{ gridTemplateColumns: `repeat(${velocity.buckets.length}, 1fr)` }">
-          <div
-            v-for="(b, i) in velocity.buckets"
-            :key="b.iso"
-            class="k-vel-col k-clickable"
-            :class="{ 'k-vel-today': i === velocity.buckets.length - 1 }"
-            @click="filterByDay(b.iso)"
-            :title="`Filter graph to ${b.label} (${b.iso})`"
-          >
-            <div class="k-vel-bars" :style="{ height: velocity.barAreaPx + 'px' }">
-              <div class="k-vel-bar k-vel-created" :style="{ height: (b.created / velocity.max * 100) + '%' }" :title="`${b.created} created`">
-                <span v-if="b.created" class="k-vel-num">{{ b.created }}</span>
+        <div class="k-section-title">
+          Last {{ velocity.weeks }} weeks · daily net
+          <span class="k-section-sub">
+            <i class="k-swatch" style="background: #43a047;" /> closing &gt; creating ·
+            <i class="k-swatch" style="background: #d32f2f;" /> creating &gt; closing ·
+            Σ created {{ fmtNum(velocity.totalCreated) }} · Σ closed {{ fmtNum(velocity.totalClosed) }} · peak swing ±{{ fmtNum(velocity.peakAbs) }}/day
+          </span>
+        </div>
+        <div class="k-vel-cal">
+          <div class="k-vel-corner" />
+          <div v-for="d in ['Mon','Tue','Wed','Thu','Fri','Sat','Sun']" :key="d" class="k-vel-dow">{{ d }}</div>
+          <template v-for="row in velocity.weekRows" :key="row.week">
+            <div class="k-vel-weeknum">{{ row.num }}</div>
+            <div
+              v-for="c in row.cells" :key="c.iso"
+              class="k-vel-cell"
+              :class="{ 'k-clickable': c.inRange && (c.created || c.closed), 'k-vel-cell-today': c.isToday, 'k-vel-cell-outside': !c.inRange }"
+              :style="{ background: c.bg }"
+              @click="c.inRange && (c.created || c.closed) && filterByDay(c.iso)"
+              :title="`${c.iso} · ${c.created} created · ${c.closed} closed${c.created || c.closed ? ' · net ' + (c.net >= 0 ? '+' : '') + c.net : ''}`"
+            >
+              <div class="k-vel-cell-date">
+                <template v-if="c.monthShort">{{ c.monthShort }} {{ c.dom }}</template>
+                <template v-else>{{ c.dom }}</template>
               </div>
-              <div class="k-vel-bar k-vel-closed" :style="{ height: (b.closed / velocity.max * 100) + '%' }" :title="`${b.closed} closed`">
-                <span v-if="b.closed" class="k-vel-num">{{ b.closed }}</span>
+              <div v-if="c.inRange && (c.created || c.closed)" class="k-vel-cell-net">
+                {{ c.net > 0 ? '+' : '' }}{{ c.net }}
               </div>
             </div>
-            <div class="k-vel-lbl">{{ b.label }}</div>
-          </div>
-        </div>
-        <div class="k-legend">
-          <span><i class="k-swatch k-vel-created" /> Created</span>
-          <span><i class="k-swatch k-vel-closed" /> Closed</span>
-          <span class="k-legend-spacer" />
-          <span>Σ created {{ fmtNum(velocity.totalCreated) }} · Σ closed {{ fmtNum(velocity.totalClosed) }}</span>
+          </template>
         </div>
       </section>
 
@@ -535,6 +539,8 @@
                 :width="row.data.cellSize" :height="row.data.cellSize"
                 rx="2" ry="2"
                 :fill="c.inRange ? row.data.cfg.palette[c.level] : 'rgba(127,127,127,0.04)'"
+                :class="{ 'k-hm-clickable': c.inRange && c.count > 0 }"
+                @click="onHeatmapCellClick(row.id, c)"
               ><title v-if="c.count > 0">{{ c.label }}: {{ c.count }}</title></rect>
             </template>
           </svg>
@@ -547,12 +553,12 @@
         </div>
       </section>
 
-      <!-- Activity by label heatmap: rows = top-N labels, cols = weeks -->
+      <!-- Activity by label heatmap: rows = top-N labels, cols = days -->
       <section v-else-if="currentMode === 'heatmapByLabel'" class="k-heatmap-section">
         <div class="k-section-title">
           <v-icon icon="mdi-view-grid-outline" />
           Activity by label · top {{ heatmapByLabel?.topN || 10 }} · last {{ heatmapByLabel?.days || 365 }} days
-          <span v-if="heatmapByLabel" class="k-section-sub">Σ {{ fmtNum(heatmapByLabel.total) }} events · peak {{ fmtNum(heatmapByLabel.max) }}/week</span>
+          <span v-if="heatmapByLabel" class="k-section-sub">Σ {{ fmtNum(heatmapByLabel.total) }} events · peak {{ fmtNum(heatmapByLabel.max) }}/day</span>
         </div>
         <svg
           :ref="setHeatmapByLabelSvgRef"
@@ -567,7 +573,9 @@
               font-size="11" fill="rgba(200,200,200,0.7)" font-weight="600"
             >{{ m.label }}</text>
 
-            <!-- Each row: label name on left + week cells, all in the row's hashed hue -->
+            <!-- Each label = its own GitHub-style 7×N-week mini heatmap. Label
+                 text is centered to the left of the block. Out-of-range cells
+                 (padding to align Mon-start / today-end) get a faint background. -->
             <g v-for="row in heatmapByLabel.rows" :key="'hbl-r-' + row.label">
               <text
                 :x="heatmapByLabel.padLeft - 8"
@@ -581,7 +589,9 @@
                 :x="c.x" :y="c.y"
                 :width="c.w" :height="c.h"
                 rx="2" ry="2"
-                :fill="row.palette[c.level]"
+                :fill="c.inRange ? row.palette[c.level] : 'rgba(127,127,127,0.04)'"
+                :class="{ 'k-hm-clickable': c.inRange && c.count > 0 }"
+                @click="onHeatmapByLabelCellClick(row.label, c)"
               ><title v-if="c.count > 0">{{ row.label }}: {{ c.count }} events</title></rect>
             </g>
           </template>
@@ -628,73 +638,76 @@
         </div>
       </section>
 
-      <!-- Priority overview -->
-      <section v-else-if="currentMode === 'priority'" class="k-priority">
-        <div class="k-section-title">
-          Open by priority
-          <span class="k-section-sub">{{ activeFilterSubtitle }}</span>
-        </div>
-        <div v-if="!priorityData.length" class="k-empty">No priorities found on active tickets.</div>
-        <div v-else class="k-bar-list">
-          <div
-            v-for="row in priorityData"
-            :key="row.label"
-            class="k-bar-row"
-            :class="{ 'k-clickable': !/^\(/.test(row.label) }"
-            @click="filterByPriority(row.label)"
-            :title="`Filter graph by Priority::${row.label}`"
-          >
-            <div class="k-bar-name">{{ row.label }}</div>
-            <div class="k-bar-track">
-              <div class="k-bar-fill" :style="{ width: (row.count / priorityMax * 100) + '%', background: row.color }" />
+      <!-- Combined breakdown: priority / status / type stacked into one screen. -->
+      <section v-else-if="currentMode === 'breakdown'" class="k-breakdown">
+        <!-- Priority -->
+        <div class="k-breakdown-block">
+          <div class="k-section-title">
+            Open by priority
+            <span class="k-section-sub">{{ activeFilterSubtitle }}</span>
+          </div>
+          <div v-if="!priorityData.length" class="k-empty">No priorities found on active tickets.</div>
+          <div v-else class="k-bar-list">
+            <div
+              v-for="row in priorityData"
+              :key="row.label"
+              class="k-bar-row"
+              :class="{ 'k-clickable': !/^\(/.test(row.label) }"
+              @click="filterByPriority(row.label)"
+              :title="`Filter graph by Priority::${row.label}`"
+            >
+              <div class="k-bar-name">{{ row.label }}</div>
+              <div class="k-bar-track">
+                <div class="k-bar-fill" :style="{ width: (row.count / priorityMax * 100) + '%', background: row.color }" />
+              </div>
+              <div class="k-bar-count">{{ fmtNum(row.count) }}</div>
+              <div class="k-bar-side k-bar-pct">{{ pctOf(row.count, priorityTotal) }}%</div>
+              <div class="k-bar-side">oldest {{ row.oldestDays }}d</div>
             </div>
-            <div class="k-bar-count">{{ fmtNum(row.count) }}</div>
-            <div class="k-bar-side k-bar-pct">{{ pctOf(row.count, priorityTotal) }}%</div>
-            <div class="k-bar-side">oldest {{ row.oldestDays }}d</div>
+          </div>
+        </div>
+
+        <!-- Status (with avg-idle column to surface review/queue bottlenecks) -->
+        <div class="k-breakdown-block">
+          <div class="k-section-title">
+            Open by status
+            <span class="k-section-sub">avg idle = days since last update</span>
+          </div>
+          <div v-if="!statusData.length" class="k-empty">No statuses set on active tickets.</div>
+          <div v-else class="k-bar-list">
+            <div v-for="row in statusData" :key="row.label" class="k-bar-row">
+              <div class="k-bar-name">{{ row.label }}</div>
+              <div class="k-bar-track"><div class="k-bar-fill" :style="{ width: (row.count / statusMax * 100) + '%' }" /></div>
+              <div class="k-bar-count">{{ fmtNum(row.count) }}</div>
+              <div class="k-bar-side k-bar-pct">{{ pctOf(row.count, statusTotal) }}%</div>
+              <div class="k-bar-side" :class="row.avgIdleDays > 14 ? 'k-bar-side-warn' : ''">avg idle {{ row.avgIdleDays }}d</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Type -->
+        <div class="k-breakdown-block">
+          <div class="k-section-title">
+            Open by Type
+          </div>
+          <div v-if="!typeData.length" class="k-empty">No Type:: labels on active tickets.</div>
+          <div v-else class="k-bar-list">
+            <div v-for="row in typeData" :key="row.label" class="k-bar-row">
+              <div class="k-bar-name">{{ row.label }}</div>
+              <div class="k-bar-track"><div class="k-bar-fill" :style="{ width: (row.count / typeMax * 100) + '%' }" /></div>
+              <div class="k-bar-count">{{ fmtNum(row.count) }}</div>
+              <div class="k-bar-side k-bar-pct">{{ pctOf(row.count, typeTotal) }}%</div>
+            </div>
           </div>
         </div>
       </section>
 
-      <!-- Status breakdown (with avg-idle column to surface review/queue bottlenecks) -->
-      <section v-else-if="currentMode === 'status'" class="k-priority">
-        <div class="k-section-title">
-          Open by status
-          <span class="k-section-sub">{{ activeFilterSubtitle }} · avg idle = days since last update</span>
-        </div>
-        <div v-if="!statusData.length" class="k-empty">No statuses set on active tickets.</div>
-        <div v-else class="k-bar-list">
-          <div v-for="row in statusData" :key="row.label" class="k-bar-row">
-            <div class="k-bar-name">{{ row.label }}</div>
-            <div class="k-bar-track"><div class="k-bar-fill" :style="{ width: (row.count / statusMax * 100) + '%' }" /></div>
-            <div class="k-bar-count">{{ fmtNum(row.count) }}</div>
-            <div class="k-bar-side k-bar-pct">{{ pctOf(row.count, statusTotal) }}%</div>
-            <div class="k-bar-side" :class="row.avgIdleDays > 14 ? 'k-bar-side-warn' : ''">avg idle {{ row.avgIdleDays }}d</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Type breakdown -->
-      <section v-else-if="currentMode === 'type'" class="k-priority">
-        <div class="k-section-title">
-          Open by Type
-          <span class="k-section-sub">{{ activeFilterSubtitle }}</span>
-        </div>
-        <div v-if="!typeData.length" class="k-empty">No Type:: labels on active tickets.</div>
-        <div v-else class="k-bar-list">
-          <div v-for="row in typeData" :key="row.label" class="k-bar-row">
-            <div class="k-bar-name">{{ row.label }}</div>
-            <div class="k-bar-track"><div class="k-bar-fill" :style="{ width: (row.count / typeMax * 100) + '%' }" /></div>
-            <div class="k-bar-count">{{ fmtNum(row.count) }}</div>
-            <div class="k-bar-side k-bar-pct">{{ pctOf(row.count, typeTotal) }}%</div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Hot labels (recent activity window) -->
+      <!-- Hot labels (recent activity window) — bar split by priority bucket so
+           the room sees not just which areas are hot but how critical they are. -->
       <section v-else-if="currentMode === 'hotLabels'" class="k-priority">
         <div class="k-section-title">
-          Hot labels · last {{ hotLabels.hours }}h
-          <span class="k-section-sub">{{ hotLabels.activeTickets }} active ticket{{ hotLabels.activeTickets === 1 ? '' : 's' }}</span>
+          Hot labels · last {{ hotLabels.windowLabel }}
+          <span class="k-section-sub">{{ hotLabels.activeTickets }} active ticket{{ hotLabels.activeTickets === 1 ? '' : 's' }} · stacked by priority</span>
         </div>
         <div v-if="!hotLabels.list.length" class="k-empty">No active labels in this window.</div>
         <div v-else class="k-bar-list">
@@ -705,27 +718,78 @@
             :title="`Filter graph by label: ${row.label}`"
           >
             <div class="k-bar-name" :title="row.label">{{ row.label }}</div>
-            <div class="k-bar-track"><div class="k-bar-fill" :style="{ width: (row.count / hotLabelsMax * 100) + '%' }" /></div>
+            <div class="k-bar-track k-bar-track-stacked" :style="{ width: (row.count / hotLabelsMax * 100) + '%' }">
+              <template v-for="b in PRIORITY_BUCKETS" :key="b">
+                <div
+                  v-if="row[b]"
+                  class="k-bar-seg"
+                  :style="{ flexGrow: row[b], background: PRIORITY_BUCKET_COLOR[b] }"
+                  :title="`${row[b]} ${PRIORITY_BUCKET_LABEL[b]}`"
+                />
+              </template>
+            </div>
             <div class="k-bar-count">{{ fmtNum(row.count) }}</div>
             <div class="k-bar-side k-bar-pct">{{ pctOf(row.count, hotLabels.activeTickets) }}%</div>
           </div>
         </div>
+        <div v-if="hotLabelsActiveBuckets.length" class="k-legend k-workload-legend">
+          <span v-for="b in hotLabelsActiveBuckets" :key="b">
+            <i class="k-swatch" :style="{ background: PRIORITY_BUCKET_COLOR[b] }" />
+            {{ PRIORITY_BUCKET_LABEL[b] }}
+          </span>
+        </div>
       </section>
 
-      <!-- Milestone progress -->
-      <section v-else-if="currentMode === 'milestones'" class="k-priority">
+      <!-- Milestone progress — one card per milestone with stacked bar (closed
+           green / open grey), big % badge, and chip-row showing due context,
+           ETA from 14d velocity, and scope-creep when adds outpace closures. -->
+      <section v-else-if="currentMode === 'milestones'" class="k-milestones">
         <div class="k-section-title">Milestone progress · active milestones</div>
         <div v-if="!milestonesData.length" class="k-empty">No active milestones with tickets.</div>
-        <div v-else class="k-bar-list">
-          <div v-for="m in milestonesData" :key="m.title" class="k-bar-row" :class="{ 'k-bar-pinned': m.isTarget }">
-            <div class="k-bar-name" :title="m.title">
-              <v-icon v-if="m.isTarget" icon="mdi-flag" size="x-small" class="mr-1" />{{ m.title }}
+        <div v-else class="k-ms-list">
+          <div
+            v-for="m in milestonesData" :key="m.title"
+            class="k-ms-row k-clickable"
+            :class="{ 'k-ms-target-row': m.isTarget, 'k-ms-complete': m.complete }"
+            @click="filterByMilestone(m.title)"
+            :title="`Filter graph by milestone: ${m.title}`"
+          >
+            <div class="k-ms-head">
+              <div class="k-ms-title">
+                <v-icon v-if="m.isTarget" icon="mdi-flag" size="small" />
+                <v-icon v-else-if="m.complete" icon="mdi-check-decagram" size="small" style="color: #66bb6a" />
+                <span>{{ m.title }}</span>
+              </div>
+              <div class="k-ms-counts">
+                <span class="k-ms-closed-n">{{ fmtNum(m.closed) }}</span>
+                <span class="k-ms-divider"> / </span>
+                <span class="k-ms-total-n">{{ fmtNum(m.total) }}</span>
+                <span v-if="m.open" class="k-ms-open-n"> · {{ fmtNum(m.open) }} open</span>
+              </div>
+              <div class="k-ms-pct" :class="m.pct >= 80 ? 'k-ms-pct-good' : m.pct >= 50 ? 'k-ms-pct-warn' : 'k-ms-pct-low'">{{ m.pct }}%</div>
             </div>
-            <div class="k-bar-track">
-              <div class="k-bar-fill" :style="{ width: m.pct + '%', background: m.pct >= 80 ? '#43a047' : (m.pct >= 50 ? '#fbc02d' : '#1e88e5') }" />
+            <div class="k-ms-bar">
+              <div v-if="m.closed" class="k-ms-seg k-ms-seg-closed" :style="{ flexGrow: m.closed }" />
+              <div v-if="m.open"   class="k-ms-seg k-ms-seg-open"   :style="{ flexGrow: m.open }" />
             </div>
-            <div class="k-bar-count">{{ m.pct }}%</div>
-            <div class="k-bar-side">{{ fmtNum(m.closed) }}/{{ fmtNum(m.total) }}{{ m.due ? ' · due ' + m.due : '' }}</div>
+            <div class="k-ms-chips">
+              <span class="k-ms-chip" :class="m.dueClass">
+                <v-icon icon="mdi-calendar" size="x-small" />
+                {{ m.dueChip }}<template v-if="m.due"> · {{ m.due }}</template>
+              </span>
+              <span v-if="m.etaChip" class="k-ms-chip" :class="m.etaClass">
+                <v-icon :icon="m.etaIcon" size="x-small" />
+                {{ m.etaChip }}
+              </span>
+              <span v-if="m.scopeChip" class="k-ms-chip" :class="m.scopeClass">
+                <v-icon icon="mdi-plus-circle-outline" size="x-small" />
+                {{ m.scopeChip }}
+              </span>
+              <span v-if="m.closedRecent" class="k-ms-chip k-ms-velocity">
+                <v-icon icon="mdi-flash" size="x-small" />
+                {{ m.closedRecent }} closed · 14d
+              </span>
+            </div>
           </div>
         </div>
       </section>
@@ -750,10 +814,10 @@
       <section v-else-if="currentMode === 'activity'" class="k-activity">
         <div class="k-section-title">Recent activity</div>
         <div v-if="!activityFeed.length" class="k-empty">No activity yet.</div>
-        <ul v-else class="k-feed">
+        <TransitionGroup v-else tag="ul" name="k-feed-anim" class="k-feed">
           <li
-            v-for="(e, i) in activityFeed"
-            :key="i"
+            v-for="e in activityFeed"
+            :key="`${e.kind}-${e.iid}-${e.ts}`"
             :class="[`k-feed-${e.kind}`, { 'k-clickable': !!e.url }]"
             @click="openIssue(e.url)"
             :title="e.url ? 'Open issue in GitLab' : ''"
@@ -775,7 +839,7 @@
             </span>
             <span class="k-feed-when">{{ relTime(e.ts) }}</span>
           </li>
-        </ul>
+        </TransitionGroup>
       </section>
 
       <!-- Recently closed: celebration view -->
@@ -788,10 +852,10 @@
           <v-icon icon="mdi-clock-time-three-outline" size="48" />
           <div>No closures in the last {{ closedRecently.hours }}h yet.</div>
         </div>
-        <ul v-else class="k-feed">
+        <TransitionGroup v-else tag="ul" name="k-feed-anim" class="k-feed">
           <li
-            v-for="(e, i) in closedRecently.list"
-            :key="i"
+            v-for="e in closedRecently.list"
+            :key="`closed-${e.iid}-${e.ts}`"
             class="k-feed-closed-cel"
             :class="{ 'k-clickable': !!e.url }"
             @click="openIssue(e.url)"
@@ -810,7 +874,7 @@
             </span>
             <span class="k-feed-when">{{ relTime(e.ts) }}</span>
           </li>
-        </ul>
+        </TransitionGroup>
       </section>
 
       <!-- Ticket health: problem categories + worst-offender list -->
@@ -918,7 +982,7 @@ const root = ref(null)
 
 const ALL_MODES = [
   { id: 'target',         label: 'Target milestone' },
-  { id: 'burnup',         label: 'Milestone burnup' },
+  { id: 'burndown',       label: 'Milestone burndown' },
   { id: 'blockers',       label: 'Blockers' },
   { id: 'wipStale',       label: 'Stale WIP' },
   { id: 'today',          label: "Today's pulse" },
@@ -926,9 +990,7 @@ const ALL_MODES = [
   { id: 'heatmap',        label: 'Activity heatmap' },
   { id: 'heatmapByLabel', label: 'Activity by label' },
   { id: 'workload',   label: 'Workload by assignee' },
-  { id: 'priority',   label: 'Priority overview' },
-  { id: 'status',     label: 'Status breakdown' },
-  { id: 'type',       label: 'Type breakdown' },
+  { id: 'breakdown',  label: 'Open by priority / status / type' },
   { id: 'hotLabels',  label: 'Hot labels' },
   { id: 'milestones', label: 'Milestone progress' },
   { id: 'aging',      label: 'Aging buckets' },
@@ -978,15 +1040,39 @@ watch(paused, (p) => writeArgs({ paused: p ? '1' : '' }))
 // React to external URL changes (back / forward / pasted link).
 watch(argParams, (a) => { const want = a.paused === '1'; if (paused.value !== want) paused.value = want })
 
-const setMode = (id) => { currentMode.value = id }
+// Auto-pause when the user navigates manually. Someone at the wall who steps
+// through with ‹ / › or clicks a dot doesn't want the timer yanking them back to
+// the next cycled mode 8s later. We also briefly pulse the play/pause button via
+// `pauseFlash` so they notice the cycle stopped.
+const pauseFlash = ref(false)
+let pauseFlashTimer = null
+const userMoved = () => {
+  if (cycleSec.value > 0 && !paused.value) {
+    paused.value = true
+    pauseFlash.value = true
+    if (pauseFlashTimer) clearTimeout(pauseFlashTimer)
+    pauseFlashTimer = setTimeout(() => { pauseFlash.value = false }, 1600)
+  }
+}
+const togglePause = () => {
+  paused.value = !paused.value
+  pauseFlash.value = false
+  if (pauseFlashTimer) { clearTimeout(pauseFlashTimer); pauseFlashTimer = null }
+}
+const setMode = (id) => { userMoved(); currentMode.value = id }
 const indexOfCurrent = () => activeModes.value.findIndex(m => m.id === currentMode.value)
-const nextMode = () => {
+// `byUser` defaults to true so all template `@click="nextMode"` bindings (which
+// pass an Event arg, truthy) and hotkey calls auto-pause. The cycle timer is the
+// one place that calls `nextMode(false)` to advance without pausing itself.
+const nextMode = (byUser = true) => {
+  if (byUser) userMoved()
   const list = activeModes.value
   if (!list.length) return
   const i = indexOfCurrent()
   currentMode.value = list[(i + 1 + list.length) % list.length].id
 }
-const prevMode = () => {
+const prevMode = (byUser = true) => {
+  if (byUser) userMoved()
   const list = activeModes.value
   if (!list.length) return
   const i = indexOfCurrent()
@@ -1009,7 +1095,7 @@ let refreshTimer = null
 const startCycle = () => {
   if (cycleTimer) clearInterval(cycleTimer)
   if (!cycleSec.value) return
-  cycleTimer = setInterval(() => { if (!paused.value) nextMode() }, cycleSec.value * 1000)
+  cycleTimer = setInterval(() => { if (!paused.value) nextMode(false) }, cycleSec.value * 1000)
 }
 const startRefresh = () => {
   if (refreshTimer) clearInterval(refreshTimer)
@@ -1064,7 +1150,7 @@ const handleWindowKey = (e) => {
   if (e.key === 'Escape')         { e.preventDefault(); emit('close'); return }
   if (e.key === 'ArrowRight')     { e.preventDefault(); nextMode(); return }
   if (e.key === 'ArrowLeft')      { e.preventDefault(); prevMode(); return }
-  if (e.key === ' ')              { e.preventDefault(); paused.value = !paused.value; return }
+  if (e.key === ' ')              { e.preventDefault(); togglePause(); return }
   if (toggleKioskCombo.value && getEventCombo(e) === toggleKioskCombo.value) {
     e.preventDefault(); emit('close')
   }
@@ -1072,7 +1158,7 @@ const handleWindowKey = (e) => {
 
 // Track each per-mode SVG's actual pixel size — keeps viewBox 1:1 with screen so text
 // and strokes never get squished. Re-attaches when the relevant mode becomes current.
-let burnupRO = null
+let burndownRO = null
 let heatmapRO = null
 let heatmapByLabelRO = null
 const observeSize = (existing, el, sizeRef) => {
@@ -1089,8 +1175,8 @@ const observeSize = (existing, el, sizeRef) => {
 }
 // SVG refs + size refs need to be declared here so the watcher below can reference
 // them — the actual mode sections later in the file just use these same refs.
-const burnupSvgRef = ref(null)
-const burnupSize = ref(null)  // null until ResizeObserver has measured the SVG
+const burndownSvgRef = ref(null)
+const burndownSize = ref(null)  // null until ResizeObserver has measured the SVG
 const heatmapSvgRef = ref(null)
 const heatmapSize = ref(null)
 const heatmapByLabelSvgRef = ref(null)
@@ -1101,13 +1187,25 @@ const heatmapByLabelSize = ref(null)
 const setHeatmapSvgRef        = (el) => { heatmapSvgRef.value = el }
 const setHeatmapByLabelSvgRef = (el) => { heatmapByLabelSvgRef.value = el }
 
+// Brief "data just refreshed" pulse — adds .is-refreshed to the kiosk root for
+// 800ms whenever props.lastUpdated changes, which CSS keyframes pick up to flash
+// stat numbers / progress bar. Subtle, but it tells the room "yes the wall is live".
+const justRefreshed = ref(false)
+let justRefreshedTimer = null
+watch(() => props.lastUpdated, (newVal, oldVal) => {
+  if (!newVal || newVal === oldVal) return
+  justRefreshed.value = true
+  if (justRefreshedTimer) clearTimeout(justRefreshedTimer)
+  justRefreshedTimer = setTimeout(() => { justRefreshed.value = false }, 800)
+})
+
 const watchModeSvgs = () => {
-  burnupRO         = observeSize(burnupRO,         burnupSvgRef.value,         burnupSize)
+  burndownRO       = observeSize(burndownRO,       burndownSvgRef.value,       burndownSize)
   heatmapRO        = observeSize(heatmapRO,        heatmapSvgRef.value,        heatmapSize)
   heatmapByLabelRO = observeSize(heatmapByLabelRO, heatmapByLabelSvgRef.value, heatmapByLabelSize)
 }
 watch(
-  () => [currentMode.value, burnupSvgRef.value, heatmapSvgRef.value, heatmapByLabelSvgRef.value],
+  () => [currentMode.value, burndownSvgRef.value, heatmapSvgRef.value, heatmapByLabelSvgRef.value],
   () => nextTick(watchModeSvgs)
 )
 
@@ -1124,9 +1222,11 @@ onUnmounted(() => {
   if (refreshTimer) clearInterval(refreshTimer)
   if (nowTickTimer) clearInterval(nowTickTimer)
   window.removeEventListener('keydown', handleWindowKey)
-  if (burnupRO)         { burnupRO.disconnect();         burnupRO = null }
+  if (burndownRO)       { burndownRO.disconnect();       burndownRO = null }
   if (heatmapRO)        { heatmapRO.disconnect();        heatmapRO = null }
   if (heatmapByLabelRO) { heatmapByLabelRO.disconnect(); heatmapByLabelRO = null }
+  if (justRefreshedTimer) { clearTimeout(justRefreshedTimer); justRefreshedTimer = null }
+  if (pauseFlashTimer)    { clearTimeout(pauseFlashTimer);    pauseFlashTimer = null }
 })
 
 // Priority buckets — declared up here because the global `priorityFilter` setting
@@ -1166,7 +1266,7 @@ const fmtNum = (n) => NUM_FMT.format(Number(n) || 0)
 const pctOf = (n, total) => total > 0 ? Math.round((n / total) * 100) : 0
 
 // Global kiosk filters — applied at the `allItems` layer so every mode (target focus,
-// burnup, milestones progress, today's pulse, every count list, every feed) reflects
+// burndown, milestones progress, today's pulse, every count list, every feed) reflects
 // the same scope. "Stale" and "exclude backlog" only affect OPEN tickets — closed ones
 // are historical events that shouldn't disappear based on current staleness.
 const priorityFilter = computed(() => {
@@ -1229,42 +1329,103 @@ const today = computed(() => {
 })
 
 const velocityCfg = computed(() => settings.uiState.kiosk?.modeConfig?.velocity || {})
+// ISO week number — used to label the week-of-year column.
+const isoWeek = (date) => {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()))
+  const dayNum = d.getUTCDay() || 7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum)
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7)
+}
+// Velocity = month-view calendar over the last N weeks (default 8 ≈ 2 months).
+// Rows = ISO weeks, columns = Mon..Sun. Each cell shows the date number plus
+// the daily NET (closed − created): green when more closed than created
+// (shipping), red when more created than closed (drowning), grey when balanced
+// or quiet. Intensity scales with |net| against the window's peak swing.
 const velocity = computed(() => {
-  const days = Math.min(31, Math.max(1, Number(velocityCfg.value.days) || 7))
+  const weeks = Math.min(12, Math.max(1, Number(velocityCfg.value.weeks) || 8))
   const dayMs = 24 * 60 * 60 * 1000
   const today0 = startOfToday()
-  const firstDay = today0 - (days - 1) * dayMs
+  const dowMon = (ts) => (new Date(ts).getDay() + 6) % 7
+  // Last `weeks` weeks ending with the week that contains today. Start = Mon of
+  // (weeks-1) weeks ago.
+  const alignedStart = today0 - dowMon(today0) * dayMs - (weeks - 1) * 7 * dayMs
+  const totalDays = weeks * 7
   const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10)
-  const labelFor = (i, ms) => {
-    if (i === days - 1) return 'Today'
-    return days <= 8
-      ? new Date(ms).toLocaleDateString(undefined, { weekday: 'short' })
-      : new Date(ms).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-  }
-  const buckets = Array.from({ length: days }, (_, i) => ({
-    label: labelFor(i, firstDay + i * dayMs),
-    iso: isoDay(firstDay + i * dayMs),
-    created: 0,
-    closed: 0
-  }))
+  // Pre-build the grid: cells[d] for d in 0..totalDays. Each cell carries its
+  // week/dow indices, day-of-month, and first-of-month marker so the template
+  // can render the date label without recomputing.
+  const cells = Array.from({ length: totalDays }, (_, d) => {
+    const ts = alignedStart + d * dayMs
+    const date = new Date(ts)
+    const dom = date.getDate()
+    return {
+      ts, iso: isoDay(ts), week: Math.floor(d / 7), dow: d % 7,
+      inRange: ts <= today0,
+      isToday: ts === today0,
+      created: 0, closed: 0,
+      dom,
+      monthShort: dom === 1 ? date.toLocaleDateString(undefined, { month: 'short' }) : null
+    }
+  })
   for (const n of items.value) {
     const raw = n._raw || {}
     const c = safeDate(raw.created_at); if (c) {
-      const day = Math.floor((c - firstDay) / dayMs)
-      if (day >= 0 && day < days) buckets[day].created++
+      const d = Math.floor((c - alignedStart) / dayMs)
+      if (d >= 0 && d < totalDays) cells[d].created++
     }
     const cl = safeDate(raw.closed_at); if (cl) {
-      const day = Math.floor((cl - firstDay) / dayMs)
-      if (day >= 0 && day < days) buckets[day].closed++
+      const d = Math.floor((cl - alignedStart) / dayMs)
+      if (d >= 0 && d < totalDays) cells[d].closed++
     }
   }
-  const max = Math.max(1, ...buckets.flatMap(b => [b.created, b.closed]))
+  // Net daily change + intensity scaling against the window's peak |net|.
+  let peakAbs = 1
+  for (const c of cells) {
+    c.net = c.closed - c.created
+    const abs = Math.abs(c.net)
+    if (abs > peakAbs) peakAbs = abs
+  }
+  const t1 = Math.max(1, Math.round(peakAbs * 0.10))
+  const t2 = Math.max(t1 + 1, Math.round(peakAbs * 0.25))
+  const t3 = Math.max(t2 + 1, Math.round(peakAbs * 0.50))
+  const paletteCreated = HEATMAP_CONFIGS.heatmapCreated.palette
+  const paletteClosed  = HEATMAP_CONFIGS.heatmapClosed.palette
+  for (const c of cells) {
+    const abs = Math.abs(c.net)
+    let level = 0
+    if (abs > 0) {
+      if (abs <= t1) level = 1
+      else if (abs <= t2) level = 2
+      else if (abs <= t3) level = 3
+      else level = 4
+    }
+    c.level = level
+    if (!c.inRange || (c.created === 0 && c.closed === 0)) {
+      c.bg = 'rgba(127,127,127,0.04)'
+    } else if (c.net > 0) {
+      c.bg = paletteClosed[level]
+    } else if (c.net < 0) {
+      c.bg = paletteCreated[level]
+    } else {
+      // Equal volume of creates and closes — a balanced day, neutral grey.
+      c.bg = 'rgba(127,127,127,0.22)'
+    }
+  }
+  // Group into week rows for the calendar layout: { num: ISO-week, cells: [Mon..Sun] }.
+  const weekRows = []
+  for (let w = 0; w < weeks; w++) {
+    const monTs = alignedStart + w * 7 * dayMs
+    weekRows.push({
+      week: w,
+      num: isoWeek(new Date(monTs)),
+      cells: cells.slice(w * 7, w * 7 + 7)
+    })
+  }
   return {
-    buckets,
-    max,
-    barAreaPx: 220,
-    totalCreated: buckets.reduce((s, b) => s + b.created, 0),
-    totalClosed: buckets.reduce((s, b) => s + b.closed, 0)
+    cells, weeks, weekRows, peakAbs,
+    totalCreated: cells.reduce((s, c) => s + c.created, 0),
+    totalClosed:  cells.reduce((s, c) => s + c.closed,  0)
   }
 })
 
@@ -1315,12 +1476,14 @@ const PRIORITY_COLOR = {
   blocking: '#d32f2f', critical: '#d32f2f', high: '#f57c00',
   medium: '#fbc02d', normal: '#fbc02d', low: '#7cb342', lowest: '#9e9e9e'
 }
-const priorityCfg = computed(() => settings.uiState.kiosk?.modeConfig?.priority || {})
+// Combined breakdown config — shared by the priority / status / type sub-blocks
+// of the `breakdown` mode (showNo* toggles whether the "(No X)" bucket appears).
+const breakdownCfg = computed(() => settings.uiState.kiosk?.modeConfig?.breakdown || {})
 const priorityData = computed(() => {
   const now = Date.now()
   const day = 24 * 60 * 60 * 1000
   const groups = new Map()
-  const showNone = priorityCfg.value.showNoPriority !== false
+  const showNone = breakdownCfg.value.showNoPriority !== false
   for (const n of activeOpenItems.value) {
     const raw = n._raw || {}
     const p = getScopedLabelValue(raw.labels, 'Priority') || '(No priority)'
@@ -1347,9 +1510,8 @@ const priorityTotal = computed(() => priorityData.value.reduce((s, r) => s + r.c
 // Status breakdown (open · stale-filtered) with per-status average idle days.
 // Average idle = avg (now − updated_at), surfaces bottlenecks like "Ready for Review"
 // piling up at 5+ days idle on average.
-const statusCfg = computed(() => settings.uiState.kiosk?.modeConfig?.status || {})
 const statusData = computed(() => {
-  const showNone = !!statusCfg.value.showNoStatus
+  const showNone = !!breakdownCfg.value.showNoStatus
   const groups = new Map()
   const day = 24 * 60 * 60 * 1000
   const now = Date.now()
@@ -1371,9 +1533,8 @@ const statusMax = computed(() => Math.max(1, ...statusData.value.map(r => r.coun
 const statusTotal = computed(() => statusData.value.reduce((s, r) => s + r.count, 0))
 
 // Type:: scoped label breakdown (open · stale-filtered)
-const typeCfg = computed(() => settings.uiState.kiosk?.modeConfig?.type || {})
 const typeData = computed(() => {
-  const showNone = !!typeCfg.value.showNoType
+  const showNone = !!breakdownCfg.value.showNoType
   const counts = new Map()
   for (const n of activeOpenItems.value) {
     const raw = n._raw || {}
@@ -1418,11 +1579,13 @@ const agingTotal = computed(() => agingData.value.reduce((s, b) => s + b.count, 
 // Excludes scoped labels (Priority::, Type::, …) by default since they have their own modes.
 const hotLabelsCfg = computed(() => settings.uiState.kiosk?.modeConfig?.hotLabels || {})
 const hotLabels = computed(() => {
-  const hours = Math.max(1, Number(hotLabelsCfg.value.hours) || 24)
+  const hours = Math.max(1, Number(hotLabelsCfg.value.hours) || 168)
   const topN = Math.max(3, Number(hotLabelsCfg.value.topN) || 15)
   const includeScoped = !!hotLabelsCfg.value.includeScoped
   const cutoff = Date.now() - hours * 60 * 60 * 1000
-  const counts = new Map()
+  // labelStats: { label, count, blocking, high, medium, low, other, none } so the bar can
+  // stack by priority bucket — same data shape (and same colours) as the Workload screen.
+  const labelStats = new Map()
   let activeTickets = 0
   for (const n of items.value) {
     const raw = n._raw || {}
@@ -1431,20 +1594,35 @@ const hotLabels = computed(() => {
     const cl = safeDate(raw.closed_at) || 0
     if (Math.max(c, u, cl) < cutoff) continue
     activeTickets++
+    const bucket = priorityBucket(getScopedLabelValue(raw.labels, 'Priority'))
     const labels = Array.isArray(raw.labels) ? raw.labels : []
     for (const l of labels) {
       if (typeof l !== 'string' || !l) continue
       if (!includeScoped && isScopedLabel(l)) continue
-      counts.set(l, (counts.get(l) || 0) + 1)
+      let s = labelStats.get(l)
+      if (!s) { s = { label: l, count: 0 }; for (const b of PRIORITY_BUCKETS) s[b] = 0; labelStats.set(l, s) }
+      s.count++
+      s[bucket]++
     }
   }
+  // Pretty-print the window: "7d" / "3d 12h" / "12h" so larger windows are readable
+  // (default 168h = 7d reads better than "168h").
+  const windowLabel = hours >= 24
+    ? (hours % 24 === 0 ? `${hours / 24}d` : `${Math.floor(hours / 24)}d ${hours % 24}h`)
+    : `${hours}h`
   return {
-    list: [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, topN).map(([label, count]) => ({ label, count })),
+    list: [...labelStats.values()].sort((a, b) => b.count - a.count).slice(0, topN),
     activeTickets,
-    hours
+    hours, windowLabel
   }
 })
 const hotLabelsMax = computed(() => Math.max(1, ...hotLabels.value.list.map(r => r.count)))
+// Buckets actually present across visible rows — drives the legend (mirror of workloadActiveBuckets).
+const hotLabelsActiveBuckets = computed(() => {
+  const present = new Set()
+  for (const row of hotLabels.value.list) for (const b of PRIORITY_BUCKETS) if (row[b]) present.add(b)
+  return PRIORITY_BUCKETS.filter(b => present.has(b))
+})
 
 // Pinned "target" milestone (e.g. the version we're driving toward).
 const targetMilestone = computed(() => String(settings.uiState.kiosk?.targetMilestone || '').trim())
@@ -1453,6 +1631,10 @@ const targetMilestone = computed(() => String(settings.uiState.kiosk?.targetMile
 const milestonesCfg = computed(() => settings.uiState.kiosk?.modeConfig?.milestones || {})
 const milestonesData = computed(() => {
   const topN = Math.max(1, Number(milestonesCfg.value.topN) || 8)
+  const day = 24 * 60 * 60 * 1000
+  const now = Date.now()
+  const recentDays = 14
+  const recentCutoff = now - recentDays * day
   const ms = new Map()
   // Use unscoped list — milestones mode must compare across all milestones.
   for (const n of allItems.value) {
@@ -1464,15 +1646,95 @@ const milestonesData = computed(() => {
     // Keep closed milestones in the list only if they're the active target.
     if (state && state !== 'active' && state !== 'opened' && !isTarget) continue
     const key = m.title
-    if (!ms.has(key)) ms.set(key, { title: key, due: m.due_date || null, open: 0, closed: 0, isTarget })
+    if (!ms.has(key)) {
+      ms.set(key, {
+        title: key, due: m.due_date || null,
+        open: 0, closed: 0,
+        closedRecent: 0, addedRecent: 0,
+        isTarget
+      })
+    }
     const bucket = ms.get(key)
     if (isOpen(n)) bucket.open++; else bucket.closed++
+    const closedAt = safeDate(raw.closed_at)
+    if (closedAt && closedAt >= recentCutoff) bucket.closedRecent++
+    const created = safeDate(raw.created_at)
+    if (created && created >= recentCutoff) bucket.addedRecent++
   }
   const list = [...ms.values()].map(m => {
     const total = m.open + m.closed
-    return { ...m, total, pct: total ? Math.round((m.closed / total) * 100) : 0 }
+    const pct = total ? Math.round((m.closed / total) * 100) : 0
+
+    // Due chip — text + class capture both the message and its severity.
+    let dueDays = null, dueChip = null, dueClass = 'k-ms-neutral'
+    if (m.due) {
+      const dueMs = new Date(m.due).getTime()
+      dueDays = Math.round((dueMs - now) / day)
+      if (dueDays > 0) {
+        dueChip = `${dueDays}d to go`
+        dueClass = dueDays <= 7 ? 'k-ms-soon' : (dueDays <= 30 ? 'k-ms-warn' : 'k-ms-neutral')
+      } else if (dueDays === 0) {
+        dueChip = 'Due today'; dueClass = 'k-ms-soon'
+      } else {
+        dueChip = `${-dueDays}d overdue`; dueClass = 'k-ms-late'
+      }
+    } else {
+      dueChip = 'no deadline'
+    }
+
+    // ETA — closures-per-day from the 14d window projected against remaining open work.
+    let etaChip = null, etaClass = 'k-ms-neutral', etaIcon = 'mdi-rocket-launch-outline'
+    if (pct === 100 || m.open === 0) {
+      etaChip = 'Complete'; etaClass = 'k-ms-done'; etaIcon = 'mdi-trophy'
+    } else {
+      const vel = m.closedRecent / recentDays
+      if (vel > 0) {
+        const daysToFinish = m.open / vel
+        const etaMs = now + daysToFinish * day
+        const dueMs = m.due ? new Date(m.due).getTime() : null
+        if (!dueMs) {
+          etaChip = `ETA ${Math.round(daysToFinish)}d`
+        } else if (etaMs <= dueMs) {
+          etaChip = 'On track'; etaClass = 'k-ms-on-track'; etaIcon = 'mdi-rocket-launch'
+        } else if (etaMs <= dueMs + 14 * day) {
+          etaChip = `${Math.round((etaMs - dueMs) / day)}d late`; etaClass = 'k-ms-warn'
+          etaIcon = 'mdi-clock-alert-outline'
+        } else {
+          etaChip = `${Math.round((etaMs - dueMs) / day)}d late`; etaClass = 'k-ms-late'
+          etaIcon = 'mdi-clock-alert'
+        }
+      } else if (m.addedRecent > 0) {
+        etaChip = 'No closures yet'; etaClass = 'k-ms-warn'; etaIcon = 'mdi-clock-outline'
+      } else {
+        etaChip = 'Stalled'; etaClass = 'k-ms-late'; etaIcon = 'mdi-alert'
+      }
+    }
+
+    // Scope-creep chip — only when added > closed in the window (otherwise the
+    // milestone is shrinking and the chip would just be noise).
+    let scopeChip = null, scopeClass = 'k-ms-neutral'
+    if (m.addedRecent > 0 && m.addedRecent >= m.closedRecent) {
+      scopeChip = `+${m.addedRecent} added · ${recentDays}d`
+      scopeClass = m.addedRecent > m.closedRecent * 1.5 ? 'k-ms-late' : 'k-ms-warn'
+    }
+
+    return {
+      ...m, total, pct, dueDays, dueChip, dueClass,
+      etaChip, etaClass, etaIcon,
+      scopeChip, scopeClass,
+      complete: pct === 100 || m.open === 0
+    }
   })
-  list.sort((a, b) => (b.isTarget ? 1 : 0) - (a.isTarget ? 1 : 0) || b.total - a.total)
+  // Target pinned first; then real milestones by due date ascending (closest
+  // deadline first); milestones without a due date (TBD / Backlog / etc.) sink
+  // to the bottom via the Infinity fallback. Total count is the final tiebreaker.
+  list.sort((a, b) => {
+    if (a.isTarget !== b.isTarget) return b.isTarget ? 1 : -1
+    const aDue = a.due ? new Date(a.due).getTime() : Infinity
+    const bDue = b.due ? new Date(b.due).getTime() : Infinity
+    if (aDue !== bDue) return aDue - bDue
+    return b.total - a.total
+  })
   return list.slice(0, topN)
 })
 
@@ -1525,16 +1787,23 @@ const targetData = computed(() => {
     if (t.isOpen) { wasAdded ? openAdded++ : openOriginal++ }
     else { wasAdded ? closedAdded++ : closedOriginal++ }
   }
+  const day = 24 * 60 * 60 * 1000
+  const today0 = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() })()
   let dueLabel = ''
   let dueClass = ''
   if (due) {
-    const day = 24 * 60 * 60 * 1000
-    const today0 = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() })()
     const dueMs = new Date(due).getTime()
     const diff = Math.round((dueMs - today0) / day)
     if (diff > 0) { dueLabel = `${diff} day${diff === 1 ? '' : 's'} to go`; dueClass = diff <= 7 ? 'k-target-soon' : '' }
     else if (diff === 0) { dueLabel = 'Due today'; dueClass = 'k-target-soon' }
     else { dueLabel = `${-diff} day${diff === -1 ? '' : 's'} overdue`; dueClass = 'k-target-overdue' }
+  }
+  // Days since milestone start (start_date if set, else earliest ticket creation).
+  // Shown alongside the countdown so the team sees how far into the milestone they are.
+  let ageLabel = ''
+  if (startMs && startMs <= today0) {
+    const ageDays = Math.max(0, Math.round((today0 - startMs) / day))
+    ageLabel = `${ageDays} day${ageDays === 1 ? '' : 's'} in`
   }
   // Sort by: has priority first (high → low), then most-recently-updated.
   const priRank = (p) => {
@@ -1548,11 +1817,11 @@ const targetData = computed(() => {
   }
   openList.sort((a, b) => priRank(a.priority) - priRank(b.priority) || b.updatedAt - a.updatedAt)
   return {
-    title, total, open, closed, pct, due, dueLabel, dueClass, state,
+    title, total, open, closed, pct, due, dueLabel, dueClass, ageLabel, state,
     startDate, startMs,
     openOriginal, openAdded, closedOriginal, closedAdded,
     openList: openList.slice(0, 12),
-    // Saved for the burnup mode so it doesn't have to re-iterate every node.
+    // Saved for the burndown mode so it doesn't have to re-iterate every node.
     _ticketTimes: ticketTimes
   }
 })
@@ -1627,17 +1896,21 @@ const targetForecast = computed(() => {
 // We rebuild the lines from `created_at` / `closed_at` events on the currently-loaded
 // ticket data — there are no historical snapshots, so retroactive label changes etc.
 // can't be reconstructed.
-// `burnupSvgRef` + `burnupSize` are declared near the top of the script alongside the
-// other mode SVG refs so the global `watchModeSvgs` watcher can reference them.
-const BURNUP_PAD = { top: 28, right: 28, bottom: 48, left: 58 }
-const burnupCfg = computed(() => settings.uiState.kiosk?.modeConfig?.burnup || {})
-const targetBurnup = computed(() => {
+// `burndownSvgRef` + `burndownSize` are declared near the top of the script
+// alongside the other mode SVG refs so the global `watchModeSvgs` watcher can
+// reference them.
+const BURNDOWN_PAD = { top: 28, right: 28, bottom: 48, left: 58 }
+const burndownCfg = computed(() => settings.uiState.kiosk?.modeConfig?.burndown || {})
+// Burndown = remaining open work (scope − closed) over time, with a classic-Scrum
+// ideal straight line from (start, initialOpen) → (due, 0). Scope creep shows up
+// as the actual line rising above ideal even when closures are on pace.
+const targetBurndown = computed(() => {
   const td = targetData.value
   if (!td || !td._ticketTimes?.length) return null
   const tickets = td._ticketTimes
   const day = 24 * 60 * 60 * 1000
   const now = Date.now()
-  const windowDays = Math.max(7, Number(burnupCfg.value.windowDays) || 90)
+  const windowDays = Math.max(7, Number(burndownCfg.value.windowDays) || 90)
   const minCreated = Math.min(...tickets.filter(t => t.created).map(t => t.created))
   const dueMs = td.due ? new Date(td.due).getTime() : null
 
@@ -1652,7 +1925,9 @@ const targetBurnup = computed(() => {
   } else {
     start = Math.max(minCreated, now - windowDays * day)
   }
-  const end = Math.max(now, dueMs || (start + windowDays * day))
+  // Chart axis ends at today — we never project past "now". The due date is
+  // surfaced in the subtitle instead so the room still has deadline context.
+  const end = now
   if (!Number.isFinite(start) || start >= end) return null
 
   // Baseline counts at `start` (pre-existing tickets become Day 1 starting values).
@@ -1668,27 +1943,28 @@ const targetBurnup = computed(() => {
   const createdEvents = tickets.filter(t => t.created && t.created >= start).map(t => t.created).sort((a, b) => a - b)
   const closedEvents  = tickets.filter(t => t.closedAt && t.closedAt >= start).map(t => t.closedAt).sort((a, b) => a - b)
 
-  const sampleEnd = Math.min(now, end)
-  const dayCount = Math.max(1, Math.ceil((sampleEnd - start) / day))
+  const dayCount = Math.max(1, Math.ceil((end - start) / day))
   const points = []
   let scopeAcc = scopeBaseline, closedAcc = closedBaseline, ci = 0, cli = 0
   for (let d = 0; d <= dayCount; d++) {
     const ts = start + d * day
     while (ci < createdEvents.length && createdEvents[ci] <= ts) { scopeAcc++; ci++ }
     while (cli < closedEvents.length && closedEvents[cli] <= ts) { closedAcc++; cli++ }
-    points.push({ ts, scope: scopeAcc, closed: closedAcc })
+    points.push({ ts, closed: closedAcc, remaining: scopeAcc - closedAcc })
   }
-  if (sampleEnd < end) points.push({ ts: end, scope: scopeAcc, closed: closedAcc })
 
   // Scales — driven by current container size so 1 user-space unit = 1 screen pixel.
-  if (!burnupSize.value) return null
-  const vbW = Math.max(400, burnupSize.value.w)
-  const vbH = Math.max(200, burnupSize.value.h)
-  const maxY = Math.max(1, scopeAcc)
-  const innerW = vbW - BURNUP_PAD.left - BURNUP_PAD.right
-  const innerH = vbH - BURNUP_PAD.top - BURNUP_PAD.bottom
-  const xFor = (ts) => BURNUP_PAD.left + ((ts - start) / (end - start)) * innerW
-  const yFor = (n)  => BURNUP_PAD.top + innerH - (n / maxY) * innerH
+  if (!burndownSize.value) return null
+  const vbW = Math.max(400, burndownSize.value.w)
+  const vbH = Math.max(200, burndownSize.value.h)
+  const initialOpen = Math.max(0, scopeBaseline - closedBaseline)
+  const currentOpen = Math.max(0, scopeAcc - closedAcc)
+  // y-axis: 0 at bottom up to peak remaining (could be > initialOpen if scope grew).
+  const maxY = Math.max(1, initialOpen, ...points.map(p => p.remaining))
+  const innerW = vbW - BURNDOWN_PAD.left - BURNDOWN_PAD.right
+  const innerH = vbH - BURNDOWN_PAD.top - BURNDOWN_PAD.bottom
+  const xFor = (ts) => BURNDOWN_PAD.left + ((ts - start) / (end - start)) * innerW
+  const yFor = (n)  => BURNDOWN_PAD.top + innerH - (n / maxY) * innerH
 
   const stepPath = (key) => {
     let d = ''
@@ -1701,27 +1977,33 @@ const targetBurnup = computed(() => {
     }
     return d
   }
+  // Filled area under the remaining line, baseline at y=0 (innerBottom). Drops
+  // toward the x-axis as work burns down.
   const areaPath = () => {
     if (!points.length) return ''
-    let top = ''
-    let bottom = ''
+    let d = ''
     for (let i = 0; i < points.length; i++) {
       const p = points[i]
       const x = xFor(p.ts)
-      const yScope  = yFor(p.scope)
-      const yClosed = yFor(p.closed)
-      if (i === 0) { top += `M${x},${yScope}`; bottom = `L${x},${yClosed}` }
-      else { top += ` H${x} V${yScope}`; bottom = ` V${yClosed} H${x}` + bottom }
+      const y = yFor(p.remaining)
+      if (i === 0) d += `M${x},${y}`
+      else d += ` H${x} V${y}`
     }
-    return top + bottom + ' Z'
+    const lastX = xFor(points[points.length - 1].ts)
+    const firstX = xFor(points[0].ts)
+    const baseY = yFor(0)
+    return d + ` L${lastX},${baseY} L${firstX},${baseY} Z`
   }
 
-  // Ideal-burn guideline: straight line from (start, closedBaseline) to (due, totalScope).
-  // Gives the room an at-a-glance pacing target. Skipped when there's no due_date.
+  // Ideal-burn guideline: classic Scrum line from (start, initialOpen) toward
+  // (due, 0). We don't draw past today — instead we cap the line at today using
+  // the linearly-interpolated value, so it reads as "where remaining SHOULD be
+  // right now if we were on pace", not a forward prediction.
   let idealPath = ''
   if (dueMs && dueMs > start) {
-    const x0 = xFor(start), y0 = yFor(closedBaseline)
-    const x1 = xFor(dueMs), y1 = yFor(scopeAcc)
+    const idealAtTodayY = initialOpen * (1 - (Math.min(now, dueMs) - start) / (dueMs - start))
+    const x0 = xFor(start), y0 = yFor(initialOpen)
+    const x1 = xFor(Math.min(now, dueMs)), y1 = yFor(Math.max(0, idealAtTodayY))
     idealPath = `M${x0},${y0} L${x1},${y1}`
   }
 
@@ -1764,25 +2046,37 @@ const targetBurnup = computed(() => {
     ? new Date(closedAvailableMs).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
     : null
 
-  // Risk colouring for the open-work band: amber by default, dim red when closed is
-  // tracking visibly behind ideal (≥ 15 tickets late).
+  // Risk colouring for the area: amber by default, dim red when the actual
+  // remaining is visibly above ideal at today (≥ 15 tickets behind).
   let onTrack = true
   if (dueMs && dueMs > start) {
-    const idealAtToday = closedBaseline + ((Math.min(now, dueMs) - start) / (dueMs - start)) * (scopeAcc - closedBaseline)
-    onTrack = closedAcc >= idealAtToday - 15
+    const idealAtToday = initialOpen * (1 - (Math.min(now, dueMs) - start) / (dueMs - start))
+    onTrack = currentOpen <= idealAtToday + 15
+  }
+
+  // Surface the due date in the subtitle instead of as an on-chart marker (since
+  // the chart no longer extends past today). Format: "Jun 30 · 47d to go".
+  let dueLabel = null
+  if (dueMs) {
+    const diff = Math.round((dueMs - now) / day)
+    const date = new Date(dueMs).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    dueLabel = diff > 0
+      ? `${date} · ${diff}d to go`
+      : (diff === 0 ? `${date} · due today` : `${date} · ${-diff}d overdue`)
   }
 
   return {
-    scopePath: stepPath('scope'),
+    remainingPath: stepPath('remaining'),
     closedPath: stepPath('closed'),
     areaPath: areaPath(),
     idealPath,
     onTrack,
     ticks, yTicks,
-    todayX: now >= start && now <= end ? xFor(now) : null,
-    dueX: dueMs && dueMs >= start && dueMs <= end ? xFor(dueMs) : null,
+    todayX: xFor(now),
     startLabel: new Date(start).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
     endLabel: new Date(end).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
+    dueLabel,
+    initialOpen, currentOpen,
     totalScope: scopeAcc,
     totalClosed: closedAcc,
     scopeBaseline, closedBaseline,
@@ -1790,8 +2084,8 @@ const targetBurnup = computed(() => {
     maxY,
     closedCutoffX, closedDays, closedHistoryComplete, closedCutoffLabel,
     vbWidth: vbW, vbHeight: vbH,
-    innerLeft: BURNUP_PAD.left, innerTop: BURNUP_PAD.top,
-    innerRight: vbW - BURNUP_PAD.right, innerBottom: vbH - BURNUP_PAD.bottom
+    innerLeft: BURNDOWN_PAD.left, innerTop: BURNDOWN_PAD.top,
+    innerRight: vbW - BURNDOWN_PAD.right, innerBottom: vbH - BURNDOWN_PAD.bottom
   }
 })
 
@@ -1864,7 +2158,7 @@ const HEATMAP_CONFIGS = {
 }
 const heatmapCfg = computed(() => settings.uiState.kiosk?.modeConfig?.heatmap || {})
 // `heatmapSvgRef`, `heatmapSize`, `setHeatmapSvgRef` are declared up top alongside the
-// burnup refs so the shared `watchModeSvgs` watcher can reference them safely.
+// burndown refs so the shared `watchModeSvgs` watcher can reference them safely.
 
 const HEATMAP_DAY_LABELS = ['Mon', 'Wed', 'Fri']  // sparse like GitHub
 const HEATMAP_DAY_IDX    = { Mon: 1, Wed: 3, Fri: 5 }
@@ -2017,15 +2311,16 @@ const heatmapByLabel = computed(() => {
   const topN = Math.max(3, Math.min(30, Number(cfg.topN) || 10))
   const includeScoped = !!cfg.includeScoped
   const dayMs = 24 * 60 * 60 * 1000
-  const weekMs = 7 * dayMs
   const today0 = startOfToday()
   const earliest = today0 - (days - 1) * dayMs
-  // Week-aligned start (Mon) so columns line up with calendar weeks.
+  // Mon-aligned start so every label block's columns line up with calendar weeks
+  // (same convention as the main Activity heatmap).
   const dowMon = (ts) => (new Date(ts).getDay() + 6) % 7
   const alignedStart = earliest - dowMon(earliest) * dayMs
-  const totalWeeks = Math.max(1, Math.ceil((today0 - alignedStart + dayMs) / weekMs))
+  const totalDays = Math.floor((today0 - alignedStart) / dayMs) + 1
+  const totalWeeks = Math.ceil(totalDays / 7)
 
-  // Per-label tally
+  // Per-label tally — one bucket per day in the aligned window.
   const labelStats = new Map()
   for (const n of items.value) {
     const raw = n._raw || {}
@@ -2037,15 +2332,15 @@ const heatmapByLabel = computed(() => {
     const u = safeDate(raw.updated_at); if (u && u !== c && u !== cl) stamps.push(u)
     for (const ts of stamps) {
       if (ts < alignedStart || ts > today0 + dayMs) continue
-      const weekIdx = Math.floor((ts - alignedStart) / weekMs)
-      if (weekIdx < 0 || weekIdx >= totalWeeks) continue
+      const dayIdx = Math.floor((ts - alignedStart) / dayMs)
+      if (dayIdx < 0 || dayIdx >= totalDays) continue
       for (const l of labels) {
         if (typeof l !== 'string' || !l) continue
         if (!includeScoped && isScopedLabel(l)) continue
         let entry = labelStats.get(l)
-        if (!entry) { entry = { total: 0, weekly: new Array(totalWeeks).fill(0) }; labelStats.set(l, entry) }
+        if (!entry) { entry = { total: 0, daily: new Array(totalDays).fill(0) }; labelStats.set(l, entry) }
         entry.total++
-        entry.weekly[weekIdx]++
+        entry.daily[dayIdx]++
       }
     }
   }
@@ -2055,62 +2350,89 @@ const heatmapByLabel = computed(() => {
     .slice(0, topN)
   if (!sorted.length) return { rows: [], totalWeeks: 0, monthLabels: [], total: 0, max: 0, days, topN, vbW: heatmapByLabelSize.value.w, vbH: heatmapByLabelSize.value.h }
 
-  // Global max so all rows share the same intensity scale (label X with 50 events/week
-  // looks busier than label Y with 5/week even though both have data).
+  // Global max so all label blocks share the same intensity scale.
   let max = 1
-  for (const [, e] of sorted) for (const v of e.weekly) if (v > max) max = v
+  for (const [, e] of sorted) for (const v of e.daily) if (v > max) max = v
   const t1 = Math.max(1, Math.round(max * 0.10))
   const t2 = Math.max(t1 + 1, Math.round(max * 0.25))
   const t3 = Math.max(t2 + 1, Math.round(max * 0.50))
 
-  // Pixel layout
+  // Pixel layout — each label gets its OWN GitHub-style 7-row (Mon..Sun) × N-week
+  // mini heatmap with SQUARE cells. cellSize is the smaller of width-fit and
+  // height-fit, capped at MAX_CELL. If the requested topN would force cells below
+  // MIN_CELL we drop labels from the tail until they fit, so the wall always shows
+  // readable squares (header still reads "top N" honestly via the actual count).
   const vbW = Math.max(400, heatmapByLabelSize.value.w)
   const vbH = Math.max(160, heatmapByLabelSize.value.h)
-  const padLeft = 150, padTop = 26, padRight = 8, padBottom = 8, gap = 3
-  const cellW = Math.max(2, Math.floor((vbW - padLeft - padRight - gap * (totalWeeks - 1)) / totalWeeks))
-  const cellH = Math.max(8, Math.floor((vbH - padTop - padBottom - gap * (sorted.length - 1)) / sorted.length))
+  const padLeft = 110, padTop = 24, padRight = 8, padBottom = 8
+  const cellGap = 1   // within a block
+  const blockGap = 4  // between label blocks
+  const MIN_CELL = 7
+  const MAX_CELL = 18
+  const widthFit  = Math.floor((vbW - padLeft - padRight - cellGap * (totalWeeks - 1)) / totalWeeks)
+  const heightFitFor = (n) => Math.floor((vbH - padTop - padBottom - blockGap * Math.max(0, n - 1) - cellGap * n * 6) / (n * 7))
+  let labelN = sorted.length
+  while (labelN > 1 && Math.min(widthFit, heightFitFor(labelN)) < MIN_CELL) labelN--
+  if (labelN < sorted.length) sorted.length = labelN
+  const heightFit = heightFitFor(labelN)
+  const cellSize = Math.max(MIN_CELL, Math.min(MAX_CELL, widthFit, heightFit))
+  const blockHeight = 7 * cellSize + 6 * cellGap
 
   const rows = sorted.map(([label, e], rowIdx) => {
-    const y = padTop + rowIdx * (cellH + gap)
+    const yOffset = padTop + rowIdx * (blockHeight + blockGap)
     const palette = labelHashedPalette(label)
-    const cells = e.weekly.map((count, w) => {
+    const cells = e.daily.map((count, d) => {
+      const week = Math.floor(d / 7)
+      const dow = d % 7
+      const ts = alignedStart + d * dayMs
+      const inRange = ts >= earliest && ts <= today0
       let level = 0
-      if (count > 0) {
+      if (inRange && count > 0) {
         if (count <= t1) level = 1
         else if (count <= t2) level = 2
         else if (count <= t3) level = 3
         else level = 4
       }
-      return { x: padLeft + w * (cellW + gap), y, w: cellW, h: cellH, count, level }
+      return {
+        x: padLeft + week * (cellSize + cellGap),
+        y: yOffset + dow * (cellSize + cellGap),
+        w: cellSize, h: cellSize,
+        count, level, inRange,
+        startTs: ts, endTs: ts
+      }
     })
-    return { label, total: e.total, cells, y, height: cellH, palette, hue: labelHue(label) }
+    return { label, total: e.total, cells, y: yOffset, height: blockHeight, palette, hue: labelHue(label) }
   })
 
-  // Month labels along the top, with year on transitions.
+  // Month labels at the first week containing a new month — placed above the
+  // first label block. Year is appended on the first label and year transitions.
   const monthLabels = []
   let lastMonth = -1
   let lastYear = -1
   for (let w = 0; w < totalWeeks; w++) {
-    const ts = alignedStart + w * weekMs
-    const d = new Date(ts)
-    if (d.getMonth() !== lastMonth) {
-      const month = d.toLocaleDateString(undefined, { month: 'short' })
-      const showYear = d.getFullYear() !== lastYear
+    const ts = alignedStart + w * 7 * dayMs
+    const date = new Date(ts)
+    if (date.getMonth() !== lastMonth) {
+      const month = date.toLocaleDateString(undefined, { month: 'short' })
+      const showYear = date.getFullYear() !== lastYear
       monthLabels.push({
         week: w,
-        x: padLeft + w * (cellW + gap),
-        label: showYear ? `${month} ${d.getFullYear()}` : month
+        x: padLeft + w * (cellSize + cellGap),
+        label: showYear ? `${month} ${date.getFullYear()}` : month
       })
-      lastMonth = d.getMonth()
-      lastYear = d.getFullYear()
+      lastMonth = date.getMonth()
+      lastYear = date.getFullYear()
     }
   }
 
   return {
-    rows, monthLabels, totalWeeks, days, topN,
+    rows, monthLabels, totalWeeks, days,
+    // Reflect the actual rendered count rather than the configured topN — if we
+    // had to trim labels to keep cells readable, "top 10" should say "top 10".
+    topN: rows.length,
     total: sorted.reduce((s, [, e]) => s + e.total, 0),
     max,
-    cellW, cellH, padLeft, padTop, vbW, vbH
+    cellSize, padLeft, padTop, vbW, vbH
   }
 })
 
@@ -2324,6 +2646,10 @@ const filterByLabel = (label) => {
   if (!label) return
   applyFilter({ selectedLabels: [label] })
 }
+const filterByMilestone = (title) => {
+  if (!title) return
+  applyFilter({ selectedMilestones: [title], includeClosed: true })
+}
 const filterCreatedToday = () => applyFilter({ includeClosed: true, dateFilters: { createdMode: 'last_x_days', createdDays: 1 } })
 const filterUpdatedToday = () => applyFilter({ includeClosed: true, dateFilters: { updatedMode: 'last_x_days', updatedDays: 1 } })
 const filterOpen   = () => applyFilter({})
@@ -2331,6 +2657,36 @@ const filterByDay = (dayIso) => applyFilter({
   includeClosed: true,
   dateFilters: { createdMode: 'between', createdAfter: dayIso, createdBefore: dayIso }
 })
+
+// Local-timezone YYYY-MM-DD — the main filter compares against the issue's
+// created/updated string which is local-date keyed via Date parsing.
+const tsToYmd = (ts) => {
+  const d = new Date(ts)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+// Activity heatmap cell click: open the main graph filtered to this row's date
+// type for the single day clicked. The main view has no "closedMode" — we use
+// updatedMode for Closed/All rows since closing a ticket bumps updated_at.
+const onHeatmapCellClick = (rowId, cell) => {
+  if (!cell || !cell.inRange || cell.count === 0) return
+  const dayIso = tsToYmd(cell.ts)
+  if (rowId === 'heatmapCreated') {
+    applyFilter({ includeClosed: true, dateFilters: { createdMode: 'between', createdAfter: dayIso, createdBefore: dayIso } })
+  } else {
+    applyFilter({ includeClosed: true, dateFilters: { updatedMode: 'between', updatedAfter: dayIso, updatedBefore: dayIso } })
+  }
+}
+
+// Activity-by-label cell click: filter the graph to that label + that week's range.
+const onHeatmapByLabelCellClick = (rowLabel, cell) => {
+  if (!rowLabel || !cell || !cell.count) return
+  applyFilter({
+    selectedLabels: [rowLabel],
+    includeClosed: true,
+    dateFilters: { updatedMode: 'between', updatedAfter: tsToYmd(cell.startTs), updatedBefore: tsToYmd(cell.endTs) }
+  })
+}
 const filterUnassigned = () => applyFilter({ selectedAssignees: ['@unassigned'] })
 const filterNoDueDate  = () => applyFilter({ dueStatus: 'none' })
 const filterOverdue    = () => applyFilter({ dueStatus: 'overdue' })
@@ -2359,6 +2715,43 @@ const relTime = (ts) => {
   color: rgb(var(--v-theme-on-background));
   outline: none;
 }
+
+/* "Just refreshed" pulse — root toggles .is-refreshed for ~800ms whenever the
+   `lastUpdated` prop changes. CSS keyframes pick this up to lightly flash the
+   stat numbers and progress bar so the wall acknowledges the data flip. */
+.kiosk.is-refreshed .k-stat-num,
+.kiosk.is-refreshed .k-target-pct,
+.kiosk.is-refreshed .k-health-num,
+.kiosk.is-refreshed .k-bar-count {
+  animation: kiosk-pulse 0.7s ease-out;
+}
+.kiosk.is-refreshed .k-target-bar-fill,
+.kiosk.is-refreshed .k-trb-seg,
+.kiosk.is-refreshed .k-bar-fill,
+.kiosk.is-refreshed .k-bar-seg {
+  animation: kiosk-bar-glow 0.9s ease-out;
+}
+@keyframes kiosk-pulse {
+  0%   { transform: scale(1);   filter: brightness(1); }
+  35%  { transform: scale(1.06); filter: brightness(1.3); }
+  100% { transform: scale(1);   filter: brightness(1); }
+}
+@keyframes kiosk-bar-glow {
+  0%   { filter: brightness(1); }
+  40%  { filter: brightness(1.35); }
+  100% { filter: brightness(1); }
+}
+
+/* Activity / Recently-closed feed list animations — items slide in from above and
+   fade, slide out to the right and fade; existing items glide to their new row. */
+.k-feed-anim-enter-active,
+.k-feed-anim-leave-active {
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.k-feed-anim-enter-from  { opacity: 0; transform: translateY(-12px); }
+.k-feed-anim-leave-to    { opacity: 0; transform: translateX(24px); }
+.k-feed-anim-leave-active { position: absolute; right: 12px; left: 12px; }
+.k-feed-anim-move        { transition: transform 0.4s ease; }
 
 .kiosk-head {
   display: flex;
@@ -2441,6 +2834,20 @@ const relTime = (ts) => {
   line-height: 1;
 }
 .kiosk-icon-btn:hover { background: rgba(127, 127, 127, 0.15); }
+/* Brief attention pulse on the play/pause button when manual navigation has
+   auto-paused cycling — tells the room "cycling stopped, I'm in control now". */
+.kiosk-icon-btn.pulse-attention {
+  color: rgb(var(--v-theme-primary));
+  border-color: rgba(var(--v-theme-primary), 0.7);
+  animation: kiosk-attn 0.55s ease-in-out 3 alternate;
+}
+@keyframes kiosk-attn {
+  from { transform: scale(1);    box-shadow: 0 0 0 0 rgba(var(--v-theme-primary), 0); }
+  to   { transform: scale(1.18); box-shadow: 0 0 10px 2px rgba(var(--v-theme-primary), 0.55); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .kiosk-icon-btn.pulse-attention { animation: none; }
+}
 
 .spinning { animation: spin 1.2s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -2560,6 +2967,22 @@ const relTime = (ts) => {
   border-radius: 10px;
   background: rgba(127, 127, 127, 0.15);
   overflow: hidden;
+  position: relative;
+}
+/* Slow shine sweep so the wall feels alive between refreshes. */
+.k-target-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    transparent 38%,
+    rgba(255, 255, 255, 0.18) 50%,
+    transparent 62%,
+    transparent 100%);
+  pointer-events: none;
+  transform: translateX(-100%);
 }
 .k-target-bar-fill {
   height: 100%;
@@ -2569,9 +2992,35 @@ const relTime = (ts) => {
 }
 .k-target-bar-rich { display: flex; height: 18px; }
 .k-trb-seg { height: 100%; transition: width 0.5s ease; }
-.k-trb-seg.k-trb-closed { background: linear-gradient(90deg, #43a047, #66bb6a); }
+/* Closed segment: a wider green gradient is sized to 200% and slowly slides
+   back and forth — a subtle living shimmer to match the stripes' motion. */
+.k-trb-seg.k-trb-closed {
+  background: linear-gradient(90deg, #2e7d32, #43a047, #66bb6a, #43a047, #2e7d32);
+  background-size: 200% 100%;
+  background-position: 0 0;
+}
 .k-trb-seg.k-trb-open   { background: rgba(127, 127, 127, 0.3); }
 .k-trb-seg.k-trb-added  { background: repeating-linear-gradient(45deg, #ffb300, #ffb300 6px, #ffa000 6px, #ffa000 12px); }
+@media (prefers-reduced-motion: no-preference) {
+  .k-target-bar::after    { animation: kiosk-bar-shine    7s ease-in-out infinite; }
+  .k-trb-seg.k-trb-added  { animation: kiosk-stripe-slide 1.6s linear infinite; }
+  .k-trb-seg.k-trb-closed { animation: kiosk-green-slide  9s ease-in-out infinite; }
+}
+@keyframes kiosk-bar-shine {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+/* (12px, -12px) is exactly one stripe period along the 45° gradient axis
+   (period 12px × √2 ≈ 16.97px on x), so the loop point is seamless — the
+   previous "17px 0" was ~0.03px off and produced a visible micro-jump. */
+@keyframes kiosk-stripe-slide {
+  from { background-position: 0 0; }
+  to   { background-position: 12px -12px; }
+}
+@keyframes kiosk-green-slide {
+  0%, 100% { background-position: 0% 0; }
+  50%      { background-position: 100% 0; }
+}
 .k-trb-seg:first-child  { border-radius: 10px 0 0 10px; }
 .k-trb-seg:last-child   { border-radius: 0 10px 10px 0; }
 .k-trb-seg:only-child   { border-radius: 10px; }
@@ -2711,6 +3160,56 @@ const relTime = (ts) => {
   border-radius: 6px;
 }
 
+/* Milestones screen — richer per-milestone card (head row, stacked bar, chips). */
+.k-milestones { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+.k-ms-list { display: flex; flex-direction: column; gap: 10px; overflow: auto; min-height: 0; }
+.k-ms-row {
+  display: flex; flex-direction: column; gap: 6px;
+  padding: 10px 14px; border-radius: 8px;
+  background: rgba(127, 127, 127, 0.05);
+  border-left: 3px solid transparent;
+  transition: background 0.2s ease;
+}
+.k-ms-row.k-clickable:hover { background: rgba(127, 127, 127, 0.1); }
+.k-ms-target-row { background: rgba(var(--v-theme-primary), 0.08); border-left-color: rgb(var(--v-theme-primary)); }
+.k-ms-complete { opacity: 0.78; }
+
+.k-ms-head { display: grid; grid-template-columns: 1fr auto auto; align-items: baseline; gap: 14px; }
+.k-ms-title { display: flex; align-items: center; gap: 6px; font-size: clamp(15px, 1.4vw, 18px); font-weight: 700; min-width: 0; }
+.k-ms-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.k-ms-counts { font-size: 13px; opacity: 0.8; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.k-ms-closed-n { color: #66bb6a; font-weight: 700; }
+.k-ms-divider { opacity: 0.5; margin: 0 1px; }
+.k-ms-total-n { font-weight: 600; }
+.k-ms-open-n { opacity: 0.7; }
+.k-ms-pct {
+  font-size: clamp(20px, 2vw, 26px); font-weight: 800;
+  font-variant-numeric: tabular-nums; line-height: 1; min-width: 56px; text-align: right;
+}
+.k-ms-pct-good { color: #66bb6a; }
+.k-ms-pct-warn { color: #ffb300; }
+.k-ms-pct-low  { color: #ef5350; }
+
+.k-ms-bar { display: flex; height: 10px; border-radius: 5px; overflow: hidden; background: rgba(127, 127, 127, 0.15); }
+.k-ms-seg { height: 100%; transition: flex-grow 0.5s ease; }
+.k-ms-seg-closed { background: linear-gradient(90deg, #43a047, #66bb6a); }
+.k-ms-seg-open   { background: rgba(127, 127, 127, 0.28); }
+
+.k-ms-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.k-ms-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 600; padding: 2px 9px;
+  border-radius: 12px; background: rgba(127, 127, 127, 0.12);
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.k-ms-chip.k-ms-on-track { background: rgba(102, 187, 106, 0.18); color: #66bb6a; }
+.k-ms-chip.k-ms-done     { background: rgba(102, 187, 106, 0.22); color: #43a047; }
+.k-ms-chip.k-ms-warn     { background: rgba(255, 179, 0, 0.18);  color: #ffb300; }
+.k-ms-chip.k-ms-soon     { background: rgba(255, 138, 0, 0.22);  color: #ff8a00; }
+.k-ms-chip.k-ms-late     { background: rgba(239, 83, 80, 0.18);  color: #ef5350; }
+.k-ms-chip.k-ms-velocity { background: rgba(33, 150, 243, 0.14); color: #64b5f6; }
+.k-ms-chip.k-ms-neutral  { background: rgba(127, 127, 127, 0.12); }
+
 /* Today */
 .k-today {
   display: grid;
@@ -2753,56 +3252,50 @@ const relTime = (ts) => {
 .k-stat-warn .k-stat-num { color: #ffb300; }
 
 /* Velocity */
-.k-velocity { display: flex; flex-direction: column; flex: 1; min-height: 0; }
-.k-velocity-chart {
+.k-velocity { display: flex; flex-direction: column; flex: 1; min-height: 0; gap: 12px; }
+.k-velocity .k-section-sub .k-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin: 0 2px 0 2px; vertical-align: middle; }
+/* Calendar grid: ISO-week-number column on the left, Mon..Sun headers on top,
+   then N week rows × 7 day cells. Each cell shows the date number top-left and
+   the daily net centered. */
+.k-vel-cal {
+  flex: 1; min-height: 0;
   display: grid;
-  gap: 8px;
-  flex: 1;
-  align-items: end;
-}
-.k-vel-col {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-}
-.k-vel-bars {
-  width: 100%;
-  display: flex;
-  align-items: end;
+  grid-template-columns: 36px repeat(7, 1fr);
+  grid-template-rows: auto;
+  grid-auto-rows: 1fr;
   gap: 4px;
-  justify-content: center;
 }
-.k-vel-bar {
-  width: 30%;
-  min-height: 2px;
-  border-radius: 4px 4px 0 0;
+.k-vel-corner {}
+.k-vel-dow {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+  opacity: 0.6; text-transform: uppercase;
+}
+.k-vel-weeknum {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; opacity: 0.5; font-variant-numeric: tabular-nums;
+}
+.k-vel-cell {
   position: relative;
-  transition: height 0.4s ease;
+  border-radius: 4px;
+  min-width: 0; min-height: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: filter 0.2s ease;
 }
-/* Tickets created = red (incoming work), closed = green (completed). Consistent
-   with the heatmap palettes and activity-feed colors throughout the kiosk. */
-.k-vel-created { background: #ef5350; }
-.k-vel-closed { background: #66bb6a; }
-.k-vel-num {
-  position: absolute;
-  top: -22px;
-  left: 50%;
-  transform: translateX(-50%);
-  font-size: 12px;
+.k-vel-cell-date {
+  position: absolute; top: 4px; left: 6px;
+  font-size: 11px; font-weight: 500; opacity: 0.7;
   font-variant-numeric: tabular-nums;
 }
-.k-vel-lbl { font-size: 13px; opacity: 0.7; }
-.k-vel-today .k-vel-lbl { color: rgb(var(--v-theme-primary)); font-weight: 700; opacity: 1; }
-.k-vel-today { position: relative; }
-.k-vel-today::after {
-  content: '';
-  position: absolute;
-  inset: -4px -2px;
-  border: 1px dashed rgba(var(--v-theme-primary), 0.45);
-  border-radius: 6px;
-  pointer-events: none;
+.k-vel-cell-net {
+  font-size: clamp(15px, 1.7vw, 26px);
+  font-weight: 700; color: rgba(255,255,255,0.94);
+  font-variant-numeric: tabular-nums;
 }
+.k-vel-cell.k-clickable { cursor: pointer; }
+.k-vel-cell.k-clickable:hover { filter: brightness(1.25); outline: 1px solid rgba(255,255,255,0.5); }
+.k-vel-cell-today { outline: 1px dashed rgba(var(--v-theme-primary), 0.7); outline-offset: 1px; }
+.k-vel-cell-outside .k-vel-cell-date { opacity: 0.35; }
 .k-legend {
   display: flex;
   gap: 16px;
@@ -2820,9 +3313,6 @@ const relTime = (ts) => {
   border-radius: 3px;
   vertical-align: middle;
 }
-.k-swatch.k-vel-created { background: #ef5350; }
-.k-swatch.k-vel-closed { background: #66bb6a; }
-
 /* Bar lists (workload, priority) */
 .k-bar-list { display: flex; flex-direction: column; gap: 10px; overflow: auto; }
 .k-bar-row {
@@ -2876,7 +3366,6 @@ const relTime = (ts) => {
 .k-workload-legend { font-size: 12px; opacity: 0.8; margin-top: 12px; }
 
 /* Stale WIP — warm amber */
-.k-wip-title { color: #ffb300; }
 .k-wip-pri   { background: rgba(255, 179, 0, 0.2); color: #ffb300; font-weight: 700; }
 .k-wip-idle  { color: #ffb300; font-weight: 600; }
 .k-bar-fill {
@@ -2894,13 +3383,13 @@ const relTime = (ts) => {
 }
 .k-bar-side { font-size: 12px; opacity: 0.6; min-width: 70px; text-align: right; }
 
-/* Milestone burnup */
-.k-burnup-section { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
-.k-burnup-title { display: flex; align-items: center; gap: 8px; text-transform: none; font-size: clamp(18px, 1.8vw, 24px); letter-spacing: 0; opacity: 1; }
-.k-burnup-svg { flex: 1; min-height: 0; width: 100%; height: 100%; }
-.k-burnup-legend { display: flex; gap: 20px; flex-wrap: wrap; font-size: 15px; opacity: 0.9; font-weight: 500; }
-.k-burnup-legend .k-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
-.k-burnup-legend .k-swatch-dotted {
+/* Milestone burndown */
+.k-burndown-section { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
+.k-burndown-title { display: flex; align-items: center; gap: 8px; text-transform: none; font-size: clamp(18px, 1.8vw, 24px); letter-spacing: 0; opacity: 1; }
+.k-burndown-svg { flex: 1; min-height: 0; width: 100%; height: 100%; }
+.k-burndown-legend { display: flex; gap: 20px; flex-wrap: wrap; font-size: 15px; opacity: 0.9; font-weight: 500; }
+.k-burndown-legend .k-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
+.k-burndown-legend .k-swatch-dotted {
   background: transparent !important;
   border-top: 2px dashed rgba(255, 255, 255, 0.55);
   height: 0; border-radius: 0;
@@ -2908,9 +3397,9 @@ const relTime = (ts) => {
   vertical-align: middle;
   margin-top: 5px;
 }
-.k-burnup-legend .k-legend-spacer { flex: 1; }
-.k-burnup-warn { color: #ef5350; font-weight: 600; }
-.k-burnup-warn-data {
+.k-burndown-legend .k-legend-spacer { flex: 1; }
+.k-burndown-warn { color: #ef5350; font-weight: 600; }
+.k-burndown-warn-data {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -2937,6 +3426,16 @@ const relTime = (ts) => {
   padding-left: 36px;
 }
 .k-heatmap-svg { flex: 1; min-height: 0; width: 100%; height: 100%; }
+.k-heatmap-svg .k-hm-clickable { cursor: pointer; }
+.k-heatmap-svg .k-hm-clickable:hover { stroke: rgba(255,255,255,0.6); stroke-width: 1.5; }
+
+/* Combined breakdown screen: stack the three blocks (priority / status / type)
+   vertically and share the body's vertical space. Each block gets a flex share
+   so longer lists shrink rather than push the next block off-screen. */
+.k-breakdown { flex: 1; display: flex; flex-direction: column; gap: 18px; min-height: 0; }
+.k-breakdown-block { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
+.k-breakdown-block .k-section-title { margin-bottom: 6px; }
+.k-breakdown-block .k-bar-list { flex: 1; min-height: 0; }
 .k-heatmap-legend {
   display: flex; align-items: center; gap: 4px;
   font-size: 13px; opacity: 0.75; justify-content: flex-end;
@@ -2950,14 +3449,16 @@ const relTime = (ts) => {
 
 /* Blockers (fire-alarm) */
 .k-blockers { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
-.k-blockers-title {
+.k-blockers-title,
+.k-wip-title {
   display: flex; align-items: center; gap: 8px;
-  color: #ef5350;
   text-transform: none;
   font-size: clamp(18px, 2vw, 28px);
   letter-spacing: 0;
   opacity: 1;
 }
+.k-blockers-title { color: #ef5350; }
+.k-wip-title { color: #ffb300; }
 .k-blockers .k-target-feed li { border-left: 3px solid #ef5350; background: rgba(239, 83, 80, 0.06); }
 .k-blockers-pri { background: rgba(239, 83, 80, 0.22); color: #ef5350; font-weight: 800; }
 .k-blockers-age { color: #ef5350; font-weight: 600; }

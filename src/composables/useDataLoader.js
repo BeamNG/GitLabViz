@@ -15,6 +15,47 @@ import { svnCacheGetMeta, svnCacheClear, normalizeRepoUrl } from '../services/ca
 import { MattermostClient } from '../chatTools/mmClient'
 import { getScopedLabelValue } from '../utils/scopedLabels'
 
+// Slim copy of a GitLab REST issue stored as `node._raw`. Most of the issue
+// payload (description, description_html, _links, time_stats, task_completion,
+// discussion_locked, subscribed, …) is never read after the initial load — but
+// at thousands of issues × multi-KB-per-issue, those fields dominate cache size
+// and JSON-parse time on cold start. Keep only the fields the app actually reads
+// (verified by grepping `_raw.*` and `raw.*` across src/). Nested objects are
+// pruned to the same field set. The flat `node.*` fields (createdAt, closedAt,
+// timeEstimate, …) already capture the rest, so no UI surface loses information.
+const slimIssue = (i) => {
+  if (!i) return i
+  const slim = {
+    iid: i.iid,
+    title: i.title,
+    state: i.state,
+    web_url: i.web_url,
+    created_at: i.created_at,
+    updated_at: i.updated_at,
+    closed_at: i.closed_at,
+    due_date: i.due_date,
+    user_notes_count: i.user_notes_count,
+    labels: i.labels,
+    weight: i.weight,
+    epic_iid: i.epic_iid,
+    status_display: i.status_display,
+    work_item_status: i.work_item_status
+  }
+  if (i.references) slim.references = { full: i.references.full, relative: i.references.relative }
+  if (i.author) slim.author = { name: i.author.name, state: i.author.state }
+  if (i.assignee) slim.assignee = { name: i.assignee.name, state: i.assignee.state }
+  if (Array.isArray(i.assignees)) slim.assignees = i.assignees.map(a => ({ name: a?.name, state: a?.state }))
+  if (Array.isArray(i.participants)) slim.participants = i.participants.map(p => ({ name: p?.name, username: p?.username, state: p?.state }))
+  if (i.milestone) slim.milestone = { title: i.milestone.title, due_date: i.milestone.due_date, start_date: i.milestone.start_date, state: i.milestone.state }
+  if (i.epic) slim.epic = { title: i.epic.title }
+  if (i.parent) slim.parent = { work_item_type: i.parent.work_item_type, title: i.parent.title }
+  if (i.iteration) slim.iteration = { title: i.iteration.title }
+  if (i.closed_by) slim.closed_by = { name: i.closed_by.name }
+  if (i.__mock) slim.__mock = true
+  return slim
+}
+export { slimIssue }
+
 export function useDataLoader ({
   settings,
   nodes,
@@ -88,7 +129,13 @@ export function useDataLoader ({
         const filteredCachedNodes = {}
         Object.entries(cachedNodes).forEach(([id, n]) => {
           const isSvn = (n && (n.type === 'svn_commit' || String(id).startsWith('svn-')))
-          if (!isSvn) filteredCachedNodes[id] = n
+          if (isSvn) return
+          // Re-slim `_raw` on cached GitLab issues from older versions of the
+          // app — caches written before 0.12.16 still carry the full payload
+          // (description, _links, time_stats, …). One pass on load drops them
+          // from RAM immediately; next sync rewrites the disk cache slim too.
+          if (n?.type === 'gitlab_issue' && n._raw) n._raw = slimIssue(n._raw)
+          filteredCachedNodes[id] = n
         })
 
         const filteredCachedEdges = {}
@@ -478,7 +525,7 @@ export function useDataLoader ({
               hasTasks: issue.has_tasks,
               taskStatus: issue.task_status,
               type: 'gitlab_issue',
-              _raw: issue
+              _raw: slimIssue(issue)
             }
           })
 

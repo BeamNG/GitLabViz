@@ -95,28 +95,27 @@ export const defaultSettings = () => ({
       // Used by the 'target' focus mode and highlighted in the milestones list. Empty = no target.
       targetMilestone: '',
       modes: {
-        target: true, burnup: true, blockers: true, wipStale: true,
+        target: true, burndown: true, blockers: true, wipStale: true,
         today: true, velocity: true,
         heatmap: true, heatmapByLabel: true,
-        workload: true, priority: true,
-        status: true, type: true, hotLabels: true,
+        workload: true, breakdown: true, hotLabels: true,
         milestones: true, aging: true,
         activity: true, closed: true, risks: true
       },
       // Per-mode tuning. Modes without an entry have no options yet.
       modeConfig: {
-        velocity:   { days: 7 },
+        velocity:   { weeks: 8 },
         workload:   { topN: 12, stackByPriority: true },
-        priority:   { showNoPriority: true },
-        status:     { showNoStatus: false },
-        type:       { showNoType: false },
+        // Combined breakdown screen — three blocks (priority / status / type)
+        // share one config object. `showNo*` toggles whether the "(No X)" bucket is shown.
+        breakdown:  { showNoPriority: true, showNoStatus: false, showNoType: false },
         milestones: { topN: 8 },
-        burnup:     { windowDays: 90 },
+        burndown:   { windowDays: 90 },
         heatmap:    { days: 365 },
         heatmapByLabel: { days: 365, topN: 10, includeScoped: false },
         aging:      {},
         activity:   { limit: 22, includeUpdates: true },
-        hotLabels:  { hours: 24, topN: 15, includeScoped: false },
+        hotLabels:  { hours: 168, topN: 15, includeScoped: false },
         blockers:   { limit: 12, maxAgeDays: 0 },  // 0 = no upper bound; otherwise hide blockers older than this
         wipStale:   { days: 5, limit: 12 },         // tickets in "in progress" status idle > N days
         closed:     { hours: 48, limit: 18 },
@@ -128,6 +127,11 @@ export const defaultSettings = () => ({
     },
     filters: {
       includeClosed: true,
+      // Restrict to a single GitLab issue state. '' = no constraint (use
+      // `includeClosed` as the open/closed gate). 'opened' / 'closed' = only
+      // that state. Mainly populated by kiosk deep-clicks on the target stat
+      // cards; resetFilters clears it.
+      selectedState: '',
       selectedStatuses: [],
       selectedSubscription: null, // 'subscribed' | 'unsubscribed' | null
       selectedLabels: [],

@@ -318,6 +318,7 @@ const customPresets = computed(() => {
 
 const resetFilters = () => {
   settings.uiState.filters.includeClosed = false
+  settings.uiState.filters.selectedState = ''
   settings.uiState.filters.selectedStatuses = []
   settings.uiState.filters.selectedSubscription = null
   settings.uiState.filters.selectedLabels = []

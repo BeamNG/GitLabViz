@@ -76,6 +76,20 @@ export function useSettingsStore() {
           if (k.modes.heatmapCreated || k.modes.heatmapClosed || k.modes.heatmapAll) {
             settings.uiState.kiosk.modes.heatmap = true
           }
+          // 0.12.4: priority / status / type were merged into a single `breakdown`
+          // screen. Enable the combined mode if any legacy one was on, disable the
+          // legacy keys so the modes list doesn't carry them forward.
+          if (k.modes.priority || k.modes.status || k.modes.type) {
+            settings.uiState.kiosk.modes.breakdown = true
+          }
+          delete settings.uiState.kiosk.modes.priority
+          delete settings.uiState.kiosk.modes.status
+          delete settings.uiState.kiosk.modes.type
+          // 0.12.13: burnup → burndown rename — mirror the enable flag, drop legacy.
+          if (typeof k.modes.burnup === 'boolean') {
+            settings.uiState.kiosk.modes.burndown = k.modes.burnup
+          }
+          delete settings.uiState.kiosk.modes.burnup
         }
         if (k.modeConfig && typeof k.modeConfig === 'object') {
           for (const id of Object.keys(settings.uiState.kiosk.modeConfig)) {
@@ -83,6 +97,34 @@ export function useSettingsStore() {
               Object.assign(settings.uiState.kiosk.modeConfig[id], k.modeConfig[id])
             }
           }
+          // Carry the legacy per-mode showNo* flags into the merged breakdown config.
+          const legacy = k.modeConfig
+          const b = settings.uiState.kiosk.modeConfig.breakdown
+          if (legacy.priority && typeof legacy.priority.showNoPriority === 'boolean') b.showNoPriority = legacy.priority.showNoPriority
+          if (legacy.status   && typeof legacy.status.showNoStatus     === 'boolean') b.showNoStatus   = legacy.status.showNoStatus
+          if (legacy.type     && typeof legacy.type.showNoType         === 'boolean') b.showNoType     = legacy.type.showNoType
+          // 0.12.9: velocity switched from a days-window bar chart to a weeks-window
+          // heatmap. Convert any preexisting `velocity.days` to a rough weeks count
+          // (clamped 1..12) so the migrated kiosk lands on a sensible weeks value.
+          const v = settings.uiState.kiosk.modeConfig.velocity
+          if (legacy.velocity && typeof legacy.velocity.days === 'number' && typeof v.weeks !== 'number') {
+            v.weeks = Math.min(12, Math.max(1, Math.round(legacy.velocity.days / 7)))
+          }
+          delete v.days
+          // 0.12.13: burnup → burndown rename. Carry the windowDays setting over,
+          // mirror the mode enable/disable, then strip the legacy keys so they
+          // don't linger in storage.
+          if (legacy.burnup && typeof legacy.burnup === 'object') {
+            Object.assign(settings.uiState.kiosk.modeConfig.burndown, legacy.burnup)
+          }
+          delete settings.uiState.kiosk.modeConfig.burnup
+          // 0.12.10: Hot labels default bumped from 24h → 168h (1 week). Existing
+          // users still sitting on the old 24h default get bumped once; explicit
+          // choices (anything else) are preserved.
+          if (!settings.meta.hotLabelsDefaultBumped && settings.uiState.kiosk.modeConfig.hotLabels.hours === 24) {
+            settings.uiState.kiosk.modeConfig.hotLabels.hours = 168
+          }
+          settings.meta.hotLabelsDefaultBumped = true
         }
       }
 

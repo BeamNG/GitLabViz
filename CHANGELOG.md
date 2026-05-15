@@ -1,5 +1,73 @@
 # Changelog
 
+## [0.12.20] - 2026-05-14
+- Velocity calendar re-laid-out as a proper month-view: **ISO-week-number column on the left**, **Mon..Sun headers across the top**, week rows underneath. Each cell now shows the **date number** in the top-left (with the short month name prepended on the 1st of each month, e.g. `May 1`) and the daily net (+N / -N) centred. Same red/green/grey coloring rules. Looks and reads like Google Calendar / Outlook's month grid rather than a raw heatmap.
+
+## [0.12.19] - 2026-05-14
+- Burndown chart cleaned up. **No more future projection** — the x-axis ends at today instead of stretching to the due date, the future-zone dim overlay and the DUE on-chart marker are gone, and the dashed ideal-burn line is **capped at today** rather than projecting all the way to `(due, 0)`. Due-date context now lives in the title subtitle (`due Jun 30 · 47d to go` / `12d overdue`). **Cumulative closed line readded** alongside the remaining line so the room sees both "how much is left" (primary) and "how much has been shipped" (secondary, thinner & slightly transparent). Legend updated to match.
+
+## [0.12.18] - 2026-05-14
+- **Velocity** kiosk mode redesigned again — now a **single calendar** of the last N weeks (default 8 ≈ 2 months) where each day is coloured by its **daily net (closed − created)**: green when more closed than created (shipping), red when more created than closed (drowning), neutral grey when balanced, and faint when quiet. Intensity scales with `|net|` against the window's peak swing. Each cell shows the net number (`+N` / `-N`) so the room can read both the colour vibe and the precise gap. Replaces the previous two-side-by-side heatmaps that needed reading two grids to compute "are we ahead or behind today?" Inline legend swatches in the subtitle explain the colour direction; click-to-filter behaviour preserved.
+
+## [0.12.17] - 2026-05-14
+- Target-milestone stat cards (Closed / Open / Total) are now **clickable** to deep-link the main graph: Closed filters to that milestone's closed tickets only, Open to its open tickets only, Total opens it with both states visible. Powered by a small new `selectedState` filter ('opened' / 'closed' / '') so the kiosk can pick the precise subset rather than approximating via `selectedStatuses` (which couldn't distinguish "Done" from re-opened tickets). Existing `includeClosed` keeps working unchanged; `selectedState` overrides it when set, and `resetFilters()` clears both.
+
+## [0.12.16] - 2026-05-14
+- **Cache footprint slashed.** Each issue's `_raw` payload is now slimmed to just the ~20 fields the app actually reads — dropping `description`, `description_html`, `_links`, `time_stats`, `task_completion_status`, `discussion_locked`, `subscribed`, and a long tail of fields GitLab returns but nothing in the UI consumes. On a typical project with 5000+ closed tickets this cuts IndexedDB cache size and cold-start JSON-parse time by 50-80% (description alone is often 1-10KB per issue). Applied uniformly to open and closed issues, on the initial fetch and on every per-issue mutation (assignee change, close/reopen). Existing users get an immediate in-memory cleanup on next app load (the slim pass runs over the cached nodes); the disk cache rewrites in slim form on the next sync.
+
+## [0.12.15] - 2026-05-14
+- Milestone-progress screen redesigned. Each milestone now renders as its own card with a clearer hierarchy: title row (target flag + checkmark for 100% complete), a stacked bar (closed green / open grey), a tabular `N closed / M total · K open` count, and a colour-coded **percent badge** sized to read from across the room (green ≥80% / amber ≥50% / red below). Below the bar, a chip-row surfaces information the old single-line layout couldn't fit:
+  - **Due chip**: `47d to go` (green/amber/red shading by 30d/7d/overdue thresholds), `Due today`, `Xd overdue`, or `no deadline`.
+  - **ETA chip**: projects 14-day closures-per-day velocity against remaining open work and compares the projection to the due date — emits `On track`, `Nd late` (split into mild and severe), `Stalled` (no velocity + no recent adds), or `Trophy · Complete` when everything's closed.
+  - **Scope-creep chip**: `+N added · 14d`, only when additions match-or-outpace closures (otherwise it's just noise).
+  - **Velocity chip**: `N closed · 14d` so the room can see how busy the milestone has been recently.
+  Cards are clickable to filter the main graph by that milestone. Target milestone gets a primary-color left border and tinted background; completed milestones dim slightly. Replaces the previous one-line bar layout that had no due context beyond a raw date.
+
+## [0.12.14] - 2026-05-14
+- Kiosk auto-pauses cycling whenever the user navigates manually (‹ / ›, Arrow keys, clicking a mode dot at the bottom). No more "I was reading that — it just jumped away" surprises. The play/pause button briefly **pulses** (scale + primary-colored glow, 3 alternations over ~1.6s) so the room sees the cycle stopped. Manually toggling pause / resume cancels the pulse immediately so users who already noticed aren't blinked at. Honors `prefers-reduced-motion`.
+
+## [0.12.13] - 2026-05-14
+- **Milestone burnup → burndown**. The chart now plots a single line: remaining open work (scope − closed) over time, dropping toward zero. The dashed white ideal-burn guideline runs straight from (start, initialOpen) to (due, 0) using classic Scrum semantics, so scope creep visibly drifts the actual line above the ideal even when closures are on pace. Line is green when on track and red when ≥15 tickets behind ideal at today; the filled area underneath shifts amber → red the same way. Header subtitle now reads `M open at start → N now`. The Today / Due markers, future-zone dimming, and incomplete-closed-history hatched zone are preserved. Mode id renamed `burnup → burndown` everywhere (defaults, settings store, ConfigPage); existing users are auto-migrated (enable flag + `windowDays` carried over, legacy keys dropped). Old `#/kiosk/burnup/...` URLs fall back to the first enabled mode.
+
+## [0.12.12] - 2026-05-14
+- Target-milestone progress bar's striped "added after start" segment now **slides** (barber-pole effect) — a subtle 2.4s linear loop on the diagonal stripes. Makes the wall feel live without being distracting, and naturally draws the eye to the scope-creep portion of the bar (the segment that matters most). Honors `prefers-reduced-motion`.
+
+## [0.12.11] - 2026-05-14
+- Hot labels bar is now **stacked by priority** — the bar for each label splits into Blocking / High / Medium / Low / Other / No-priority segments (same buckets and colors as the Workload screen), with a matching legend below. Same data, but now the room sees not just which areas are noisy but *how critical* that noise is. Solid-blue bars become red-heavy where the load is dangerous and grey-heavy where it's just chatter.
+
+## [0.12.10] - 2026-05-14
+- Hot labels window default bumped from **24h → 168h (7 days)** — a single day was too narrow on most projects to surface meaningful label clusters. Header now pretty-prints the window as `7d` / `3d 12h` instead of `168h` so the section title stays readable for any value users dial in. Existing users still sitting on the old 24h default get a one-time auto-bump (anything they explicitly chose, including 24h after this version, is preserved).
+
+## [0.12.9] - 2026-05-14
+- **Velocity** kiosk mode rebuilt from a row of vertical bars into **two side-by-side GitHub-style mini heatmaps** (Created on the left, Closed on the right). Each grid is 7 rows (Mon..Sun) × N week columns with square-ish cells colored by the same red/green palettes as the Activity heatmap. Default window is now 4 weeks (was 7 days). Each side has its own intensity scale so a low-volume week is still readable. Cells show the day's count when > 0, today's cell gets a dashed outline, and clicking a cell still filters the main graph to that day. Config option renamed `Days window` → `Weeks window` (1..12, default 4); existing users with `velocity.days` are migrated to a rounded `velocity.weeks` value.
+
+## [0.12.8] - 2026-05-14
+- Target milestone header now shows **how many days the milestone has been running** alongside the countdown, e.g. `73 days in · 47 days to go · 2026-06-30`. Uses the milestone's `start_date` when set, falls back to the earliest ticket `created_at` (the same heuristic the rich progress bar already uses), and is hidden if the milestone hasn't started yet. Gives the wall a sense of pacing — "we've already spent X days, are we X% done?".
+
+## [0.12.7] - 2026-05-14
+- Activity-by-label heatmap cells made larger and more readable: cap raised from **14 → 18 px**, minimum bumped to **7 px**, vertical inter-block gap tightened from 8 → 4 px, top padding 26 → 24. If the configured top-N would force cells below the 7px floor (e.g. 19 labels on a portrait kiosk), the heatmap automatically drops labels from the tail until each block's squares are at least 7px, and the section header reflects the actual rendered count so "top 19" doesn't lie when only 12 fit. No more pixel-soup label rows on cramped kiosks.
+
+## [0.12.6] - 2026-05-14
+- Activity-by-label heatmap rebuilt as **one GitHub/GitLab-style mini heatmap per label** instead of a single linear strip of daily cells. Each label gets its own 7-row (Mon..Sun) × N-week grid with SQUARE cells (cap 14px, matching the main Activity heatmap density), stacked vertically. Cell size auto-picks the smaller of width-fit and height-fit so 365d at 10 labels lands around ~9px cells and 120d at 10 labels lands around ~14px cells — uses the available vertical space instead of leaving the lower 70% of the screen empty. Start is Monday-aligned so columns line up across labels; pre-window padding cells are drawn faintly like in the main heatmap. Click filters still target the single day clicked.
+
+## [0.12.5] - 2026-05-14
+- Activity by label heatmap switched from **weeks → days** to match the main Activity heatmap resolution. Each cell is now one day (cap 8px wide, 1px gap) instead of one Mon–Sun week (was cap 14px, 3px gap), so a 365-day window fits horizontally and short windows (120d) actually fill the row. Header now reads "peak N/day" instead of "/week", and a click on a cell filters the graph to that label + that single day. Month labels lock to the first day of each month rather than the nearest week.
+
+## [0.12.4] - 2026-05-14
+- The three "Open by …" kiosk modes (Priority overview / Status breakdown / Type breakdown) are merged into a single **Open by priority / status / type** screen — all three breakdowns stack vertically and share the body's vertical space (each block flex-shrinks rather than pushing the next off-screen). Cuts the cycle from three near-identical bar-list screens to one denser screen so the wall spends more time on other modes. Priority bars are still clickable to filter the graph. The three legacy `showNo*` toggles live together under a single "Include (No …) bucket" row in Configuration → Kiosk, and existing users are migrated: if any of the three legacy modes was enabled, the new combined mode comes up enabled.
+
+## [0.12.3] - 2026-05-14
+- Heatmap cells are now clickable in both kiosk heatmap modes. **Activity heatmap**: clicking a day in the *Tickets created* row opens the main graph filtered to issues created on that day; clicking a day in the *Tickets closed* or *All activity* rows filters by `updated_at` for that day (the main view has no `closedMode`, and a close always bumps `updated_at`). **Activity by label**: clicking a week cell filters by the row's label + the Mon–Sun range it represents. All click filters carry the kiosk's target-milestone scope and priority filter through, so the graph you land on matches what you were looking at. Empty / out-of-range cells stay non-interactive; hovering a clickable cell shows a subtle white outline.
+
+## [0.12.2] - 2026-05-14
+- Kiosk screens now animate on data refresh: stat numbers (Target / Today's pulse / Ticket health), the milestone progress bar, and the workload / priority / status / type / aging bars briefly pulse and brighten when fresh data lands. Activity and Recently-closed feeds use enter/leave/move transitions so new items slide in from the top, old items slide off to the right, and existing rows glide to their new position instead of snapping. Stable keys (`kind-iid-ts`) ensure the diff is correct.
+
+## [0.12.1] - 2026-05-14
+- Heatmaps:
+  - Cells capped to 14px (Activity heatmap) / 14×22px (Activity by label) for a tighter GitHub-style density on wide kiosks — no more chunky squares.
+  - **Tickets created = red**, **tickets closed = green** across the whole kiosk: heatmap palettes, velocity bars, activity-feed border/icon/tag colors, today's-pulse "Opened" / "Closed" cards, and the burnup scope line.
+  - Activity-by-label rows are now colored by a **deterministic hash of the label name** — each label gets its own stable hue (5-step intensity palette derived from `hsl(hue, …)`), and the label text on the left is tinted to match. Legend gradient switched to neutral grey since the cell color now communicates "which label" instead of "intensity bucket".
+
 ## [0.12.0] - 2026-05-14
 - New kiosk mode **Activity by label** — GitHub-style heatmap where each row is one of the top labels (department / component / area / customer / …) and columns are weeks within the window. Cell intensity = events touching that label in that week. Great for spotting which areas of the project have been moving over the past year. Configurable in Configuration → Kiosk: window (60–730 days, default 365), top-N (3–30, default 10), include-scoped-labels toggle.
 - Year labels added to both heatmaps (Activity heatmap + Activity by label) and the burnup chart's x-axis ticks. First label and any year transition now show `Jan 2026` instead of bare `Jan`, so multi-year windows (730d) and year-spanning 365d charts aren't ambiguous.

@@ -823,9 +823,9 @@
               <v-row v-if="settings.uiState.kiosk.modes[m.id] && kioskHasOptions(m.id)" dense class="mt-2 kiosk-mode-options">
                 <v-col v-if="m.id === 'velocity'" cols="6" sm="3">
                   <v-text-field
-                    v-model.number="settings.uiState.kiosk.modeConfig.velocity.days"
-                    type="number" min="2" max="31"
-                    label="Days window" density="compact" variant="outlined" hide-details
+                    v-model.number="settings.uiState.kiosk.modeConfig.velocity.weeks"
+                    type="number" min="1" max="12"
+                    label="Weeks window" density="compact" variant="outlined" hide-details
                   />
                 </v-col>
                 <v-col v-if="m.id === 'workload'" cols="6" sm="3">
@@ -842,24 +842,26 @@
                     hide-details density="compact"
                   />
                 </v-col>
-                <v-col v-if="m.id === 'priority'" cols="12">
-                  <v-checkbox
-                    v-model="settings.uiState.kiosk.modeConfig.priority.showNoPriority"
-                    label='Include "(No priority)" bucket' hide-details density="compact"
-                  />
-                </v-col>
-                <v-col v-if="m.id === 'status'" cols="12">
-                  <v-checkbox
-                    v-model="settings.uiState.kiosk.modeConfig.status.showNoStatus"
-                    label='Include "(No status)" bucket' hide-details density="compact"
-                  />
-                </v-col>
-                <v-col v-if="m.id === 'type'" cols="12">
-                  <v-checkbox
-                    v-model="settings.uiState.kiosk.modeConfig.type.showNoType"
-                    label='Include "(No type)" bucket' hide-details density="compact"
-                  />
-                </v-col>
+                <template v-if="m.id === 'breakdown'">
+                  <v-col cols="12" sm="4">
+                    <v-checkbox
+                      v-model="settings.uiState.kiosk.modeConfig.breakdown.showNoPriority"
+                      label='Include "(No priority)"' hide-details density="compact"
+                    />
+                  </v-col>
+                  <v-col cols="12" sm="4">
+                    <v-checkbox
+                      v-model="settings.uiState.kiosk.modeConfig.breakdown.showNoStatus"
+                      label='Include "(No status)"' hide-details density="compact"
+                    />
+                  </v-col>
+                  <v-col cols="12" sm="4">
+                    <v-checkbox
+                      v-model="settings.uiState.kiosk.modeConfig.breakdown.showNoType"
+                      label='Include "(No type)"' hide-details density="compact"
+                    />
+                  </v-col>
+                </template>
                 <v-col v-if="m.id === 'milestones'" cols="6" sm="3">
                   <v-text-field
                     v-model.number="settings.uiState.kiosk.modeConfig.milestones.topN"
@@ -867,9 +869,9 @@
                     label="Top N" density="compact" variant="outlined" hide-details
                   />
                 </v-col>
-                <v-col v-if="m.id === 'burnup'" cols="6" sm="3">
+                <v-col v-if="m.id === 'burndown'" cols="6" sm="3">
                   <v-text-field
-                    v-model.number="settings.uiState.kiosk.modeConfig.burnup.windowDays"
+                    v-model.number="settings.uiState.kiosk.modeConfig.burndown.windowDays"
                     type="number" min="7" max="365"
                     label="Window (days)"
                     hint="Used when the milestone has no sensible start_date."
@@ -1231,17 +1233,15 @@ import localforage from 'localforage'
 
 const kioskAllModes = [
   { id: 'target',     label: 'Target milestone',         icon: 'mdi-flag',                 description: 'Focused dashboard for the milestone set above (big % bar + countdown + top open).' },
-  { id: 'burnup',     label: 'Milestone burnup',         icon: 'mdi-chart-areaspline',     description: 'Cumulative scope vs closed line chart over the target milestone lifetime.' },
+  { id: 'burndown',   label: 'Milestone burndown',       icon: 'mdi-chart-areaspline',     description: 'Remaining open work over time alongside cumulative closed, clipped to today (no future projection). Ideal-burn guideline drawn up to today only.' },
   { id: 'blockers',   label: 'Blockers',                 icon: 'mdi-alert-octagon',        description: 'Open tickets with blocking/critical priority, critical severity, or "blocked" status/label — sorted oldest first.' },
   { id: 'wipStale',   label: 'Stale WIP',                icon: 'mdi-progress-alert',       description: 'Tickets in "In progress" status that have not been updated in N days.' },
   { id: 'today',      label: "Today's pulse",            icon: 'mdi-pulse',                description: 'Opened / closed / updated / totals.' },
-  { id: 'velocity',   label: 'Velocity',                 icon: 'mdi-trending-up',          description: 'Created vs closed per day.' },
+  { id: 'velocity',   label: 'Velocity',                 icon: 'mdi-trending-up',          description: 'Side-by-side GitHub-style mini heatmaps of created vs closed over the last N weeks.' },
   { id: 'heatmap',    label: 'Activity heatmap',         icon: 'mdi-view-grid',            description: 'GitHub-style activity grid — three stacked rows for created (green), closed (blue), and all activity (purple).' },
   { id: 'heatmapByLabel', label: 'Activity by label',    icon: 'mdi-view-grid-outline',    description: 'Heatmap rows = top labels (departments / components), columns = weeks. See which areas have been worked on across the year.' },
   { id: 'workload',   label: 'Workload by assignee',     icon: 'mdi-account-multiple',     description: 'Top assignees by active open count.' },
-  { id: 'priority',   label: 'Priority overview',        icon: 'mdi-alert-circle-outline', description: 'Open per Priority:: label.' },
-  { id: 'status',     label: 'Status breakdown',         icon: 'mdi-list-status',          description: 'Open per work-item status.' },
-  { id: 'type',       label: 'Type breakdown',           icon: 'mdi-shape-outline',        description: 'Open per Type:: label.' },
+  { id: 'breakdown',  label: 'Open by priority / status / type', icon: 'mdi-poll', description: 'Three stacked breakdowns on one screen: open tickets per priority, per status (with avg idle days), and per Type:: label.' },
   { id: 'hotLabels',  label: 'Hot labels',               icon: 'mdi-fire',                 description: 'Plain labels appearing on tickets active in the last N hours.' },
   { id: 'milestones', label: 'Milestone progress',       icon: 'mdi-flag-checkered',       description: 'Active milestones with completion %.' },
   { id: 'aging',      label: 'Aging buckets',            icon: 'mdi-timer-sand',           description: 'Distribution of open ticket ages.' },
@@ -1249,7 +1249,7 @@ const kioskAllModes = [
   { id: 'closed',     label: 'Recently closed',          icon: 'mdi-party-popper',         description: 'Celebration view — tickets closed in the last N hours.' },
   { id: 'risks',      label: 'Ticket health',            icon: 'mdi-stethoscope',          description: 'Problem dashboard — overdue / stale / unassigned / no priority / no due date / blocked, plus the worst offenders.' }
 ]
-const kioskHasOptions = (id) => ['velocity', 'workload', 'priority', 'status', 'type', 'hotLabels', 'milestones', 'burnup', 'activity', 'blockers', 'wipStale', 'closed', 'risks', 'heatmap', 'heatmapByLabel'].includes(id)
+const kioskHasOptions = (id) => ['velocity', 'workload', 'breakdown', 'hotLabels', 'milestones', 'burndown', 'activity', 'blockers', 'wipStale', 'closed', 'risks', 'heatmap', 'heatmapByLabel'].includes(id)
 const kioskPriorityBuckets = [
   { value: 'blocking', label: 'Blocking / Critical' },
   { value: 'high',     label: 'High' },
