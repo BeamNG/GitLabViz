@@ -147,8 +147,8 @@ export const fetchProjectIssuesRest = async (client, projectId, onProgress, opti
   let page = 1
   while (true) {
     if (onProgress) {
-      const stateLabel = state === 'opened' ? '' : ` (${state})`
-      onProgress(`Fetching issues${stateLabel} page ${page}... (${all.length} fetched)`)
+      const headline = state === 'opened' ? 'Issues' : `${state[0].toUpperCase() + state.slice(1)} issues`
+      onProgress(`${headline}\npage ${page} · ${all.length} fetched`)
     }
 
     const params = {
@@ -302,7 +302,11 @@ export const enrichIssuesFromGraphql = async (client, projectId, issues, onProgr
 
     if (!iids.length) continue
 
-    if (onProgress) onProgress(`Enriching issue fields (GraphQL) ${Math.min(idx + batch.length, need.length)} / ${need.length}...`)
+    if (onProgress) {
+      const done = Math.min(idx + batch.length, need.length)
+      const pct = Math.round((done / need.length) * 100)
+      onProgress(`Enriching fields\n${done} / ${need.length} · ${pct}%`)
+    }
 
     const q = `
       query EnrichIssues($fullPath: ID!, $iids: [String!]) {
@@ -426,7 +430,11 @@ export const enrichEpicTitlesFromRest = async (client, projectId, issues, onProg
     while (idx < limit.length) {
       const cur = limit[idx]
       idx++
-      if (onProgress) onProgress(`Enriching epic titles (REST) ${Math.min(idx, limit.length)} / ${limit.length}...`)
+      if (onProgress) {
+        const done = Math.min(idx, limit.length)
+        const pct = Math.round((done / limit.length) * 100)
+        onProgress(`Enriching epics\n${done} / ${limit.length} · ${pct}%`)
+      }
       try {
         for (const gid of groupIds) {
           try {
@@ -919,13 +927,13 @@ export const fetchProjectIssues = async (client, projectId, onProgress, options 
       if (PAGE_LIMIT !== -1 && page > PAGE_LIMIT) break
 
       if (onProgress) {
-        const stateLabel = state === 'opened' ? '' : ` (${state})`
+        const headline = state === 'opened' ? 'Issues' : `${state[0].toUpperCase() + state.slice(1)} issues`
         if (Number.isFinite(totalCount) && totalCount > 0) {
           const totalPages = Math.max(1, Math.ceil(totalCount / first))
           const pct = Math.round((allIssues.length / totalCount) * 100)
-          onProgress(`Fetching issues${stateLabel} page ${page} of ${totalPages} (${pct}%)...`)
+          onProgress(`${headline}\npage ${page} / ${totalPages} · ${pct}%`)
         } else {
-          onProgress(`Fetching issues${stateLabel} page ${page}... (${allIssues.length} fetched)`)
+          onProgress(`${headline}\npage ${page} · ${allIssues.length} fetched`)
         }
       }
 

@@ -181,21 +181,23 @@ export function useDataLoader ({
     const password = (override && typeof override.password === 'string') ? override.password : (settings.config.svnPassword || '')
 
     updateStatus.value = { loading: true, source: 'svn', message: `Updating ${urls.length} repos...` }
-    loadingMessage.value = `SVN: updating ${urls.length} repos...`
+    loadingMessage.value = `SVN\nupdating ${urls.length} repos…`
 
     for (let i = 0; i < urls.length; i++) {
       const url = urls[i]
-      const prefix = `SVN (${i + 1}/${urls.length})`
+      const prefix = `SVN ${i + 1} / ${urls.length}`
       updateStatus.value = { loading: true, source: 'svn', message: `${prefix}: starting...` }
-      loadingMessage.value = `${prefix}: starting...`
+      loadingMessage.value = `${prefix}\nstarting…`
 
       const svnClient = createSvnClient(url, username, password)
       await fetchSvnLog(svnClient, 0, {
         pageSize: 2000,
         cacheRepoUrl: url,
         onProgress: (msg) => {
-          loadingMessage.value = `${prefix}: ${msg}`
-          updateStatus.value = { loading: true, source: 'svn', message: `${prefix}: ${msg}` }
+          // `msg` may already be two-line; if not, push it onto the second line.
+          const oneLine = !msg.includes('\n')
+          loadingMessage.value = oneLine ? `${prefix}\n${msg}` : msg
+          updateStatus.value = { loading: true, source: 'svn', message: `${prefix}: ${msg.replace(/\n/g, ' · ')}` }
         }
       })
     }
@@ -269,7 +271,7 @@ export function useDataLoader ({
     }
 
     error.value = ''
-    loadingMessage.value = 'Starting...'
+    loadingMessage.value = 'Starting…'
     updateStatus.value = { loading: true, source: only === 'both' ? '' : only, message: 'Starting...' }
 
     // Drop sample/mock data before fetching so the user doesn't see fake nodes during the load.
@@ -307,7 +309,7 @@ export function useDataLoader ({
     try {
       // 0. Refresh Mattermost (ChatTools) session data (lightweight)
       if (doMattermost) {
-        loadingMessage.value = 'Mattermost: validating login...'
+        loadingMessage.value = 'Mattermost\nvalidating login…'
         updateStatus.value = { loading: true, source: 'mattermost', message: 'Validating login...' }
         try {
           const api = new MattermostClient({ baseUrl: settings.config.mattermostUrl, token: settings.config.mattermostToken })
@@ -339,7 +341,7 @@ export function useDataLoader ({
           ? new Date(Math.max(0, cursorMs - cursorBufferMs)).toISOString()
           : null
 
-        loadingMessage.value = canIncrementalGitLab ? 'Fetching updated issues...' : 'Fetching issues...'
+        loadingMessage.value = canIncrementalGitLab ? 'Issues\nfetching updates…' : 'Issues\nstarting…'
         updateStatus.value = { loading: true, source: 'gitlab', message: 'Fetching issues...' }
         try {
           // Cache "me" for dynamic presets (By me / Assigned to me)
@@ -468,7 +470,7 @@ export function useDataLoader ({
           gitlabSyncCursorForSave = startedCursor
 
           // Create nodes
-          loadingMessage.value = 'Creating nodes...'
+          loadingMessage.value = 'Building graph\ncreating nodes…'
 
           // Only replace the whole dataset when we got a full (non-partial) fetch.
           // If partial, merge into existing nodes/edges instead (resume-friendly).
@@ -542,7 +544,7 @@ export function useDataLoader ({
       // 2. Fetch SVN Data if configured
       if (doSvn && svnUrl.value) {
         try {
-          loadingMessage.value = 'Fetching SVN log...'
+          loadingMessage.value = 'SVN log\nfetching…'
           updateStatus.value = { loading: true, source: 'svn', message: 'Fetching SVN log...' }
 
           // Adjust URL to use proxy in DEV mode if it matches our configured proxy target
@@ -570,7 +572,9 @@ export function useDataLoader ({
           await fetchSvnLog(svnClient, 0, {
             pageSize: 2000,
             cacheRepoUrl: cacheKeyUrl,
-            onProgress: (msg) => { loadingMessage.value = msg },
+            onProgress: (msg) => {
+              loadingMessage.value = msg.includes('\n') ? msg : `SVN log\n${msg}`
+            },
             onPage: async (pageCommits) => {
               // keep a small slice in memory for SVN tree
               for (const c of pageCommits) {
@@ -638,7 +642,7 @@ export function useDataLoader ({
 
       // Fetch links for each issue with concurrency limit
       if (settings.config.enableGitLab && issues.length > 0) {
-        loadingMessage.value = 'Fetching issue links...'
+        loadingMessage.value = 'Issue links\nstarting…'
         let completedLinks = 0
         const CONCURRENCY_LIMIT = 20
         const linksResults = new Array(issues.length)
@@ -669,14 +673,14 @@ export function useDataLoader ({
             }
             completedLinks++
             if (completedLinks % 10 === 0 || completedLinks === issues.length) {
-              loadingMessage.value = `Fetching links: ${completedLinks} / ${issues.length}`
+              loadingMessage.value = `Issue links\n${completedLinks} / ${issues.length} · ${Math.round((completedLinks / issues.length) * 100)}%`
             }
           }
         }
 
         await Promise.all(Array.from({ length: CONCURRENCY_LIMIT }, fetchWorker))
 
-        loadingMessage.value = 'Processing links...'
+        loadingMessage.value = 'Issue links\nprocessing…'
         linksResults.forEach((links, index) => {
           const sourceIssue = issues[index]
           const sourceId = String(sourceIssue.iid)

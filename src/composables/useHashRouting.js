@@ -128,6 +128,11 @@ export function useHashRouting ({ activePage, configInitialTab, kioskMode }) {
 
     watch(activePage, (p) => {
       if (isApplyingHash) return
+      // Each page owns its own viewParam keyspace (main = share-codec keys like
+      // q/group/…; kiosk = paused/cycle/refresh; config/chattools = none).
+      // Carrying the old page's params into the new URL would either confuse
+      // the new page's decoder or trigger spurious "Unknown URL key" warnings.
+      viewParam.value = ''
       setHash(p, tabForPage(p), { replace: false })
     })
     watch(configInitialTab, (t) => {

@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.12.22] - 2026-05-15
+- Velocity calendar: today's cell now has a bright yellow ring with a slow pulsing glow (honors `prefers-reduced-motion`) so the room can find "now" at a glance even when neighbour cells are loud red/green.
+- Milestone progress sorted properly: target pinned first, then milestones by due date (closest first), then no-deadline ones (TBD / Backlog) at the bottom. Total count is the final tiebreaker.
+- Hot labels bar restored to the **stacked-by-priority** layout — bar splits into Blocking / High / Medium / Low / Other / No-priority segments with the matching legend. (The 0.12.11 work had been lost during a merge.)
+- Target progress bar: striped "added after start" segment now loops seamlessly. The barber-pole shift is `16.97px` (= 12 × √2, one full stripe period along the 45° gradient axis) instead of the slightly-off `17px` that produced a visible micro-jump every cycle. The closed segment also gains a slow green-gradient shimmer to match.
+- Stale WIP and Blockers headlines now share the same large mixed-case style — they were previously inconsistent sizes.
+- Off-hours dim default end hour bumped 19 → 21 — most offices empty out closer to 9pm than 7pm.
+- **Kiosk always starts at the first enabled mode** when opened from inside the app (Shift+K hotkey, "Open kiosk" config button) instead of resuming wherever the cycle had drifted last session. URL-based entries (`#/kiosk/burndown/…`) still respect the URL.
+- **URL stays in sync with what's displayed** on page transitions. The previous "kiosk → main" path could either show an "Unknown URL key paused" snackbar (the kiosk's `paused=1` arg leaked into the main view's share decoder) or, after the first fix, leave the URL empty even though main-view filters were still applied. Now the routing layer clears the old page's keyspace on transition AND the main page re-publishes its current filter/view state on arrival (via `nextTick` to defer past the clear).
+- Loading status in the sidebar rebuilt: messages are now emitted as `headline\ndetail` (e.g. `Issues` / `page 5 / 20 · 25%`) and rendered as two lines — primary headline on top, dim tabular-numeral detail below. Always reserves 2 rows of height so the sidebar doesn't visibly jump when the loader cycles between short ("Starting…") and long ("Closed issues / page 21 · 8400 fetched") messages. Affected emitters: REST + GraphQL issue paginate, GraphQL field enrichment, REST epic enrichment, SVN log, issue links, Mattermost validation, and the data loader's own status lines.
+
 ## [0.12.21] - 2026-05-15
 - **Screen burn-in protection** for always-on office kiosks. Two opt-in safeguards in Configuration → Kiosk:
   - **Pixel shift** (default ON): nudges the kiosk view by ±3px every ~60 seconds with a slow 1.6s transition. Imperceptible at normal viewing distance, but no single pixel stays the same colour for more than a minute — the industry-standard mitigation for OLED retention on signage.

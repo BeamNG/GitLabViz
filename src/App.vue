@@ -261,7 +261,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, watch, toRaw } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick, toRaw } from 'vue'
 import { useTheme } from 'vuetify'
 import IssueGraph from './components/IssueGraph.vue'
 import AppSidebar from './components/AppSidebar.vue'
@@ -1127,6 +1127,21 @@ watch(
   },
   { deep: true }
 )
+
+// Page-transition republish: the routing watcher in useHashRouting clears
+// `viewParam` when activePage changes (each page owns its own keyspace).
+// The deep-watch above only fires on filter/view CHANGE, so a kiosk → main
+// transition with unchanged filters would leave the URL empty even though
+// filters are still applied. Re-encode the current snapshot on arrival so
+// the URL always matches what's displayed. `nextTick` defers our write past
+// the routing watcher's reset (registration order would otherwise clobber us).
+watch(activePage, (p) => {
+  if (p !== 'main' || isApplyingViewFromUrl) return
+  nextTick(() => {
+    if (activePage.value !== 'main') return
+    setView(encodeView(getCurrentConfigSnapshot()))
+  })
+})
 
 </script>
 

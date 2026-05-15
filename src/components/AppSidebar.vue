@@ -246,8 +246,14 @@
             Loaded: {{ svnRecentCommits.length.toLocaleString() }}
           </div>
         </div>
-        <div v-if="loading" class="text-caption text-medium-emphasis text-truncate">
-          {{ loadingMessage }}
+        <!-- Loading status is emitted as `headline\ndetail` (e.g.
+             `Issues\npage 5 / 20 · 25%`). Reserve two lines of height so the
+             layout doesn't snap when single-line messages ("Starting…") cycle
+             with multi-line ones. Second line is dimmer + tabular-numerals. A
+             non-breaking space is used as placeholder when no detail exists. -->
+        <div v-if="loading" class="text-caption" style="line-height: 1.3;">
+          <div class="text-medium-emphasis font-weight-medium" style="word-break: break-word;">{{ loadingHeadline }}</div>
+          <div style="opacity: 0.6; font-variant-numeric: tabular-nums; word-break: break-word;">{{ loadingDetail || '\u00A0' }}</div>
         </div>
         <div v-else-if="hasData" class="d-flex flex-column text-caption text-medium-emphasis">
           <div class="d-flex justify-space-between align-baseline">
@@ -380,6 +386,11 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['update:vizMode', 'update:svnVizLimit'])
+
+// Loading messages are emitted as `headline\ndetail` by the data loader; split
+// so we can style each line separately (headline normal, detail dim+tabular).
+const loadingHeadline = computed(() => String(props.loadingMessage || '').split('\n')[0] || '')
+const loadingDetail   = computed(() => String(props.loadingMessage || '').split('\n').slice(1).join(' '))
 
 const vizModeProxy = computed({
   get: () => props.vizMode,
