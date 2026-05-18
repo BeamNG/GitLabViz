@@ -111,7 +111,8 @@ export const defaultSettings = () => ({
         heatmap: true, heatmapByLabel: true,
         workload: true, breakdown: true, hotLabels: true,
         milestones: true, aging: true,
-        activity: true, closed: true, risks: true, broken: true
+        activity: true, closed: true, leaderboard: true,
+        risks: true, broken: true
       },
       // Per-mode tuning. Modes without an entry have no options yet.
       modeConfig: {
@@ -130,8 +131,9 @@ export const defaultSettings = () => ({
         blockers:   { limit: 12, maxAgeDays: 0 },  // 0 = no upper bound; otherwise hide blockers older than this
         wipStale:   { days: 5, limit: 12 },         // tickets in "in progress" status idle > N days
         closed:     { hours: 48, limit: 18 },
+        leaderboard: { topN: 5 },
         risks:      { staleListDays: 14, listLimit: 10 },
-        broken:     { listLimit: 12, hideEmpty: false }
+        broken:     { listLimit: 12, hideEmpty: true }
       }
     },
     presets: {
@@ -209,6 +211,7 @@ export const defaultSettings = () => ({
       showGroupLabels: true,
       dueSoonDays: 7,
       issueOpenTarget: '_blank', // '_blank' | '_self' | 'GitlabVizIssueTab'
+      listRowClickAction: 'open', // 'open' (single-click opens ticket) | 'select' (single-click selects, dbl-click opens)
       // Optional per-mode color overrides (persisted in presets):
       // { priority: { '1 - High': '#66bb6a', ... } }
       colorOverrides: {}

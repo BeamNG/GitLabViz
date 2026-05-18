@@ -21,6 +21,7 @@
       :hide-default-footer="isGrouped"
       :row-props="rowProps"
       @click:row="onRowClick"
+      @dblclick:row="onRowDblClick"
       @contextmenu:row="onRowContextMenu"
     >
       <!-- Group header — clicking anywhere on the row toggles the group; the
@@ -409,6 +410,10 @@ import IssueContextMenu from './IssueContextMenu.vue'
 const props = defineProps({
   nodes: { type: Object, default: () => ({}) },
   issueOpenTarget: { type: String, default: '_blank' },
+  // 'open' = single-click opens the ticket (legacy). 'select' = single-click
+  // highlights the row (blue glow); double-click opens. Double-click always opens
+  // regardless of this setting.
+  rowClickAction: { type: String, default: 'open' },
   // Persisted state — { order: [keys…], hidden: [keys…], sortBy: [{ key, order }] }
   // owned by App.vue settings; we mirror via v-model. Keys come from COLUMN_DEFS below.
   columnState: {
@@ -1101,7 +1106,13 @@ const applyLegendClasses = () => {
     row.classList.toggle('il-row-legend-dim', !same)
   }
 }
-watch([effectiveLegendColor, items], () => nextTick(applyLegendClasses))
+watch([effectiveLegendColor, items], () => nextTick(() => {
+  applyLegendClasses()
+  applyRowClass('il-row-ctx-active', rowCtx.activeId)
+  applyRowClass('il-row-selected', selectedId.value)
+}))
+// Clear selection if user switches the click-action setting back to "open".
+watch(() => props.rowClickAction, (v) => { if (v !== 'select') { selectedId.value = null; applyRowClass('il-row-selected', null) } })
 
 const groupRowLegendClass = (groupItem) => {
   const focus = effectiveLegendColor.value
@@ -1179,22 +1190,33 @@ const onGroupToggle = (item, toggleGroup) => {
   emit('update:columnState', { ...currentState(), closedGroups: [...closed] })
 }
 
-const onRowClick = (_evt, { item }) => {
+const openTicket = (item) => {
   if (item?.url) window.open(item.url, props.issueOpenTarget || '_blank')
 }
+const onRowClick = (_evt, { item }) => {
+  if (props.rowClickAction === 'select') {
+    selectedId.value = item?.id ?? null
+    applyRowClass('il-row-selected', selectedId.value)
+    return
+  }
+  openTicket(item)
+}
+const onRowDblClick = (_evt, { item }) => openTicket(item)
 
 // Right-click on a row → same context menu the graph uses. We pass the
 // original node (with `_raw`) plus the row's `_color` so the menu's header
-// strip matches the pip the user is looking at. The active row gets a yellow
-// glow via a class toggled directly on the DOM (no rowProps re-render churn).
+// strip matches the pip the user is looking at. Active rows (yellow for
+// right-click target, blue for selection) get a class toggled directly on
+// the DOM via `applyRowClass` to avoid forcing rowProps re-renders.
 const rowCtx = reactive({ visible: false, x: 0, y: 0, node: null, activeId: null })
-const setActiveRow = (id) => {
+const selectedId = ref(null)
+const applyRowClass = (className, id) => {
   const root = issueListEl.value
   if (!root) return
-  for (const row of root.querySelectorAll('tr.il-row-ctx-active')) row.classList.remove('il-row-ctx-active')
+  for (const row of root.querySelectorAll(`tr.${className}`)) row.classList.remove(className)
   if (id == null) return
   const sel = root.querySelector(`tr[data-row-id="${CSS.escape(String(id))}"]`)
-  if (sel) sel.classList.add('il-row-ctx-active')
+  if (sel) sel.classList.add(className)
 }
 const onRowContextMenu = (evt, { item }) => {
   const n = item && props.nodes ? props.nodes[item.id] : null
@@ -1205,12 +1227,12 @@ const onRowContextMenu = (evt, { item }) => {
   rowCtx.y = evt.clientY
   rowCtx.visible = true
   rowCtx.activeId = item.id
-  nextTick(() => setActiveRow(item.id))
+  nextTick(() => applyRowClass('il-row-ctx-active', item.id))
 }
 const closeRowCtx = () => {
   rowCtx.visible = false
   rowCtx.activeId = null
-  setActiveRow(null)
+  applyRowClass('il-row-ctx-active', null)
 }
 
 const relativeTime = (ms) => {
@@ -1441,6 +1463,12 @@ const avatarColor = (name) => {
 :deep(.il-row-ctx-active .v-data-table__td) {
   background: rgba(255, 213, 79, 0.28) !important;
   box-shadow: inset 0 0 0 1px rgba(255, 193, 7, 0.55);
+}
+/* Click-to-select target — primary-coloured glow (only used when the
+   "single-click selects" setting is on; double-click still opens). */
+:deep(.il-row-selected .v-data-table__td) {
+  background: rgba(var(--v-theme-primary), 0.18) !important;
+  box-shadow: inset 0 0 0 1px rgba(var(--v-theme-primary), 0.55);
 }
 .il-group-row--legend-match td { box-shadow: inset 3px 0 0 rgb(var(--v-theme-primary)); }
 .il-group-row--legend-dim td { opacity: 0.4; }

@@ -198,6 +198,7 @@
             class="flex-grow-1 min-h-0"
             :nodes="filteredNodes"
             :issue-open-target="settings.uiState.view.issueOpenTarget"
+            :row-click-action="settings.uiState.view.listRowClickAction"
             :grouping-mode="settings.uiState.view.groupingMode"
             :color-mode="settings.uiState.view.viewMode"
             :due-soon-days="settings.uiState.view.dueSoonDays"

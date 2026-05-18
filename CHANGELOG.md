@@ -1,7 +1,20 @@
 # Changelog
 
+## [0.12.39] - 2026-05-18
+- New **Leaderboard** kiosk mode — five side-by-side podiums highlighting the team from different angles: **Most closed today**, **Most opened today**, **Most active · 7d** (combined closures + opens), **Top discussion** (sum of comment counts on tickets they raised — GitLab doesn't expose per-user note counts so author is the cleanest proxy), and **Heaviest workload** (current open assigned). Each card highlights its top 3 with gold/silver/bronze medals; the overall "Most active today" person gets a crown banner up top with a quick-glance summary of their closed/opened/workload counts. Click any row to filter the graph by that person. Per-category row count is configurable in Configuration → Kiosk → Leaderboard (default 5).
+
+## [0.12.38] - 2026-05-18
+- **Broken tickets:** "Hide empty categories" now defaults to **on** so the screen only shows cards with actual offenders. Flip it off in Configuration → Kiosk → Broken tickets if you want the full grid back.
+
+## [0.12.37] - 2026-05-18
+- **Burndown:** widened the chart's right padding so the "TODAY" badge at the right edge of the plot is no longer clipped off the SVG. Added end-of-line value badges at today — a coloured dot at each line's endpoint plus the current Closed and Remaining counts in the line colour (with a dark text-outline for legibility against any background). Labels are clamped below the TODAY pill and pushed apart vertically when the two lines end close to each other, so the numbers are readable without scanning down to the legend. The TODAY vertical line itself is now a thin dashed translucent white instead of a solid bright stroke, so it sits in the background and doesn't compete with the data lines.
+
+## [0.12.36] - 2026-05-18
+- **Burndown is now event-accurate.** The loader fetches `resource_milestone_events` for every ticket with a milestone (open + closed, was open-only), persists the dated `{ts, action, title}` events on `_raw.milestoneEvents`, and the burndown computation now uses them to build real "in milestone T" intervals per ticket. Scope at time *t* counts tickets whose intervals contain *t* (= they were actually in the milestone then), instead of guessing from `created_at`. This fixes the over-counted "added" line on milestones that receive tickets from other milestones mid-flight — a ticket created Feb 1 in another milestone and moved to 0.39 in May now appears in 0.39's scope at the May date, not Feb. Tickets that have left the milestone correctly drop out of scope at their `remove` event. Subtitle reports the now-accurate `(+N added, −M closed)` for the window; a fallback warning shows in the legend when some tickets haven't been enriched yet (reload to refresh).
+
 ## [0.12.35] - 2026-05-18
 - List view rows now share the graph's right-click context menu (open URL, close/reopen, assign/unassign me, copy shorthand/URL/markdown/summary, filter by author/assignee/milestone/status/priority/type, filter by label, "same label combo"). Extracted as a reusable `IssueContextMenu` so the two views stay in sync — the row header strip is tinted with the same colour pip the user is right-clicking. Row left-click still opens the issue URL; row right-click opens the menu (header right-click keeps the column controls menu unchanged). The active row gets a yellow glow while its menu is open so it's obvious which ticket the actions apply to.
+- New **List view: single-click row** setting under Configuration → Appearance — choose between "Open the ticket" (existing behaviour, single-click navigates to GitLab) and "Select the row" (single-click highlights the row with a primary-coloured glow, double-click opens). Double-click always opens regardless of the setting; right-click still opens the context menu either way.
 
 ## [0.12.34] - 2026-05-18
 - **Burndown** y-axis now includes the closed line — was only sized to `max(initialOpen, peakRemaining)`, so when cumulative closures exceeded that (common when the team ships a lot and/or scope grows mid-milestone) the green line drew off the top of the chart.

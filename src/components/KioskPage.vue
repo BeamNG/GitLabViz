@@ -432,7 +432,7 @@
               <line
                 :x1="targetBurndown.todayX" :x2="targetBurndown.todayX"
                 :y1="targetBurndown.innerTop" :y2="targetBurndown.innerBottom"
-                stroke="#ffffff" stroke-width="2"
+                stroke="rgba(255,255,255,0.35)" stroke-width="1.5" stroke-dasharray="5 5"
               />
               <rect
                 :x="targetBurndown.todayX - 42" :y="targetBurndown.innerTop - 4"
@@ -445,6 +445,23 @@
                 fill="#212121"
                 letter-spacing="0.5"
               >TODAY</text>
+            </g>
+
+            <!-- end-of-line value badges at today (line endpoint -> readable count) -->
+            <g>
+              <circle :cx="targetBurndown.todayX" :cy="targetBurndown.closedEndY" r="4" fill="#66bb6a" />
+              <text
+                :x="targetBurndown.todayX + 7" :y="targetBurndown.closedLabelY + 5"
+                font-size="16" font-weight="800" fill="#66bb6a"
+                style="paint-order: stroke; stroke: #181818; stroke-width: 4px; stroke-linejoin: round;"
+              >{{ fmtNum(targetBurndown.totalClosed) }}</text>
+
+              <circle :cx="targetBurndown.todayX" :cy="targetBurndown.remainEndY" r="4" :fill="targetBurndown.onTrack ? '#66bb6a' : '#ef5350'" />
+              <text
+                :x="targetBurndown.todayX + 7" :y="targetBurndown.remainLabelY + 5"
+                font-size="16" font-weight="800" :fill="targetBurndown.onTrack ? '#66bb6a' : '#ef5350'"
+                style="paint-order: stroke; stroke: #181818; stroke-width: 4px; stroke-linejoin: round;"
+              >{{ fmtNum(targetBurndown.currentOpen) }}</text>
             </g>
 
             <!-- x axis ticks -->
@@ -1004,6 +1021,68 @@
         </TransitionGroup>
       </section>
 
+      <!-- Leaderboard: multi-category podiums (closed / opened / active7d /
+           top discussion / workload). Each row is clickable to filter the
+           graph by that person. -->
+      <section v-else-if="currentMode === 'leaderboard'" class="k-leaderboard">
+        <div class="k-section-title k-leaderboard-title">
+          <v-icon icon="mdi-trophy" />
+          Leaderboard
+          <span class="k-section-sub">click any row to filter graph by that person</span>
+        </div>
+        <div v-if="!leaderboardHasData" class="k-empty">
+          <v-icon icon="mdi-trophy-outline" size="48" />
+          <div>No activity yet — leaderboards populate once tickets are created or closed.</div>
+        </div>
+        <template v-else>
+          <div v-if="leaderboardMVP" class="k-lb-mvp">
+            <v-icon icon="mdi-crown" class="k-lb-mvp-crown" />
+            <div class="k-lb-mvp-text">
+              <div class="k-lb-mvp-label">Most active today</div>
+              <div class="k-lb-mvp-name">
+                <span class="k-feed-avatar k-lb-mvp-avatar" :style="{ background: avatarColor(leaderboardMVP.name) }">{{ initialsOf(leaderboardMVP.name) }}</span>
+                <span class="k-lb-mvp-name-text">{{ leaderboardMVP.name }}</span>
+              </div>
+            </div>
+            <div class="k-lb-mvp-pills">
+              <span class="k-lb-mvp-pill"><strong>{{ fmtNum(leaderboardMVP.closedToday) }}</strong> closed</span>
+              <span class="k-lb-mvp-pill"><strong>{{ fmtNum(leaderboardMVP.openedToday) }}</strong> opened</span>
+              <span class="k-lb-mvp-pill"><strong>{{ fmtNum(leaderboardMVP.workload) }}</strong> active</span>
+            </div>
+          </div>
+          <div class="k-lb-grid">
+            <div
+              v-for="cat in leaderboardCategories" :key="cat.id"
+              class="k-lb-card"
+              :style="{ '--lb-accent': cat.accent }"
+            >
+              <div class="k-lb-card-title">
+                <v-icon :icon="cat.icon" />
+                <span>{{ cat.label }}</span>
+              </div>
+              <div v-if="!cat.list.length" class="k-lb-card-empty">No data yet.</div>
+              <ul v-else class="k-lb-card-list">
+                <li
+                  v-for="r in cat.list" :key="r.name"
+                  class="k-clickable"
+                  :class="r.medal ? `k-lb-medal-${r.medal}` : ''"
+                  @click="filterByAssignee(r.name)"
+                  :title="`Filter graph by ${r.name}`"
+                >
+                  <span class="k-lb-rank-mini">
+                    <v-icon v-if="r.medal" icon="mdi-medal" class="k-lb-medal-icon" />
+                    <template v-else>{{ r.rank }}</template>
+                  </span>
+                  <span class="k-feed-avatar k-lb-avatar" :style="{ background: avatarColor(r.name) }">{{ initialsOf(r.name) }}</span>
+                  <span class="k-lb-name-text" :title="r.name">{{ r.name }}</span>
+                  <span class="k-lb-card-num">{{ fmtNum(r[cat.field]) }}</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </template>
+      </section>
+
       <!-- Ticket health: problem categories + worst-offender list -->
       <section v-else-if="currentMode === 'risks'" class="k-health">
         <div class="k-health-grid">
@@ -1220,6 +1299,7 @@ const ALL_MODES = [
   { id: 'aging',      label: 'Aging buckets' },
   { id: 'activity',   label: 'Recent activity' },
   { id: 'closed',     label: 'Recently closed' },
+  { id: 'leaderboard', label: 'Leaderboard' },
   { id: 'risks',          label: 'Ticket health' },
   { id: 'broken',         label: 'Broken tickets' }
 ]
@@ -2217,17 +2297,16 @@ const etaTipTimeline = computed(() => {
 
 // Cumulative scope vs closed over the milestone's active window. The chart is anchored
 // to a sensible window (`start_date` if reasonable → otherwise N days before due_date →
-// otherwise earliest ticket) so legacy backlog tickets retagged into the milestone don't
-// stretch the X axis to years of dead space. Tickets that already exist at the window
-// start contribute to Day 1 baseline counts.
+// otherwise earliest ticket-in-milestone event) so legacy backlog tickets retagged into
+// the milestone don't stretch the X axis to years of dead space.
 //
-// We rebuild the lines from `created_at` / `closed_at` events on the currently-loaded
-// ticket data — there are no historical snapshots, so retroactive label changes etc.
-// can't be reconstructed.
+// Lines are reconstructed from each ticket's `resource_milestone_events` (loader stores
+// `_raw.milestoneEvents`), giving us real "in milestone T" intervals over time. Tickets
+// without fetched events yet fall back to `created_at`-as-entry.
 // `burndownSvgRef` + `burndownSize` are declared near the top of the script
 // alongside the other mode SVG refs so the global `watchModeSvgs` watcher can
 // reference them.
-const BURNDOWN_PAD = { top: 28, right: 28, bottom: 48, left: 58 }
+const BURNDOWN_PAD = { top: 28, right: 50, bottom: 48, left: 58 }
 const burndownCfg = computed(() => settings.uiState.kiosk?.modeConfig?.burndown || {})
 // Burndown = remaining open work (scope − closed) over time, with a classic-Scrum
 // ideal straight line from (start, initialOpen) → (due, 0). Uses the real
@@ -2459,6 +2538,22 @@ const targetBurndown = computed(() => {
       : (diff === 0 ? `${date} · due today` : `${date} · ${-diff}d overdue`)
   }
 
+  // End-of-line value labels at today. Clamp below the TODAY badge (which sits at
+  // innerTop − 4 + 26 high) and above the bottom; if the two lines end within
+  // ~22px vertically the labels would overlap, so push them apart while the
+  // connector dot still sits exactly on the line.
+  const remainEndY = yFor(currentOpen)
+  const closedEndY = yFor(closedAcc)
+  const labelMinY = BURNDOWN_PAD.top + 30
+  const labelMaxY = vbH - BURNDOWN_PAD.bottom - 6
+  const clampY = (y) => Math.max(labelMinY, Math.min(labelMaxY, y))
+  let remainLabelY = clampY(remainEndY)
+  let closedLabelY = clampY(closedEndY)
+  if (Math.abs(remainLabelY - closedLabelY) < 22) {
+    if (remainLabelY <= closedLabelY) { remainLabelY = clampY(remainLabelY - 11); closedLabelY = clampY(closedLabelY + 11) }
+    else                              { remainLabelY = clampY(remainLabelY + 11); closedLabelY = clampY(closedLabelY - 11) }
+  }
+
   return {
     remainingPath: stepPath('remaining'),
     closedPath: stepPath('closed'),
@@ -2467,6 +2562,8 @@ const targetBurndown = computed(() => {
     onTrack,
     ticks, yTicks,
     todayX: xFor(now),
+    remainEndY, closedEndY,
+    remainLabelY, closedLabelY,
     startLabel: new Date(start).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
     endLabel: new Date(end).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
     dueLabel,
@@ -2951,6 +3048,82 @@ const closedRecently = computed(() => {
   out.sort((a, b) => b.ts - a.ts)
   return { list: out.slice(0, limit), total: out.length, hours }
 })
+
+// Leaderboard — multiple ranking categories side by side: today's closers and
+// openers, week-long activity, ticket-discussion volume, current workload.
+// Each row is clickable to filter the graph by that person.
+// Data sources (no per-user comment history available, so we proxy):
+//   - closed_by      → closures
+//   - author         → opens + discussion credit (sum of user_notes_count on
+//                      tickets they raised)
+//   - assignees      → current workload (open only)
+const leaderboardCfg = computed(() => settings.uiState.kiosk?.modeConfig?.leaderboard || {})
+const LEADERBOARD_MEDALS = ['gold', 'silver', 'bronze']
+
+const leaderboardStats = computed(() => {
+  const day = 24 * 60 * 60 * 1000
+  const today0 = startOfToday()
+  const week0 = Date.now() - 7 * day
+  const stats = new Map()
+  const bump = (name, field, by = 1) => {
+    if (!name) return
+    let s = stats.get(name)
+    if (!s) {
+      s = { name, closedToday: 0, openedToday: 0, closed7d: 0, opened7d: 0,
+            workload: 0, comments: 0 }
+      stats.set(name, s)
+    }
+    s[field] += by
+  }
+  for (const n of items.value) {
+    const raw = n._raw || {}
+    const created = safeDate(raw.created_at) || 0
+    const closed = safeDate(raw.closed_at) || 0
+    const notes = Number(raw.user_notes_count) || 0
+    const author = raw.author?.name
+    const closer = raw.closed_by?.name
+    if (created >= today0) bump(author, 'openedToday')
+    if (created >= week0)  bump(author, 'opened7d')
+    if (closed >= today0)  bump(closer, 'closedToday')
+    if (closed >= week0)   bump(closer, 'closed7d')
+    // GitLab doesn't expose per-user comment counts. Author owns the ticket's
+    // chatter signal — closer might never have commented; assignees could shift.
+    if (notes > 0) bump(author, 'comments', notes)
+    if (isOpen(n)) for (const name of getAssigneeNames(raw)) bump(name, 'workload')
+  }
+  // Combined activity scores (closures weighted heaviest — shipping > raising).
+  for (const s of stats.values()) {
+    s.activeToday = s.closedToday * 3 + s.openedToday
+    s.active7d    = s.closed7d   * 3 + s.opened7d
+  }
+  return stats
+})
+
+const leaderboardCategories = computed(() => {
+  const lim = Math.max(3, Number(leaderboardCfg.value.topN) || 5)
+  const rows = [...leaderboardStats.value.values()]
+  const top = (field) => rows
+    .filter(r => r[field] > 0)
+    .sort((a, b) => b[field] - a[field] || a.name.localeCompare(b.name))
+    .slice(0, lim)
+    .map((r, i) => ({ ...r, rank: i + 1, medal: i < 3 ? LEADERBOARD_MEDALS[i] : null }))
+  return [
+    { id: 'closedToday', label: 'Most closed · today', icon: 'mdi-trophy',           accent: '#66bb6a', field: 'closedToday', list: top('closedToday') },
+    { id: 'openedToday', label: 'Most opened · today', icon: 'mdi-plus-circle',      accent: '#ef5350', field: 'openedToday', list: top('openedToday') },
+    { id: 'active7d',    label: 'Most active · 7d',    icon: 'mdi-fire',             accent: '#ff9800', field: 'active7d',    list: top('active7d') },
+    { id: 'comments',    label: 'Top discussion',      icon: 'mdi-comment-multiple', accent: '#ba68c8', field: 'comments',    list: top('comments') },
+    { id: 'workload',    label: 'Heaviest workload',   icon: 'mdi-briefcase',        accent: '#26c6da', field: 'workload',    list: top('workload') }
+  ]
+})
+
+const leaderboardMVP = computed(() => {
+  const rows = [...leaderboardStats.value.values()]
+    .filter(r => r.activeToday > 0)
+    .sort((a, b) => b.activeToday - a.activeToday || a.name.localeCompare(b.name))
+  return rows[0] || null
+})
+
+const leaderboardHasData = computed(() => leaderboardCategories.value.some(c => c.list.length))
 
 // "Ticket health" — problem-focused dashboard. Each open ticket is checked against a
 // list of common problems (overdue / stale / unassigned / no priority / no due date /
@@ -4147,6 +4320,93 @@ const relTime = (ts) => {
 .k-feed-closed-cel { border-left-color: #66bb6a !important; background: rgba(102, 187, 106, 0.07) !important; }
 .k-feed-closed-cel .k-feed-icon, .k-feed-closed-cel .k-feed-tag { color: #66bb6a; }
 .k-feed-closed-cel .k-feed-tag { background: rgba(76, 175, 80, 0.18); }
+
+/* Leaderboard — MVP banner + grid of per-category podium cards.
+   Each card has its own accent colour via --lb-accent (set inline on the card)
+   so titles, numbers and the top border share the metric's identity colour. */
+.k-leaderboard { display: flex; flex-direction: column; gap: 14px; flex: 1; min-height: 0; }
+.k-leaderboard-title { display: flex; align-items: center; gap: 8px; text-transform: none; font-size: clamp(18px, 2vw, 28px); letter-spacing: 0; opacity: 1; color: #ffd54f; }
+.k-leaderboard-title .v-icon { color: #ffd54f; }
+
+.k-lb-mvp {
+  display: flex; align-items: center; gap: 18px;
+  padding: 14px 22px; border-radius: 14px;
+  background: linear-gradient(90deg, rgba(255, 213, 79, 0.16), rgba(255, 167, 38, 0.06));
+  border: 1px solid rgba(255, 213, 79, 0.35);
+  flex-shrink: 0;
+}
+.k-lb-mvp-crown { color: #ffd54f; font-size: 36px !important; flex-shrink: 0; }
+.k-lb-mvp-text { flex: 1; min-width: 0; }
+.k-lb-mvp-label { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; opacity: 0.7; }
+.k-lb-mvp-name { display: flex; align-items: center; gap: 12px; font-size: clamp(20px, 2.2vw, 32px); font-weight: 800; margin-top: 4px; min-width: 0; }
+.k-lb-mvp-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.k-lb-mvp-avatar { width: 36px !important; height: 36px !important; font-size: 13px !important; flex-shrink: 0; }
+.k-lb-mvp-pills { display: flex; gap: 8px; flex-wrap: wrap; flex-shrink: 0; }
+.k-lb-mvp-pill {
+  display: inline-flex; align-items: baseline; gap: 4px;
+  padding: 6px 12px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 12px; opacity: 0.85;
+  font-variant-numeric: tabular-nums;
+}
+.k-lb-mvp-pill strong { font-size: 18px; font-weight: 800; color: rgb(var(--v-theme-on-background)); }
+
+.k-lb-grid {
+  flex: 1; min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  overflow: auto;
+}
+.k-lb-card {
+  display: flex; flex-direction: column;
+  border: 1px solid rgba(127, 127, 127, 0.2);
+  border-top: 3px solid var(--lb-accent, rgb(var(--v-theme-primary)));
+  border-radius: 10px;
+  padding: 12px 12px 10px;
+  background: rgba(127, 127, 127, 0.04);
+  min-height: 0;
+}
+.k-lb-card-title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: clamp(12px, 1.1vw, 14px); font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--lb-accent, rgb(var(--v-theme-primary)));
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.k-lb-card-empty { opacity: 0.5; font-style: italic; font-size: 13px; padding: 6px 2px; }
+.k-lb-card-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 4px; overflow: auto; min-height: 0; }
+.k-lb-card-list li {
+  display: grid;
+  grid-template-columns: 22px 22px minmax(0, 1fr) auto;
+  gap: 8px; align-items: center;
+  padding: 5px 8px; border-radius: 6px;
+  background: rgba(127, 127, 127, 0.05);
+  border-left: 3px solid transparent;
+}
+.k-lb-card-list li.k-lb-medal-gold   { background: rgba(255, 213, 79, 0.13); border-left-color: #ffd54f; }
+.k-lb-card-list li.k-lb-medal-silver { background: rgba(200, 200, 200, 0.10); border-left-color: #cfd8dc; }
+.k-lb-card-list li.k-lb-medal-bronze { background: rgba(205, 127, 50, 0.12); border-left-color: #cd7f32; }
+.k-lb-rank-mini {
+  font-size: 12px; font-weight: 700; text-align: center;
+  font-variant-numeric: tabular-nums; opacity: 0.7;
+  display: flex; align-items: center; justify-content: center;
+}
+.k-lb-medal-icon { font-size: 18px !important; }
+.k-lb-medal-gold   .k-lb-medal-icon { color: #ffd54f; }
+.k-lb-medal-silver .k-lb-medal-icon { color: #cfd8dc; }
+.k-lb-medal-bronze .k-lb-medal-icon { color: #cd7f32; }
+.k-lb-avatar { width: 22px !important; height: 22px !important; font-size: 10px !important; }
+.k-lb-name-text {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13px; font-weight: 600;
+}
+.k-lb-card-num {
+  font-size: 16px; font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--lb-accent, inherit);
+}
 
 /* Activity feed */
 .k-feed { list-style: none; padding: 0; margin: 0; overflow: auto; display: flex; flex-direction: column; gap: 5px; flex: 1; }

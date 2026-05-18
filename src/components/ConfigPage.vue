@@ -81,6 +81,22 @@
                 bg-color="surface"
                 hide-details
               />
+
+              <v-select
+                v-model="settings.uiState.view.listRowClickAction"
+                :items="[
+                  { title: 'Open the ticket', value: 'open' },
+                  { title: 'Select the row (double-click to open)', value: 'select' }
+                ]"
+                item-title="title"
+                item-value="value"
+                label="List view: single-click row"
+                variant="outlined"
+                density="comfortable"
+                bg-color="surface"
+                hide-details
+                class="mt-3"
+              />
             </v-card-text>
           </v-card>
         </v-container>
@@ -1052,6 +1068,14 @@
                     density="compact" variant="outlined" hide-details
                   />
                 </v-col>
+                <v-col v-if="m.id === 'leaderboard'" cols="6" sm="3">
+                  <v-text-field
+                    v-model.number="settings.uiState.kiosk.modeConfig.leaderboard.topN"
+                    type="number" min="3" max="20"
+                    label="Rows per category"
+                    density="compact" variant="outlined" hide-details
+                  />
+                </v-col>
                 <v-col v-if="m.id === 'risks'" cols="6" sm="3">
                   <v-text-field
                     v-model.number="settings.uiState.kiosk.modeConfig.risks.staleListDays"
@@ -1315,10 +1339,11 @@ const kioskAllModes = [
   { id: 'aging',      label: 'Aging buckets',            icon: 'mdi-timer-sand',           description: 'Distribution of open ticket ages.' },
   { id: 'activity',   label: 'Recent activity',          icon: 'mdi-history',              description: 'Recent opens / closes / updates with actor.' },
   { id: 'closed',     label: 'Recently closed',          icon: 'mdi-party-popper',         description: 'Celebration view — tickets closed in the last N hours.' },
+  { id: 'leaderboard', label: 'Leaderboard',             icon: 'mdi-trophy',               description: 'Five side-by-side podiums: most closed today, most opened today, most active in the last 7 days, top discussion (comments on tickets they raised), and heaviest current workload.' },
   { id: 'risks',      label: 'Ticket health',            icon: 'mdi-stethoscope',          description: 'Problem dashboard — overdue / stale / unassigned / no priority / no due date / blocked, plus the worst offenders.' },
   { id: 'broken',     label: 'Broken tickets',           icon: 'mdi-ghost-outline',        description: 'Tickets lost & forgotten — open tickets in closed milestones, no milestone at all, "in-progress" with no assignee, untyped, or with no priority + no owner. Surfaces workflow leaks.' }
 ]
-const kioskHasOptions = (id) => ['velocity', 'workload', 'breakdown', 'hotLabels', 'milestones', 'burndown', 'activity', 'blockers', 'wipStale', 'closed', 'risks', 'broken', 'heatmap', 'heatmapByLabel'].includes(id)
+const kioskHasOptions = (id) => ['velocity', 'workload', 'breakdown', 'hotLabels', 'milestones', 'burndown', 'activity', 'blockers', 'wipStale', 'closed', 'leaderboard', 'risks', 'broken', 'heatmap', 'heatmapByLabel'].includes(id)
 const kioskPriorityBuckets = [
   { value: 'blocking', label: 'Blocking / Critical' },
   { value: 'high',     label: 'High' },

@@ -106,7 +106,9 @@ describe('IssueList — grouping', () => {
     const w = mountList({ nodes: labelledNodes, groupingMode: 'state' })
     const groups = w.vm.items.map(i => i._group).sort()
     expect(groups).toEqual(['Closed', 'Open', 'Open'])
-    expect(w.vm.headers[0].key).toBe('_group')
+    // Stub column uses Vuetify's internal key so its auto-injected group
+    // column is suppressed; groupBy still references the `_group` field on items.
+    expect(w.vm.headers[0].key).toBe('data-table-group')
     expect(w.vm.groupBy).toEqual([{ key: '_group', order: 'asc' }])
     expect(w.vm.isGrouped).toBe(true)
   })
