@@ -46,9 +46,9 @@ const slimIssue = (i) => {
   // Populated by the milestone-events enrichment pass; absent ⇒ not fetched yet.
   if (i.milestone_move_count != null) slim.milestone_move_count = i.milestone_move_count
   if (i.references) slim.references = { full: i.references.full, relative: i.references.relative }
-  if (i.author) slim.author = { name: i.author.name, state: i.author.state }
-  if (i.assignee) slim.assignee = { name: i.assignee.name, state: i.assignee.state }
-  if (Array.isArray(i.assignees)) slim.assignees = i.assignees.map(a => ({ name: a?.name, state: a?.state }))
+  if (i.author) slim.author = { name: i.author.name, state: i.author.state, avatar_url: i.author.avatar_url || null }
+  if (i.assignee) slim.assignee = { name: i.assignee.name, state: i.assignee.state, avatar_url: i.assignee.avatar_url || null }
+  if (Array.isArray(i.assignees)) slim.assignees = i.assignees.map(a => ({ name: a?.name, state: a?.state, avatar_url: a?.avatar_url || null }))
   if (Array.isArray(i.participants)) slim.participants = i.participants.map(p => ({ name: p?.name, username: p?.username, state: p?.state }))
   if (i.milestone) slim.milestone = { title: i.milestone.title, due_date: i.milestone.due_date, start_date: i.milestone.start_date, state: i.milestone.state }
   if (i.epic) slim.epic = { title: i.epic.title }

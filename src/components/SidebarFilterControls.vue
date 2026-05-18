@@ -539,13 +539,6 @@
 
   </div></v-expand-transition>
 
-  <v-divider class="my-2"></v-divider>
-
-  <!-- Columns control — only relevant in list mode (mirror of the Display
-       section, which only matters for the graph). Owns ordering / visibility
-       for the data-table view. -->
-  <SidebarListColumns v-if="viewLayout === 'list'" :state="state" />
-
   <!-- Display Settings — Group + Color apply to both graph and list (group
        turns into group-by header rows in the table; color into a left-edge
        row indicator). Link mode + hide-unlinked + clone-multi-assignee are
@@ -665,7 +658,6 @@
 
 <script setup>
 import { computed, watch } from 'vue'
-import SidebarListColumns from './sidebar/SidebarListColumns.vue'
 
 const emit = defineEmits(['reset-filters'])
 const props = defineProps({

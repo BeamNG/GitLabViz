@@ -71,7 +71,6 @@ export const defaultSettings = () => ({
       showFilters: true,
       showTemplates: true,
       showDisplay: true,
-      showColumns: true,
       showAdvancedSim: false,
       theme: 'system', // 'system' | 'dark' | 'light'
       currentTemplateName: '',
@@ -154,6 +153,10 @@ export const defaultSettings = () => ({
       selectedMilestones: [],
       selectedPriorities: [],
       selectedTypes: [],
+      // Explicit iid whitelist. Mainly populated by kiosk deep-clicks on
+      // categories that don't map to a clean predicate (e.g. Evergreen).
+      // Empty = no constraint. `resetFilters` clears it.
+      selectedIids: [],
       mrMode: null, // 'has' | 'none' | null
       selectedParticipants: [],
       dueStatus: null, // 'overdue' | 'soon' | 'later' | 'none' | null

@@ -13,7 +13,7 @@ const DEFAULT_RETRY_BASE_DELAY_MS = 500
 const DEFAULT_RETRY_MAX_DELAY_MS = 5_000
 
 // Payload control knobs (kept small on purpose)
-const INCLUDE_AVATARS = false
+const INCLUDE_AVATARS = true
 const INCLUDE_DESCRIPTION_HTML = false
 
 export const normalizeGitLabApiBaseUrl = (gitlabUrl) => {

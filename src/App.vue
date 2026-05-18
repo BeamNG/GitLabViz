@@ -137,7 +137,7 @@
         @open-config="configInitialTab = 'kiosk'; activePage = 'config'"
         @close="activePage = 'main'"
       />
-      <v-container v-else fluid class="pa-0 fill-height position-relative">
+      <v-container v-else fluid class="pa-0 fill-height position-relative d-flex flex-column">
         <div v-if="error" class="position-absolute top-0 w-100 pa-4 text-error z-index-10 bg-surface">
           {{ error }}
         </div>
@@ -195,6 +195,7 @@
           />
           <IssueList
             v-else-if="hasData && !(tokenExpired && isMockGraph) && settings.uiState.view.layout === 'list'"
+            class="flex-grow-1 min-h-0"
             :nodes="filteredNodes"
             :issue-open-target="settings.uiState.view.issueOpenTarget"
             :grouping-mode="settings.uiState.view.groupingMode"
@@ -354,6 +355,7 @@ const resetFilters = () => {
   settings.uiState.filters.selectedMilestones = []
   settings.uiState.filters.selectedPriorities = []
   settings.uiState.filters.selectedTypes = []
+  settings.uiState.filters.selectedIids = []
   settings.uiState.filters.mrMode = null
   settings.uiState.filters.selectedParticipants = []
   settings.uiState.filters.dueStatus = null
@@ -943,9 +945,10 @@ const showHotkeyHelp = ref(false)
 const applyKioskFilter = (patch) => {
   if (!patch || typeof patch !== 'object') return
   resetFilters()
-  const { dateFilters, ...rest } = patch
+  const { dateFilters, layout, ...rest } = patch
   Object.assign(settings.uiState.filters, rest)
   if (dateFilters) Object.assign(settings.uiState.filters.dateFilters, dateFilters)
+  if (layout === 'list' || layout === 'graph') settings.uiState.view.layout = layout
   activePage.value = 'main'
 }
 
@@ -953,7 +956,6 @@ const setAllSections = (open) => {
   settings.uiState.ui.showFilters = open
   settings.uiState.ui.showTemplates = open
   settings.uiState.ui.showDisplay = open
-  settings.uiState.ui.showColumns = open
   settings.uiState.ui.showAdvancedSim = open
 }
 

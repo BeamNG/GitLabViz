@@ -299,6 +299,11 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
       if (!((!!milestoneTitle && wantNames.includes(milestoneTitle)) || (wantsNone && !milestoneTitle))) return false
     }
 
+    if (!skip.has('iids') && f.selectedIids?.length > 0) {
+      // Compare as strings — node.id is a string key, iids may arrive as numbers from the patch.
+      if (!f.selectedIids.some(v => String(v) === String(node.id))) return false
+    }
+
     if (!skip.has('priorities') && f.selectedPriorities?.length > 0) {
       const want = f.selectedPriorities
       const wantsNone = want.includes('@none')
@@ -448,6 +453,7 @@ export function useGraphDerivedState ({ settings, nodes, edges }) {
         (settings.uiState.filters.selectedPriorities?.length || 0) === 0 &&
         (settings.uiState.filters.selectedTypes?.length || 0) === 0 &&
         (settings.uiState.filters.selectedStatuses?.length || 0) === 0 &&
+        (settings.uiState.filters.selectedIids?.length || 0) === 0 &&
         !settings.uiState.filters.selectedSubscription &&
         !settings.uiState.filters.mrMode &&
         (settings.uiState.filters.selectedParticipants?.length || 0) === 0 &&

@@ -1087,6 +1087,11 @@
             <div class="k-health-num">{{ fmtNum(broken.stats.criticalUnowned) }}</div>
             <div class="k-health-lbl">Critical · no owner</div>
           </button>
+          <button v-if="!brokenHideEmpty || broken.stats.deactivatedAssignee" type="button" class="k-health-card k-clickable" @click="filterDeactivatedAssignee" :title="brokenCardTitle('deactivatedAssignee', 'Filter graph to tickets assigned to deactivated / blocked accounts')">
+            <v-icon :icon="BROKEN_ICONS.deactivatedAssignee" class="k-health-icon" :style="{ color: BROKEN_COLORS.deactivatedAssignee }" />
+            <div class="k-health-num">{{ fmtNum(broken.stats.deactivatedAssignee) }}</div>
+            <div class="k-health-lbl">Deactivated owner</div>
+          </button>
           <button v-if="!brokenHideEmpty || broken.stats.forgotten" type="button" class="k-health-card k-clickable" @click="filterForgotten" :title="brokenCardTitle('forgotten', 'Filter graph to tickets with no priority AND no assignee')">
             <v-icon :icon="BROKEN_ICONS.forgotten" class="k-health-icon" :style="{ color: BROKEN_COLORS.forgotten }" />
             <div class="k-health-num">{{ fmtNum(broken.stats.forgotten) }}</div>
@@ -1097,38 +1102,13 @@
             <div class="k-health-num">{{ fmtNum(broken.stats.wipUnassigned) }}</div>
             <div class="k-health-lbl">WIP · no owner</div>
           </button>
-          <!-- Evergreen has no clean filter (no "milestone_move_count" predicate in the main view),
-               so clicking opens a popover that lists every evergreen ticket — each row opens
-               GitLab directly. The hover title also previews the iids for quick reference. -->
-          <v-menu v-if="!brokenHideEmpty || broken.stats.evergreen" :close-on-content-click="false" location="bottom" :offset="6">
-            <template #activator="{ props: menuProps }">
-              <button v-bind="menuProps" type="button" class="k-health-card k-clickable" :title="brokenCardTitle('evergreen', 'Click to list evergreen tickets (carried across multiple milestones)')">
-                <v-icon :icon="BROKEN_ICONS.evergreen" class="k-health-icon" :style="{ color: BROKEN_COLORS.evergreen }" />
-                <div class="k-health-num">{{ fmtNum(broken.stats.evergreen) }}</div>
-                <div class="k-health-lbl">Evergreen</div>
-              </button>
-            </template>
-            <div class="k-broken-popover">
-              <div class="k-broken-popover-head">
-                <v-icon :icon="BROKEN_ICONS.evergreen" size="18" :style="{ color: BROKEN_COLORS.evergreen }" />
-                Evergreen · {{ broken.ticketsByKind.evergreen.length }} ticket{{ broken.ticketsByKind.evergreen.length === 1 ? '' : 's' }}
-              </div>
-              <div v-if="!broken.ticketsByKind.evergreen.length" class="k-broken-popover-empty">No evergreen tickets.</div>
-              <ul v-else class="k-broken-popover-list">
-                <li
-                  v-for="t in broken.ticketsByKind.evergreen" :key="t.iid"
-                  class="k-broken-popover-item"
-                  :class="{ 'k-clickable': !!t.url }"
-                  @click="openIssue(t.url)"
-                  :title="t.url ? 'Open in GitLab' : ''"
-                >
-                  <span class="k-broken-popover-iid">#{{ t.iid }}</span>
-                  <span class="k-broken-popover-detail">{{ t.detail }}</span>
-                  <span class="k-broken-popover-title">{{ t.title }}</span>
-                </li>
-              </ul>
-            </div>
-          </v-menu>
+          <!-- Evergreen has no clean predicate in the main view, so clicking opens the
+               list view filtered to the exact iids via `selectedIids`. -->
+          <button v-if="!brokenHideEmpty || broken.stats.evergreen" type="button" class="k-health-card k-clickable" @click="filterEvergreen" :title="brokenCardTitle('evergreen', 'Open the list view filtered to evergreen tickets (carried across multiple milestones)')">
+            <v-icon :icon="BROKEN_ICONS.evergreen" class="k-health-icon" :style="{ color: BROKEN_COLORS.evergreen }" />
+            <div class="k-health-num">{{ fmtNum(broken.stats.evergreen) }}</div>
+            <div class="k-health-lbl">Evergreen</div>
+          </button>
           <button v-if="!brokenHideEmpty || broken.stats.noMilestone" type="button" class="k-health-card k-clickable" @click="filterNoMilestone" :title="brokenCardTitle('noMilestone', 'Filter graph to open tickets with no milestone')">
             <v-icon :icon="BROKEN_ICONS.noMilestone" class="k-health-icon" :style="{ color: BROKEN_COLORS.noMilestone }" />
             <div class="k-health-num">{{ fmtNum(broken.stats.noMilestone) }}</div>
@@ -2302,8 +2282,10 @@ const targetBurndown = computed(() => {
   const vbH = Math.max(200, burndownSize.value.h)
   const initialOpen = Math.max(0, scopeBaseline - closedBaseline)
   const currentOpen = Math.max(0, scopeAcc - closedAcc)
-  // y-axis: 0 at bottom up to peak remaining (could be > initialOpen if scope grew).
-  const maxY = Math.max(1, initialOpen, ...points.map(p => p.remaining))
+  // y-axis must contain both lines — remaining can spike above initialOpen from
+  // scope creep, and cumulative closed can exceed peak remaining when lots of work
+  // ships. Missing `p.closed` here was clipping the green line off the top.
+  const maxY = Math.max(1, initialOpen, ...points.map(p => Math.max(p.remaining, p.closed)))
   const innerW = vbW - BURNDOWN_PAD.left - BURNDOWN_PAD.right
   const innerH = vbH - BURNDOWN_PAD.top - BURNDOWN_PAD.bottom
   const xFor = (ts) => BURNDOWN_PAD.left + ((ts - start) / (end - start)) * innerW
@@ -2954,20 +2936,25 @@ const risks = computed(() => {
 // Broken tickets — tickets that have leaked out of the workflow and are likely
 // to be forgotten. Different from `risks` (which flags actionable problems like
 // "overdue" or "stale"): these are *workflow leaks*. Categories:
-//  - lostMilestone:   open ticket, milestone state is 'closed'/'expired' (orphaned)
-//  - statusMismatch:  open + status says Done / Won't do / Duplicate / etc. (should be closed)
-//  - criticalUnowned: Priority::Blocking|Critical with no assignee (fire-alarm)
-//  - forgotten:       no priority AND no assignee (truly invisible)
-//  - wipUnassigned:   "in progress"-ish status but nobody assigned (ghost WIP)
-//  - evergreen:       ticket much older than its current milestone (= carried over multiple sprints)
-//  - noMilestone:     no milestone at all (drifting work)
-//  - zombie:          created > 365d ago AND not updated > 90d (long abandoned)
-//  - noType:          no Type:: label (workflow tag missing)
-const BROKEN_KINDS = ['lostMilestone', 'statusMismatch', 'criticalUnowned', 'forgotten', 'wipUnassigned', 'evergreen', 'noMilestone', 'zombie', 'noType']
-const BROKEN_LABELS  = { lostMilestone: 'Lost milestone', statusMismatch: 'Status mismatch', criticalUnowned: 'Critical · no owner', forgotten: 'Forgotten', wipUnassigned: 'WIP · no owner', evergreen: 'Evergreen', noMilestone: 'No milestone', zombie: 'Zombie', noType: 'No type' }
-const BROKEN_ICONS   = { lostMilestone: 'mdi-flag-remove-outline', statusMismatch: 'mdi-alert-decagram-outline', criticalUnowned: 'mdi-fire-alert', forgotten: 'mdi-ghost-outline', wipUnassigned: 'mdi-account-question-outline', evergreen: 'mdi-leaf-circle-outline', noMilestone: 'mdi-flag-off-outline', zombie: 'mdi-skull-outline', noType: 'mdi-tag-off-outline' }
-const BROKEN_COLORS  = { lostMilestone: '#ef5350', statusMismatch: '#ef5350', criticalUnowned: '#ef5350', forgotten: '#ef5350', wipUnassigned: '#ffb300', evergreen: '#ffb300', noMilestone: '#ffb300', zombie: '#ffb300', noType: '#90a4ae' }
-const BROKEN_WEIGHTS = { lostMilestone: 3, statusMismatch: 3, criticalUnowned: 3, forgotten: 3, wipUnassigned: 2, evergreen: 2, noMilestone: 2, zombie: 2, noType: 1 }
+//  - lostMilestone:        open ticket, milestone state is 'closed'/'expired' (orphaned)
+//  - statusMismatch:       open + status says Done / Won't do / Duplicate / etc. (should be closed)
+//  - criticalUnowned:      Priority::Blocking|Critical with no assignee (fire-alarm)
+//  - deactivatedAssignee:  assignee account is blocked / deactivated / banned (work stuck on someone who left)
+//  - forgotten:            no priority AND no assignee (truly invisible)
+//  - wipUnassigned:        "in progress"-ish status but nobody assigned (ghost WIP)
+//  - evergreen:            ticket much older than its current milestone (= carried over multiple sprints)
+//  - noMilestone:          no milestone at all (drifting work)
+//  - zombie:               created > 365d ago AND not updated > 90d (long abandoned)
+//  - noType:               no Type:: label (workflow tag missing)
+const BROKEN_KINDS = ['lostMilestone', 'statusMismatch', 'criticalUnowned', 'deactivatedAssignee', 'forgotten', 'wipUnassigned', 'evergreen', 'noMilestone', 'zombie', 'noType']
+const BROKEN_LABELS  = { lostMilestone: 'Lost milestone', statusMismatch: 'Status mismatch', criticalUnowned: 'Critical · no owner', deactivatedAssignee: 'Deactivated owner', forgotten: 'Forgotten', wipUnassigned: 'WIP · no owner', evergreen: 'Evergreen', noMilestone: 'No milestone', zombie: 'Zombie', noType: 'No type' }
+const BROKEN_ICONS   = { lostMilestone: 'mdi-flag-remove-outline', statusMismatch: 'mdi-alert-decagram-outline', criticalUnowned: 'mdi-fire-alert', deactivatedAssignee: 'mdi-account-cancel-outline', forgotten: 'mdi-ghost-outline', wipUnassigned: 'mdi-account-question-outline', evergreen: 'mdi-leaf-circle-outline', noMilestone: 'mdi-flag-off-outline', zombie: 'mdi-skull-outline', noType: 'mdi-tag-off-outline' }
+const BROKEN_COLORS  = { lostMilestone: '#ef5350', statusMismatch: '#ef5350', criticalUnowned: '#ef5350', deactivatedAssignee: '#ef5350', forgotten: '#ef5350', wipUnassigned: '#ffb300', evergreen: '#ffb300', noMilestone: '#ffb300', zombie: '#ffb300', noType: '#90a4ae' }
+const BROKEN_WEIGHTS = { lostMilestone: 3, statusMismatch: 3, criticalUnowned: 3, deactivatedAssignee: 3, forgotten: 3, wipUnassigned: 2, evergreen: 2, noMilestone: 2, zombie: 2, noType: 1 }
+// GitLab user states that indicate the account is no longer usable —
+// `active` is the only healthy state; anything else means tickets assigned
+// there have effectively no owner.
+const DEAD_USER_STATE_RE = /^(blocked|deactivated|banned|ldap_blocked)$/i
 // Common "this should have been closed" status names. Matched case-insensitively
 // against `currentStatusOfRaw()` so any of the popular workflow plugins works.
 const CLOSED_STATUS_RE = /^(done|closed|won['’]?t ?do|wont ?do|duplicate|resolved|verified|invalid|completed)$/i
@@ -2988,8 +2975,8 @@ const broken = computed(() => {
   const listLimit = Math.max(1, Number(brokenCfg.value.listLimit) || 12)
   const now = Date.now()
   const day = 24 * 60 * 60 * 1000
-  const stats = { lostMilestone: 0, statusMismatch: 0, criticalUnowned: 0, forgotten: 0, wipUnassigned: 0, evergreen: 0, noMilestone: 0, zombie: 0, noType: 0 }
-  const ticketsByKind = { lostMilestone: [], statusMismatch: [], criticalUnowned: [], forgotten: [], wipUnassigned: [], evergreen: [], noMilestone: [], zombie: [], noType: [] }
+  const stats = { lostMilestone: 0, statusMismatch: 0, criticalUnowned: 0, deactivatedAssignee: 0, forgotten: 0, wipUnassigned: 0, evergreen: 0, noMilestone: 0, zombie: 0, noType: 0 }
+  const ticketsByKind = { lostMilestone: [], statusMismatch: [], criticalUnowned: [], deactivatedAssignee: [], forgotten: [], wipUnassigned: [], evergreen: [], noMilestone: [], zombie: [], noType: [] }
   const lostMilestoneTitles = new Set()
   const offenders = []
   for (const n of openItems.value) {
@@ -3018,6 +3005,16 @@ const broken = computed(() => {
     }
     if (priBucket === 'blocking' && !assignees.length) {
       stats.criticalUnowned++; problems.push({ kind: 'criticalUnowned', detail: 'critical · unassigned' })
+    }
+    // Deactivated owner — any assignee whose `state` isn't 'active'. Slim_raw
+    // preserves `assignees[].state` from the GitLab REST payload, so we can
+    // check directly without a separate user-state map lookup.
+    const rawAssignees = Array.isArray(raw.assignees) ? raw.assignees : []
+    const dead = rawAssignees.filter(a => a && a.state && DEAD_USER_STATE_RE.test(a.state))
+    if (dead.length) {
+      stats.deactivatedAssignee++
+      const names = dead.map(a => a.name).filter(Boolean).slice(0, 2).join(', ')
+      problems.push({ kind: 'deactivatedAssignee', detail: names ? `${names} (${dead[0].state})` : 'deactivated owner' })
     }
     if (/in.?progress|doing|wip/i.test(status) && !assignees.length) {
       stats.wipUnassigned++; problems.push({ kind: 'wipUnassigned', detail: 'WIP · no owner' })
@@ -3193,12 +3190,23 @@ const filterZombie = () => {
   const cutoff = new Date(Date.now() - ZOMBIE_IDLE_DAYS * day).toISOString().slice(0, 10)
   applyFilter({ dateFilters: { updatedMode: 'before', updatedBefore: cutoff } })
 }
+// `@deactivated` is a recognised token in useGraphDerivedState — filters the
+// main graph to tickets whose assignee account is not 'active'.
+const filterDeactivatedAssignee = () => applyFilter({ selectedAssignees: ['@deactivated'] })
 // Each lost-milestone ticket may sit in a different closed/expired milestone — collect
 // every distinct title we saw and filter by all of them at once.
 const filterLostMilestone = () => {
   const titles = broken.value.lostMilestoneTitles
   if (!titles.length) return
   applyFilter({ selectedMilestones: [...titles], includeClosed: true })
+}
+// Evergreen has no clean predicate (no "milestone_move_count" in the filter UI), so
+// we deep-link by exact iid list and open the list view since that's the right
+// shape for "browse these specific tickets".
+const filterEvergreen = () => {
+  const iids = (broken.value.ticketsByKind.evergreen || []).map(t => t.iid).filter(Boolean)
+  if (!iids.length) return
+  applyFilter({ selectedIids: iids, layout: 'list', includeClosed: true })
 }
 const filterNoDueDate  = () => applyFilter({ dueStatus: 'none' })
 const filterOverdue    = () => applyFilter({ dueStatus: 'overdue' })
@@ -4157,45 +4165,6 @@ const relTime = (ts) => {
   gap: 12px;
 }
 .k-empty-inline { grid-column: 1 / -1; padding: 10px 0; }
-
-/* Drill-down popover for broken-tickets categories with no clean main-view filter
-   (Evergreen). Rendered inside <v-menu> — the v-menu surface is its own component
-   so we style only the inner panel here. */
-.k-broken-popover {
-  background: rgba(20, 22, 26, 0.97);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
-  min-width: 360px;
-  max-width: 520px;
-  max-height: 60vh;
-  overflow: auto;
-  color: #e6e6e6;
-  font-size: 12.5px;
-}
-.k-broken-popover-head {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-weight: 600;
-  position: sticky; top: 0;
-  background: rgba(20, 22, 26, 0.97);
-}
-.k-broken-popover-empty { padding: 14px; opacity: 0.6; }
-.k-broken-popover-list { list-style: none; margin: 0; padding: 6px 0; }
-.k-broken-popover-item {
-  display: grid;
-  grid-template-columns: auto auto 1fr;
-  align-items: baseline;
-  gap: 10px;
-  padding: 6px 14px;
-  font-variant-numeric: tabular-nums;
-}
-.k-broken-popover-item.k-clickable { cursor: pointer; }
-.k-broken-popover-item.k-clickable:hover { background: rgba(255, 255, 255, 0.06); }
-.k-broken-popover-iid { color: #90caf9; font-weight: 700; }
-.k-broken-popover-detail { font-size: 11px; opacity: 0.7; padding: 1px 6px; border-radius: 4px; background: rgba(255, 179, 0, 0.12); color: #ffb300; }
-.k-broken-popover-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.92; }
 .k-health-card {
   appearance: none;
   text-align: left;
