@@ -21,6 +21,7 @@
       :hide-default-footer="isGrouped"
       :row-props="rowProps"
       @click:row="onRowClick"
+      @contextmenu:row="onRowContextMenu"
     >
       <!-- Group header — clicking anywhere on the row toggles the group; the
            ticket count is right-aligned so multiple group rows have their
@@ -264,6 +265,16 @@
       </template>
     </v-data-table>
 
+    <IssueContextMenu
+      :visible="rowCtx.visible"
+      :x="rowCtx.x"
+      :y="rowCtx.y"
+      :node="rowCtx.node"
+      @close="closeRowCtx"
+      @issue-state-change="onIssueStateChange"
+      @issue-assignee-change="onIssueAssigneeChange"
+    />
+
     <div v-if="colorLegend.length" class="il-color-legend">
       <button
         v-for="ent in colorLegend"
@@ -393,6 +404,7 @@ import {
   ISSUE_LIST_DEFAULT_ORDER as DEFAULT_ORDER,
   sanitizeIssueListOrder as sanitizeOrder
 } from '../utils/issueListColumns'
+import IssueContextMenu from './IssueContextMenu.vue'
 
 const props = defineProps({
   nodes: { type: Object, default: () => ({}) },
@@ -410,7 +422,9 @@ const props = defineProps({
   colorMode:    { type: String, default: 'state' },
   dueSoonDays:  { type: Number, default: 7 }
 })
-const emit = defineEmits(['update:columnState'])
+const emit = defineEmits(['update:columnState', 'issue-state-change', 'issue-assignee-change'])
+const onIssueStateChange    = (payload) => emit('issue-state-change',    payload)
+const onIssueAssigneeChange = (payload) => emit('issue-assignee-change', payload)
 
 // Column order + hidden set come from `props.columnState` (header context menu).
 const columnOrder = computed({
@@ -1068,8 +1082,9 @@ const toggleLegendPin = (color) => {
 
 // Row-props is independent of legend state so changing the active legend
 // colour doesn't force Vuetify to re-render all rows. The match/dim classes
-// are toggled directly on the DOM by the watcher below.
-const rowProps = ({ item }) => ({ 'data-row-color': item._color || '' })
+// are toggled directly on the DOM by the watcher below. The ctx-active
+// class is also DOM-toggled (in onRowContextMenu / close) to avoid re-rendering.
+const rowProps = ({ item }) => ({ 'data-row-color': item._color || '', 'data-row-id': item.id })
 const issueListEl = ref(null)
 const applyLegendClasses = () => {
   const root = issueListEl.value
@@ -1166,6 +1181,36 @@ const onGroupToggle = (item, toggleGroup) => {
 
 const onRowClick = (_evt, { item }) => {
   if (item?.url) window.open(item.url, props.issueOpenTarget || '_blank')
+}
+
+// Right-click on a row → same context menu the graph uses. We pass the
+// original node (with `_raw`) plus the row's `_color` so the menu's header
+// strip matches the pip the user is looking at. The active row gets a yellow
+// glow via a class toggled directly on the DOM (no rowProps re-render churn).
+const rowCtx = reactive({ visible: false, x: 0, y: 0, node: null, activeId: null })
+const setActiveRow = (id) => {
+  const root = issueListEl.value
+  if (!root) return
+  for (const row of root.querySelectorAll('tr.il-row-ctx-active')) row.classList.remove('il-row-ctx-active')
+  if (id == null) return
+  const sel = root.querySelector(`tr[data-row-id="${CSS.escape(String(id))}"]`)
+  if (sel) sel.classList.add('il-row-ctx-active')
+}
+const onRowContextMenu = (evt, { item }) => {
+  const n = item && props.nodes ? props.nodes[item.id] : null
+  if (!n) return
+  evt.preventDefault()
+  rowCtx.node = { ...n, color: item._color || n.color || '' }
+  rowCtx.x = evt.clientX
+  rowCtx.y = evt.clientY
+  rowCtx.visible = true
+  rowCtx.activeId = item.id
+  nextTick(() => setActiveRow(item.id))
+}
+const closeRowCtx = () => {
+  rowCtx.visible = false
+  rowCtx.activeId = null
+  setActiveRow(null)
 }
 
 const relativeTime = (ms) => {
@@ -1391,6 +1436,12 @@ const avatarColor = (name) => {
 }
 :deep(.il-row-legend-dim .v-data-table__td) { opacity: 0.32; }
 :deep(.il-row-legend-dim .v-data-table__td:hover) { opacity: 0.55; }
+/* Right-click target — yellow glow on the row while its context menu is open.
+   `!important` overrides zebra striping + legend-dim background. */
+:deep(.il-row-ctx-active .v-data-table__td) {
+  background: rgba(255, 213, 79, 0.28) !important;
+  box-shadow: inset 0 0 0 1px rgba(255, 193, 7, 0.55);
+}
 .il-group-row--legend-match td { box-shadow: inset 3px 0 0 rgb(var(--v-theme-primary)); }
 .il-group-row--legend-dim td { opacity: 0.4; }
 .il-group-pill--match { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.7); }

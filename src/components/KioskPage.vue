@@ -469,6 +469,10 @@
                 Data only available since {{ targetBurndown.closedCutoffLabel }} (last {{ targetBurndown.closedDays }}d) — earlier portion may be incomplete.
               </template>
             </span>
+            <span v-if="targetBurndown.entriesFromFallback > 0" class="k-burndown-warn-data">
+              <v-icon icon="mdi-alert-outline" size="x-small" />
+              {{ targetBurndown.entriesFromFallback }} of {{ targetBurndown.entriesFromFallback + targetBurndown.entriesFromEvents }} tickets fall back to `created_at` (milestone history not fetched yet — reload to refresh).
+            </span>
             <span class="k-legend-spacer" />
             <span :class="targetBurndown.onTrack ? '' : 'k-burndown-warn'">
               {{ targetBurndown.onTrack ? 'Tracking ideal burn' : 'Behind ideal burn' }}
@@ -2226,55 +2230,119 @@ const etaTipTimeline = computed(() => {
 const BURNDOWN_PAD = { top: 28, right: 28, bottom: 48, left: 58 }
 const burndownCfg = computed(() => settings.uiState.kiosk?.modeConfig?.burndown || {})
 // Burndown = remaining open work (scope − closed) over time, with a classic-Scrum
-// ideal straight line from (start, initialOpen) → (due, 0). Scope creep shows up
-// as the actual line rising above ideal even when closures are on pace.
+// ideal straight line from (start, initialOpen) → (due, 0). Uses the real
+// `resource_milestone_events` (fetched by the loader) so a ticket that moved INTO
+// the milestone mid-flight is counted as scope at the move date — not at its
+// `created_at`, which is what the previous heuristic used (and badly over-counted
+// the "added" line in projects that re-tag tickets between milestones). Tickets
+// that have never had their events fetched fall back to the old `created_at`
+// heuristic so the chart still renders sensibly on first paint.
 const targetBurndown = computed(() => {
+  const title = targetMilestone.value
+  if (!title) return null
   const td = targetData.value
-  if (!td || !td._ticketTimes?.length) return null
-  const tickets = td._ticketTimes
   const day = 24 * 60 * 60 * 1000
   const now = Date.now()
   const windowDays = Math.max(7, Number(burndownCfg.value.windowDays) || 90)
-  const minCreated = Math.min(...tickets.filter(t => t.created).map(t => t.created))
-  const dueMs = td.due ? new Date(td.due).getTime() : null
+  const dueMs = td?.due ? new Date(td.due).getTime() : null
+
+  // Per-ticket "in milestone T" intervals derived from events. An interval ends on
+  // either an explicit `remove T` event or an `add OTHER` event (moving to another
+  // milestone implicitly removes from the current one). If the last event leaves
+  // the ticket in T, the interval is open-ended (`end: null`).
+  let entriesFromEvents = 0, entriesFromFallback = 0
+  const entries = []
+  for (const n of allItems.value) {
+    const raw = n._raw || {}
+    const events = raw.milestoneEvents
+    const intervals = []
+    if (Array.isArray(events) && events.length) {
+      let entry = null
+      for (const ev of events) {
+        const isTarget = ev.title === title
+        if (ev.action === 'add' && isTarget) {
+          if (entry == null) entry = ev.ts
+        } else if (ev.action === 'remove' && isTarget && entry != null) {
+          intervals.push({ start: entry, end: ev.ts }); entry = null
+        } else if (ev.action === 'add' && !isTarget && entry != null) {
+          intervals.push({ start: entry, end: ev.ts }); entry = null
+        }
+      }
+      if (entry != null) intervals.push({ start: entry, end: null })
+      if (intervals.length) entriesFromEvents++
+    } else if (raw.milestone?.title === title) {
+      const c = safeDate(raw.created_at) || 0
+      if (c) { intervals.push({ start: c, end: null }); entriesFromFallback++ }
+    }
+    if (!intervals.length) continue
+    entries.push({
+      intervals,
+      created: safeDate(raw.created_at) || 0,
+      closed: safeDate(raw.closed_at) || 0
+    })
+  }
+  if (!entries.length) return null
 
   // Anchor the chart start. Honor milestone.start_date only if it's within
-  // 2× windowDays of the due_date — otherwise fall back to a rolling window so we don't
-  // get a 6-year flat stretch from a re-used milestone.
+  // 2× windowDays of the due_date — otherwise fall back to a rolling window so we
+  // don't get a 6-year flat stretch from a re-used milestone.
   let start
-  if (td.startMs && dueMs && (dueMs - td.startMs) / day > 0 && (dueMs - td.startMs) / day <= windowDays * 2) {
+  if (td?.startMs && dueMs && (dueMs - td.startMs) / day > 0 && (dueMs - td.startMs) / day <= windowDays * 2) {
     start = td.startMs
   } else if (dueMs) {
     start = dueMs - windowDays * day
   } else {
-    start = Math.max(minCreated, now - windowDays * day)
+    let earliest = Infinity
+    for (const e of entries) for (const iv of e.intervals) if (iv.start < earliest) earliest = iv.start
+    start = Math.max(earliest, now - windowDays * day)
   }
-  // Chart axis ends at today — we never project past "now". The due date is
-  // surfaced in the subtitle instead so the room still has deadline context.
   const end = now
   if (!Number.isFinite(start) || start >= end) return null
 
-  // Baseline counts at `start` (pre-existing tickets become Day 1 starting values).
-  let scopeBaseline = 0
-  let closedBaseline = 0
-  for (const t of tickets) {
-    if (t.created && t.created < start) scopeBaseline++
-    if (t.closedAt && t.closedAt < start) closedBaseline++
+  // Convert intervals into (Δscope, Δclosed) timeline events. Scope deltas span
+  // the whole interval; closed deltas span [closed_at .. end] within the interval
+  // (and cancel at interval end if the ticket leaves the milestone before today).
+  const deltas = []
+  for (const e of entries) {
+    for (const iv of e.intervals) {
+      const sIn = Math.max(iv.start, e.created)
+      deltas.push({ ts: sIn, ds: 1, dc: 0 })
+      if (iv.end != null) deltas.push({ ts: iv.end, ds: -1, dc: 0 })
+      if (e.closed) {
+        const cIn = Math.max(sIn, e.closed)
+        if (iv.end == null || cIn < iv.end) {
+          deltas.push({ ts: cIn, ds: 0, dc: 1 })
+          if (iv.end != null) deltas.push({ ts: iv.end, ds: 0, dc: -1 })
+        }
+      }
+    }
   }
+  deltas.sort((a, b) => a.ts - b.ts)
 
-  // Only events within the window need to drive the line — pre-baseline events are
-  // already accounted for in the starting counts.
-  const createdEvents = tickets.filter(t => t.created && t.created >= start).map(t => t.created).sort((a, b) => a - b)
-  const closedEvents  = tickets.filter(t => t.closedAt && t.closedAt >= start).map(t => t.closedAt).sort((a, b) => a - b)
+  // Apply pre-window deltas to get baseline at `start`, then sample per-day.
+  let scopeAcc = 0, closedAcc = 0, di = 0
+  while (di < deltas.length && deltas[di].ts < start) {
+    scopeAcc += deltas[di].ds; closedAcc += deltas[di].dc; di++
+  }
+  const scopeBaseline = scopeAcc, closedBaseline = closedAcc
 
   const dayCount = Math.max(1, Math.ceil((end - start) / day))
   const points = []
-  let scopeAcc = scopeBaseline, closedAcc = closedBaseline, ci = 0, cli = 0
   for (let d = 0; d <= dayCount; d++) {
     const ts = start + d * day
-    while (ci < createdEvents.length && createdEvents[ci] <= ts) { scopeAcc++; ci++ }
-    while (cli < closedEvents.length && closedEvents[cli] <= ts) { closedAcc++; cli++ }
-    points.push({ ts, closed: closedAcc, remaining: scopeAcc - closedAcc })
+    while (di < deltas.length && deltas[di].ts <= ts) {
+      scopeAcc += deltas[di].ds; closedAcc += deltas[di].dc; di++
+    }
+    points.push({ ts, closed: closedAcc, remaining: Math.max(0, scopeAcc - closedAcc) })
+  }
+
+  // In-window event counts for the subtitle — now reflect actual scope changes,
+  // not "tickets currently in milestone whose created_at falls in window".
+  let addedInWindow = 0, closedInWindow = 0
+  for (const ev of deltas) {
+    if (ev.ts < start || ev.ts > end) continue
+    if (ev.ds > 0) addedInWindow += ev.ds
+    if (ev.dc > 0) closedInWindow += ev.dc
   }
 
   // Scales — driven by current container size so 1 user-space unit = 1 screen pixel.
@@ -2283,9 +2351,9 @@ const targetBurndown = computed(() => {
   const vbH = Math.max(200, burndownSize.value.h)
   const initialOpen = Math.max(0, scopeBaseline - closedBaseline)
   const currentOpen = Math.max(0, scopeAcc - closedAcc)
-  // y-axis must contain both lines — remaining can spike above initialOpen from
-  // scope creep, and cumulative closed can exceed peak remaining when lots of work
-  // ships. Missing `p.closed` here was clipping the green line off the top.
+  // y-axis must contain both plotted lines — remaining can spike above initialOpen
+  // from scope creep, and cumulative closed can exceed peak remaining when lots of
+  // work ships. Missing `p.closed` here was clipping the green line off the top.
   const maxY = Math.max(1, initialOpen, ...points.map(p => Math.max(p.remaining, p.closed)))
   const innerW = vbW - BURNDOWN_PAD.left - BURNDOWN_PAD.right
   const innerH = vbH - BURNDOWN_PAD.top - BURNDOWN_PAD.bottom
@@ -2405,11 +2473,12 @@ const targetBurndown = computed(() => {
     initialOpen, currentOpen,
     totalScope: scopeAcc,
     totalClosed: closedAcc,
-    // In-window event counts — surfaced in the subtitle so scope creep is obvious
-    // (`addedInWindow` is why remaining can rise even while closures pile up).
-    addedInWindow: createdEvents.length,
-    closedInWindow: closedEvents.length,
     scopeBaseline, closedBaseline,
+    addedInWindow, closedInWindow,
+    // How many tickets contributed via real events vs `created_at` fallback.
+    // Surfaces a "milestone history not fully fetched yet" warning when most
+    // tickets are still on the fallback so the room knows numbers may shift.
+    entriesFromEvents, entriesFromFallback,
     windowDays,
     maxY,
     closedCutoffX, closedDays, closedHistoryComplete, closedCutoffLabel,

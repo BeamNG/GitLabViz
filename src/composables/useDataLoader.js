@@ -45,6 +45,10 @@ const slimIssue = (i) => {
   // Count of distinct milestones a ticket has lived in - 1 (= moves between sprints).
   // Populated by the milestone-events enrichment pass; absent ⇒ not fetched yet.
   if (i.milestone_move_count != null) slim.milestone_move_count = i.milestone_move_count
+  // Compact `{ts, action, title}` events from `resource_milestone_events`. Used by
+  // the burndown to plot accurate "joined / left milestone" timestamps. Preserved
+  // here so cached nodes survive re-slim cycles without losing history.
+  if (Array.isArray(i.milestoneEvents)) slim.milestoneEvents = i.milestoneEvents
   if (i.references) slim.references = { full: i.references.full, relative: i.references.relative }
   if (i.author) slim.author = { name: i.author.name, state: i.author.state, avatar_url: i.author.avatar_url || null }
   if (i.assignee) slim.assignee = { name: i.assignee.name, state: i.assignee.state, avatar_url: i.assignee.avatar_url || null }
@@ -727,13 +731,17 @@ export function useDataLoader ({
         })
       }
 
-      // Milestone history enrichment — count distinct milestones each open ticket
-      // has lived in (for the broken-tickets "Evergreen" detector). Only open
-      // issues that currently have a milestone are candidates; closed tickets
-      // don't need the signal. Re-runs only for fetched (updated) issues since
-      // unrelated tickets' counts are preserved on `node._raw`.
+      // Milestone history enrichment — fetches `resource_milestone_events` for every
+      // ticket that currently has a milestone (open OR closed) so we know the actual
+      // add/remove timestamps, not just current state. Two downstream consumers:
+      //   1. Evergreen detector (broken-tickets) — needs `milestone_move_count`.
+      //   2. Milestone burndown — needs the dated events so it can plot when each
+      //      ticket actually joined the milestone (`created_at` lies when a ticket is
+      //      moved between milestones mid-flight, inflating the perceived scope creep).
+      // Re-runs only for fetched (updated) issues; cached events on other nodes are
+      // preserved via `slimIssue` so first-load cost amortises across sessions.
       if (doGitLab && restClient && issues.length > 0) {
-        const candidates = issues.filter(i => i && i.state === 'opened' && i.milestone && i.iid != null)
+        const candidates = issues.filter(i => i && i.iid != null && i.milestone)
         if (candidates.length > 0) {
           loadingMessage.value = `Milestone history\n0 / ${candidates.length}`
           let done = 0
@@ -743,14 +751,24 @@ export function useDataLoader ({
             while (next < candidates.length) {
               const i = next++
               const issue = candidates[i]
-              const events = await fetchIssueResourceMilestoneEvents(restClient, settings.config.projectId, issue.iid)
+              const raw = await fetchIssueResourceMilestoneEvents(restClient, settings.config.projectId, issue.iid)
+              const events = []
               const seen = new Set()
-              for (const e of events) {
-                if (e?.action === 'add' && e?.milestone && e.milestone.id != null) seen.add(e.milestone.id)
+              for (const e of raw) {
+                if (!e?.created_at) continue
+                const ts = new Date(e.created_at).getTime()
+                if (!Number.isFinite(ts)) continue
+                const title = e?.milestone?.title || ''
+                const action = e?.action === 'remove' ? 'remove' : 'add'
+                events.push({ ts, action, title })
+                if (action === 'add' && e?.milestone?.id != null) seen.add(e.milestone.id)
               }
-              const moves = Math.max(0, seen.size - 1)
+              events.sort((a, b) => a.ts - b.ts)
               const node = nodes[String(issue.iid)]
-              if (node && node._raw) node._raw.milestone_move_count = moves
+              if (node && node._raw) {
+                node._raw.milestoneEvents = events
+                node._raw.milestone_move_count = Math.max(0, seen.size - 1)
+              }
               done++
               if (done % 10 === 0 || done === candidates.length) {
                 loadingMessage.value = `Milestone history\n${done} / ${candidates.length} · ${Math.round((done / candidates.length) * 100)}%`

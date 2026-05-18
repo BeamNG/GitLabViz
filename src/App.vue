@@ -202,6 +202,8 @@
             :color-mode="settings.uiState.view.viewMode"
             :due-soon-days="settings.uiState.view.dueSoonDays"
             v-model:columnState="settings.uiState.view.listColumns"
+            @issue-state-change="onIssueStateChange"
+            @issue-assignee-change="onIssueAssigneeChange"
           />
         
         <div v-else-if="!loading" class="d-flex flex-column align-center justify-center w-100 h-100 text-medium-emphasis pa-8">
