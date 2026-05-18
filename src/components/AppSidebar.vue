@@ -155,6 +155,20 @@
             <v-divider class="my-2"></v-divider>
           </div>
 
+          <!-- Graph / List view switcher — appears above presets so it doesn't
+               compete with the canvas overlay area. Hotkey: Shift+V. -->
+          <v-btn-toggle
+            v-model="viewLayoutProxy"
+            density="compact"
+            mandatory
+            variant="outlined"
+            divided
+            class="layout-toggle mb-3 w-100"
+          >
+            <v-btn value="graph" size="small" class="flex-grow-1 text-none" prepend-icon="mdi-graph-outline" title="Graph view (Shift+V)">Graph</v-btn>
+            <v-btn value="list" size="small" class="flex-grow-1 text-none" prepend-icon="mdi-format-list-bulleted-square" title="List view (Shift+V)">List</v-btn>
+          </v-btn-toggle>
+
           <!-- Presets Section -->
           <div
             class="d-flex align-center justify-space-between mb-2 cursor-pointer user-select-none"
@@ -220,9 +234,11 @@
             :grouping-mode-options="groupingModeOptions"
             :view-mode-options="viewModeOptions"
             :link-mode-options="linkModeOptions"
+            :view-layout="viewLayout"
             @reset-filters="onResetFilters"
           />
-          <SidebarSimulationControls :state="settings.uiState" />
+          <!-- Simulation controls only matter for the force-directed graph. -->
+          <SidebarSimulationControls v-if="viewLayout !== 'list'" :state="settings.uiState" />
         </div>
       </div>
 
@@ -347,6 +363,7 @@ const props = defineProps({
 
   GLOBAL_PRESETS: { type: Array, default: () => [] },
   customPresets: { type: Array, default: () => [] },
+  viewLayout: { type: String, default: 'graph' },
 
   allStatuses: { type: Array, default: () => [] },
   allLabels: { type: Array, default: () => [] },
@@ -385,7 +402,11 @@ const props = defineProps({
   onShowSvnLog: { type: Function, required: true }
 })
 
-const emit = defineEmits(['update:vizMode', 'update:svnVizLimit'])
+const emit = defineEmits(['update:vizMode', 'update:svnVizLimit', 'update:viewLayout'])
+const viewLayoutProxy = computed({
+  get: () => props.viewLayout,
+  set: (v) => emit('update:viewLayout', v)
+})
 
 // Loading messages are emitted as `headline\ndetail` by the data loader; split
 // so we can style each line separately (headline normal, detail dim+tabular).

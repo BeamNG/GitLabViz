@@ -71,6 +71,7 @@ export const defaultSettings = () => ({
       showFilters: true,
       showTemplates: true,
       showDisplay: true,
+      showColumns: true,
       showAdvancedSim: false,
       theme: 'system', // 'system' | 'dark' | 'light'
       currentTemplateName: '',
@@ -111,7 +112,7 @@ export const defaultSettings = () => ({
         heatmap: true, heatmapByLabel: true,
         workload: true, breakdown: true, hotLabels: true,
         milestones: true, aging: true,
-        activity: true, closed: true, risks: true
+        activity: true, closed: true, risks: true, broken: true
       },
       // Per-mode tuning. Modes without an entry have no options yet.
       modeConfig: {
@@ -130,7 +131,8 @@ export const defaultSettings = () => ({
         blockers:   { limit: 12, maxAgeDays: 0 },  // 0 = no upper bound; otherwise hide blockers older than this
         wipStale:   { days: 5, limit: 12 },         // tickets in "in progress" status idle > N days
         closed:     { hours: 48, limit: 18 },
-        risks:      { staleListDays: 14, listLimit: 10 }
+        risks:      { staleListDays: 14, listLimit: 10 },
+        broken:     { listLimit: 12, hideEmpty: false }
       }
     },
     presets: {
@@ -176,6 +178,21 @@ export const defaultSettings = () => ({
       }
     },
     view: {
+      // Which way to render filtered tickets in the main view. 'graph' = the
+      // force-directed issue graph (canvas). 'list' = a sortable data table.
+      // Both use the same filteredNodes so switching is instant.
+      layout: 'graph',
+      // Persisted state of the list view's columns — order, hidden set, and
+      // multi-sort spec. Owned by IssueList.vue via v-model:columnState.
+      listColumns: {
+        order: ['iid', 'title', 'state', 'status', 'priority', 'type', 'assignees', 'milestone', 'dueDate', 'updatedAt', 'createdAt', 'author', 'labels', 'comments', 'weight', 'epic', 'iteration', 'timeEstimate', 'timeSpent', 'closedAt'],
+        hidden: ['author', 'labels', 'comments', 'weight', 'epic', 'iteration', 'timeEstimate', 'timeSpent', 'closedAt'],
+        widths: {},
+        sortBy: [{ key: 'updatedAt', order: 'desc' }],
+        // Collapsed group values (`_group` keys from IssueList) — persisted so
+        // the URL can carry the open/close state of a grouped table.
+        closedGroups: []
+      },
       viewMode: 'state',
       groupingMode: 'none',
       linkMode: 'none',

@@ -7,6 +7,7 @@ import {
   enrichIssuesFromGraphql,
   fetchProjectIssuesRest,
   fetchIssueLinks,
+  fetchIssueResourceMilestoneEvents,
   fetchTokenInfo,
   normalizeGitLabApiBaseUrl
 } from '../services/gitlab'
@@ -41,6 +42,9 @@ const slimIssue = (i) => {
     status_display: i.status_display,
     work_item_status: i.work_item_status
   }
+  // Count of distinct milestones a ticket has lived in - 1 (= moves between sprints).
+  // Populated by the milestone-events enrichment pass; absent ⇒ not fetched yet.
+  if (i.milestone_move_count != null) slim.milestone_move_count = i.milestone_move_count
   if (i.references) slim.references = { full: i.references.full, relative: i.references.relative }
   if (i.author) slim.author = { name: i.author.name, state: i.author.state }
   if (i.assignee) slim.assignee = { name: i.assignee.name, state: i.assignee.state }
@@ -721,6 +725,40 @@ export function useDataLoader ({
             })
           }
         })
+      }
+
+      // Milestone history enrichment — count distinct milestones each open ticket
+      // has lived in (for the broken-tickets "Evergreen" detector). Only open
+      // issues that currently have a milestone are candidates; closed tickets
+      // don't need the signal. Re-runs only for fetched (updated) issues since
+      // unrelated tickets' counts are preserved on `node._raw`.
+      if (doGitLab && restClient && issues.length > 0) {
+        const candidates = issues.filter(i => i && i.state === 'opened' && i.milestone && i.iid != null)
+        if (candidates.length > 0) {
+          loadingMessage.value = `Milestone history\n0 / ${candidates.length}`
+          let done = 0
+          const CONCURRENCY = 20
+          let next = 0
+          const worker = async () => {
+            while (next < candidates.length) {
+              const i = next++
+              const issue = candidates[i]
+              const events = await fetchIssueResourceMilestoneEvents(restClient, settings.config.projectId, issue.iid)
+              const seen = new Set()
+              for (const e of events) {
+                if (e?.action === 'add' && e?.milestone && e.milestone.id != null) seen.add(e.milestone.id)
+              }
+              const moves = Math.max(0, seen.size - 1)
+              const node = nodes[String(issue.iid)]
+              if (node && node._raw) node._raw.milestone_move_count = moves
+              done++
+              if (done % 10 === 0 || done === candidates.length) {
+                loadingMessage.value = `Milestone history\n${done} / ${candidates.length} · ${Math.round((done / candidates.length) * 100)}%`
+              }
+            }
+          }
+          await Promise.all(Array.from({ length: CONCURRENCY }, worker))
+        }
       }
 
       // Save to cache (IndexedDB via localforage)

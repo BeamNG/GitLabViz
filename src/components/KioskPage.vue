@@ -137,22 +137,139 @@
             </div>
           </div>
 
-          <div v-if="targetForecast" class="k-target-eta" :class="`is-${targetForecast.status}`">
-            <v-icon :icon="ETA_ICON[targetForecast.status]" />
-            <div class="k-target-eta-main">
-              <template v-if="targetForecast.status === 'on-track' || targetForecast.status === 'late' || targetForecast.status === 'no-deadline'">
-                <strong>ETA ~{{ targetForecast.weeksToShip }} weeks</strong>
-                <span class="k-target-eta-date">→ {{ targetForecast.eta }}</span>
-              </template>
-              <template v-else-if="targetForecast.status === 'done'">
-                <strong>Milestone complete</strong>
-              </template>
-              <template v-else>
-                <strong>No ETA</strong>
-              </template>
-              <span class="k-target-eta-msg">· {{ targetForecast.message }}</span>
+          <v-tooltip
+            v-if="targetForecast"
+            location="bottom start"
+            :open-delay="120" :close-delay="80"
+            content-class="k-eta-tip-wrap"
+          >
+            <template #activator="{ props: tipProps }">
+              <div
+                v-bind="tipProps"
+                class="k-target-eta k-eta-hoverable"
+                :class="`is-${targetForecast.status}`"
+              >
+                <v-icon :icon="ETA_ICON[targetForecast.status]" />
+                <div class="k-target-eta-main">
+                  <template v-if="targetForecast.status === 'on-track' || targetForecast.status === 'late' || targetForecast.status === 'no-deadline'">
+                    <strong>ETA ~{{ targetForecast.weeksToShip }} weeks</strong>
+                    <span class="k-target-eta-date">→ {{ targetForecast.eta }}</span>
+                  </template>
+                  <template v-else-if="targetForecast.status === 'done'">
+                    <strong>Milestone complete</strong>
+                  </template>
+                  <template v-else>
+                    <strong>No ETA</strong>
+                  </template>
+                  <span class="k-target-eta-msg">· {{ targetForecast.message }}</span>
+                </div>
+                <v-icon icon="mdi-information-outline" size="16" class="k-eta-info" />
+              </div>
+            </template>
+
+            <div class="k-eta-tip" :class="`is-${targetForecast.status}`">
+              <div class="k-eta-tip-head">
+                <v-icon :icon="ETA_ICON[targetForecast.status]" />
+                <div class="k-eta-tip-head-text">
+                  <div class="k-eta-tip-title">
+                    <template v-if="targetForecast.status === 'done'">Milestone complete</template>
+                    <template v-else-if="targetForecast.status === 'stalled'">No ETA · stalled</template>
+                    <template v-else-if="targetForecast.status === 'on-track'">On track · ETA {{ targetForecast.eta }}</template>
+                    <template v-else-if="targetForecast.status === 'late'">{{ targetForecast.lateDays }}d late · ETA {{ targetForecast.eta }}</template>
+                    <template v-else>ETA {{ targetForecast.eta }} · no due date</template>
+                  </div>
+                  <div class="k-eta-tip-sub">{{ targetForecast.message }}</div>
+                </div>
+              </div>
+
+              <div class="k-eta-tip-section">
+                <div class="k-eta-tip-section-title">
+                  Last {{ targetForecast.lookbackDays }} days
+                  <span class="k-eta-tip-legend">
+                    <i class="k-eta-sw k-eta-sw-closed" /> closed
+                    <i class="k-eta-sw k-eta-sw-added" /> added
+                  </span>
+                </div>
+                <svg v-if="etaTipChart" :viewBox="`0 0 ${etaTipChart.W} ${etaTipChart.H}`" class="k-eta-tip-svg">
+                  <line
+                    :x1="etaTipChart.padL" :x2="etaTipChart.W - etaTipChart.padR"
+                    :y1="etaTipChart.axisY" :y2="etaTipChart.axisY"
+                    stroke="rgba(200,200,200,0.25)" stroke-width="1"
+                  />
+                  <g v-for="b in etaTipChart.bars" :key="b.i">
+                    <rect v-if="b.cH > 0" :x="b.x" :y="b.cY" :width="b.w" :height="b.cH" fill="#66bb6a" rx="1" />
+                    <rect v-if="b.aH > 0" :x="b.x" :y="b.aY" :width="b.w" :height="b.aH" fill="#ef5350" rx="1" />
+                  </g>
+                  <text :x="etaTipChart.padL" :y="etaTipChart.H - 4" font-size="10" fill="rgba(200,200,200,0.7)">{{ etaTipChart.leftLabel }}</text>
+                  <text :x="etaTipChart.W - etaTipChart.padR" :y="etaTipChart.H - 4" font-size="10" text-anchor="end" fill="rgba(200,200,200,0.7)">{{ etaTipChart.rightLabel }}</text>
+                  <text :x="etaTipChart.padL - 4" :y="etaTipChart.padT + 8" font-size="10" text-anchor="end" fill="rgba(200,200,200,0.5)">peak {{ etaTipChart.max }}</text>
+                </svg>
+              </div>
+
+              <div class="k-eta-tip-section">
+                <div class="k-eta-tip-section-title">Throughput</div>
+                <div class="k-eta-tip-grid">
+                  <div class="k-eta-tip-cell">
+                    <div class="k-eta-tip-cell-num k-eta-pos">{{ targetForecast.closedRecent }}</div>
+                    <div class="k-eta-tip-cell-lbl">closed in {{ targetForecast.lookbackDays }}d</div>
+                    <div class="k-eta-tip-cell-sub">≈ {{ targetForecast.closedPerWeek }}/wk</div>
+                  </div>
+                  <div class="k-eta-tip-cell">
+                    <div class="k-eta-tip-cell-num k-eta-neg">{{ targetForecast.addedRecent }}</div>
+                    <div class="k-eta-tip-cell-lbl">added in {{ targetForecast.lookbackDays }}d</div>
+                    <div class="k-eta-tip-cell-sub">≈ {{ targetForecast.addedPerWeek }}/wk</div>
+                  </div>
+                  <div class="k-eta-tip-cell">
+                    <div class="k-eta-tip-cell-num" :class="targetForecast.netPerWeek > 0 ? 'k-eta-pos' : 'k-eta-neg'">
+                      {{ targetForecast.netPerWeek > 0 ? '+' : '' }}{{ targetForecast.netPerWeek }}
+                    </div>
+                    <div class="k-eta-tip-cell-lbl">net /wk</div>
+                    <div class="k-eta-tip-cell-sub">closed − added</div>
+                  </div>
+                  <div class="k-eta-tip-cell">
+                    <div class="k-eta-tip-cell-num">{{ targetForecast.open }}</div>
+                    <div class="k-eta-tip-cell-lbl">open</div>
+                    <div class="k-eta-tip-cell-sub">remaining</div>
+                  </div>
+                </div>
+              </div>
+
+              <div v-if="targetForecast.weeksToShip != null" class="k-eta-tip-section">
+                <div class="k-eta-tip-section-title">How the ETA is calculated</div>
+                <div class="k-eta-tip-formula">
+                  <code>open ÷ net/wk = weeks</code><br>
+                  <code>{{ targetForecast.open }} ÷ {{ targetForecast.netPerWeek }} = {{ targetForecast.weeksToShip }}w</code>
+                  → <strong>{{ targetForecast.eta }}</strong>
+                </div>
+                <svg v-if="etaTipTimeline" :viewBox="`0 0 ${etaTipTimeline.W} ${etaTipTimeline.H}`" class="k-eta-tip-svg k-eta-tip-timeline">
+                  <line :x1="0" :x2="etaTipTimeline.W" :y1="etaTipTimeline.y" :y2="etaTipTimeline.y" stroke="rgba(200,200,200,0.2)" />
+                  <rect
+                    v-for="(s, si) in etaTipTimeline.segs" :key="'s' + si"
+                    :x="Math.min(s.x1, s.x2)" :y="s.y - 4"
+                    :width="Math.abs(s.x2 - s.x1)" :height="8"
+                    :fill="s.kind === 'late' ? 'rgba(239,83,80,0.55)' : 'rgba(102,187,106,0.5)'"
+                    rx="2"
+                  />
+                  <g v-for="(t, ti) in etaTipTimeline.ticks" :key="'t' + ti">
+                    <circle
+                      :cx="t.x" :cy="etaTipTimeline.y" r="4"
+                      :fill="t.kind === 'today' ? '#90a4ae' : (t.kind === 'due' ? '#ffd54f' : '#42a5f5')"
+                      stroke="rgba(0,0,0,0.5)" stroke-width="0.5"
+                    />
+                    <text
+                      :x="t.x" :y="etaTipTimeline.y + 16"
+                      font-size="10" text-anchor="middle"
+                      :fill="t.kind === 'today' ? 'rgba(200,200,200,0.8)' : (t.kind === 'due' ? '#ffd54f' : '#90caf9')"
+                    >{{ t.label }}</text>
+                  </g>
+                </svg>
+              </div>
+
+              <div class="k-eta-tip-foot">
+                Linear extrapolation from the last {{ targetForecast.lookbackDays }} days · doesn't account for holidays / team changes.
+              </div>
             </div>
-          </div>
+          </v-tooltip>
 
           <div class="k-target-recent">
             <div class="k-target-recent-card">
@@ -363,7 +480,7 @@
       <section v-else-if="currentMode === 'blockers'" class="k-blockers">
         <div class="k-section-title k-blockers-title">
           <v-icon icon="mdi-alert-octagon" />
-          Blockers · {{ blockers.total }}
+          Blocked issues · {{ blockers.total }}
           <span v-if="blockers.total > blockers.list.length" class="k-section-sub">showing top {{ blockers.list.length }}</span>
         </div>
         <div v-if="!blockers.list.length" class="k-empty">
@@ -949,6 +1066,122 @@
           </li>
         </ul>
       </section>
+
+      <!-- Broken tickets: workflow leaks (orphaned milestones, no type, ghost
+           WIP, truly forgotten tickets). Cards + worst-offender list, same
+           shape as Ticket health. -->
+      <section v-else-if="currentMode === 'broken'" class="k-health">
+        <div class="k-health-grid">
+          <button v-if="!brokenHideEmpty || broken.stats.lostMilestone" type="button" class="k-health-card k-clickable" @click="filterLostMilestone" :title="brokenCardTitle('lostMilestone', 'Filter graph to tickets in closed/expired milestones')">
+            <v-icon :icon="BROKEN_ICONS.lostMilestone" class="k-health-icon" :style="{ color: BROKEN_COLORS.lostMilestone }" />
+            <div class="k-health-num">{{ fmtNum(broken.stats.lostMilestone) }}</div>
+            <div class="k-health-lbl">Lost milestone</div>
+          </button>
+          <button v-if="!brokenHideEmpty || broken.stats.statusMismatch" type="button" class="k-health-card k-clickable" @click="filterStatusMismatch" :title="brokenCardTitle('statusMismatch', `Filter graph to open tickets whose status says Done / Won't do / Duplicate / etc.`)">
+            <v-icon :icon="BROKEN_ICONS.statusMismatch" class="k-health-icon" :style="{ color: BROKEN_COLORS.statusMismatch }" />
+            <div class="k-health-num">{{ fmtNum(broken.stats.statusMismatch) }}</div>
+            <div class="k-health-lbl">Status mismatch</div>
+          </button>
+          <button v-if="!brokenHideEmpty || broken.stats.criticalUnowned" type="button" class="k-health-card k-clickable" @click="filterCriticalUnowned" :title="brokenCardTitle('criticalUnowned', 'Filter graph to Blocking/Critical priority tickets with no assignee')">
+            <v-icon :icon="BROKEN_ICONS.criticalUnowned" class="k-health-icon" :style="{ color: BROKEN_COLORS.criticalUnowned }" />
+            <div class="k-health-num">{{ fmtNum(broken.stats.criticalUnowned) }}</div>
+            <div class="k-health-lbl">Critical · no owner</div>
+          </button>
+          <button v-if="!brokenHideEmpty || broken.stats.forgotten" type="button" class="k-health-card k-clickable" @click="filterForgotten" :title="brokenCardTitle('forgotten', 'Filter graph to tickets with no priority AND no assignee')">
+            <v-icon :icon="BROKEN_ICONS.forgotten" class="k-health-icon" :style="{ color: BROKEN_COLORS.forgotten }" />
+            <div class="k-health-num">{{ fmtNum(broken.stats.forgotten) }}</div>
+            <div class="k-health-lbl">Forgotten</div>
+          </button>
+          <button v-if="!brokenHideEmpty || broken.stats.wipUnassigned" type="button" class="k-health-card k-clickable" @click="filterUnassigned" :title="brokenCardTitle('wipUnassigned', 'Filter graph to unassigned open tickets')">
+            <v-icon :icon="BROKEN_ICONS.wipUnassigned" class="k-health-icon" :style="{ color: BROKEN_COLORS.wipUnassigned }" />
+            <div class="k-health-num">{{ fmtNum(broken.stats.wipUnassigned) }}</div>
+            <div class="k-health-lbl">WIP · no owner</div>
+          </button>
+          <!-- Evergreen has no clean filter (no "milestone_move_count" predicate in the main view),
+               so clicking opens a popover that lists every evergreen ticket — each row opens
+               GitLab directly. The hover title also previews the iids for quick reference. -->
+          <v-menu v-if="!brokenHideEmpty || broken.stats.evergreen" :close-on-content-click="false" location="bottom" :offset="6">
+            <template #activator="{ props: menuProps }">
+              <button v-bind="menuProps" type="button" class="k-health-card k-clickable" :title="brokenCardTitle('evergreen', 'Click to list evergreen tickets (carried across multiple milestones)')">
+                <v-icon :icon="BROKEN_ICONS.evergreen" class="k-health-icon" :style="{ color: BROKEN_COLORS.evergreen }" />
+                <div class="k-health-num">{{ fmtNum(broken.stats.evergreen) }}</div>
+                <div class="k-health-lbl">Evergreen</div>
+              </button>
+            </template>
+            <div class="k-broken-popover">
+              <div class="k-broken-popover-head">
+                <v-icon :icon="BROKEN_ICONS.evergreen" size="18" :style="{ color: BROKEN_COLORS.evergreen }" />
+                Evergreen · {{ broken.ticketsByKind.evergreen.length }} ticket{{ broken.ticketsByKind.evergreen.length === 1 ? '' : 's' }}
+              </div>
+              <div v-if="!broken.ticketsByKind.evergreen.length" class="k-broken-popover-empty">No evergreen tickets.</div>
+              <ul v-else class="k-broken-popover-list">
+                <li
+                  v-for="t in broken.ticketsByKind.evergreen" :key="t.iid"
+                  class="k-broken-popover-item"
+                  :class="{ 'k-clickable': !!t.url }"
+                  @click="openIssue(t.url)"
+                  :title="t.url ? 'Open in GitLab' : ''"
+                >
+                  <span class="k-broken-popover-iid">#{{ t.iid }}</span>
+                  <span class="k-broken-popover-detail">{{ t.detail }}</span>
+                  <span class="k-broken-popover-title">{{ t.title }}</span>
+                </li>
+              </ul>
+            </div>
+          </v-menu>
+          <button v-if="!brokenHideEmpty || broken.stats.noMilestone" type="button" class="k-health-card k-clickable" @click="filterNoMilestone" :title="brokenCardTitle('noMilestone', 'Filter graph to open tickets with no milestone')">
+            <v-icon :icon="BROKEN_ICONS.noMilestone" class="k-health-icon" :style="{ color: BROKEN_COLORS.noMilestone }" />
+            <div class="k-health-num">{{ fmtNum(broken.stats.noMilestone) }}</div>
+            <div class="k-health-lbl">No milestone</div>
+          </button>
+          <button v-if="!brokenHideEmpty || broken.stats.zombie" type="button" class="k-health-card k-clickable" @click="filterZombie" :title="brokenCardTitle('zombie', `Filter graph to tickets not updated in >${90}d (default zombie idle threshold)`)">
+            <v-icon :icon="BROKEN_ICONS.zombie" class="k-health-icon" :style="{ color: BROKEN_COLORS.zombie }" />
+            <div class="k-health-num">{{ fmtNum(broken.stats.zombie) }}</div>
+            <div class="k-health-lbl">Zombie</div>
+          </button>
+          <button v-if="!brokenHideEmpty || broken.stats.noType" type="button" class="k-health-card k-clickable" @click="filterNoType" :title="brokenCardTitle('noType', 'Filter graph to tickets without a Type:: label')">
+            <v-icon :icon="BROKEN_ICONS.noType" class="k-health-icon" :style="{ color: BROKEN_COLORS.noType }" />
+            <div class="k-health-num">{{ fmtNum(broken.stats.noType) }}</div>
+            <div class="k-health-lbl">No type</div>
+          </button>
+          <div v-if="brokenHideEmpty && brokenAllEmpty" class="k-empty k-empty-inline">
+            <v-icon icon="mdi-shield-check-outline" size="36" />
+            <div>All categories clean.</div>
+          </div>
+        </div>
+
+        <div class="k-section-title k-health-title">
+          Most broken · {{ broken.offenders.length }} ticket{{ broken.offenders.length === 1 ? '' : 's' }} with workflow leaks
+        </div>
+        <div v-if="!broken.offenders.length" class="k-empty">
+          <v-icon icon="mdi-shield-check-outline" size="48" />
+          <div>Nothing broken — workflow is clean.</div>
+        </div>
+        <ul v-else class="k-target-feed k-health-feed">
+          <li
+            v-for="(t, i) in broken.offenders" :key="i"
+            :class="{ 'k-clickable': !!t.url }"
+            @click="openIssue(t.url)"
+            :title="t.url ? 'Open in GitLab' : ''"
+          >
+            <span class="k-target-pri">{{ t.priority || '—' }}</span>
+            <span class="k-feed-iid">{{ t.iid ? '#' + t.iid : '' }}</span>
+            <span class="k-feed-title" :title="t.title">{{ t.title }}</span>
+            <span class="k-health-tags">
+              <span
+                v-for="(p, pi) in t.problems" :key="pi"
+                class="k-health-tag"
+                :style="{ background: `${BROKEN_COLORS[p.kind]}22`, color: BROKEN_COLORS[p.kind] }"
+              >{{ p.detail }}</span>
+            </span>
+            <span class="k-feed-who" :title="t.assignees && t.assignees.length ? t.assignees[0] : ''">
+              <template v-if="t.assignees && t.assignees.length">
+                <span class="k-feed-avatar" :style="{ background: avatarColor(t.assignees[0]) }">{{ initialsOf(t.assignees[0]) }}</span>
+              </template>
+            </span>
+          </li>
+        </ul>
+      </section>
     </main>
 
     <footer class="kiosk-foot">
@@ -970,6 +1203,7 @@ import { useSettingsStore } from '../composables/useSettingsStore'
 import { HOTKEY_ACTIONS, getEventCombo } from '../composables/useHotkeys'
 import { getAssigneeNames } from '../utils/issueFields'
 import { getScopedLabelValue, isScopedLabel } from '../utils/scopedLabels'
+import { priorityBucket, PRIORITY_BUCKETS, PRIORITY_BUCKET_COLOR, PRIORITY_BUCKET_LABEL } from '../utils/priorityBucket'
 import { currentStatusOfRaw } from '../composables/useGraphDerivedState'
 
 const props = defineProps({
@@ -988,7 +1222,7 @@ const root = ref(null)
 const ALL_MODES = [
   { id: 'target',         label: 'Target milestone' },
   { id: 'burndown',       label: 'Milestone burndown' },
-  { id: 'blockers',       label: 'Blockers' },
+  { id: 'blockers',       label: 'Blocked issues' },
   { id: 'wipStale',       label: 'Stale WIP' },
   { id: 'today',          label: "Today's pulse" },
   { id: 'velocity',       label: 'Velocity' },
@@ -1001,7 +1235,8 @@ const ALL_MODES = [
   { id: 'aging',      label: 'Aging buckets' },
   { id: 'activity',   label: 'Recent activity' },
   { id: 'closed',     label: 'Recently closed' },
-  { id: 'risks',          label: 'Ticket health' }
+  { id: 'risks',          label: 'Ticket health' },
+  { id: 'broken',         label: 'Broken tickets' }
 ]
 
 const activeModes = computed(() => {
@@ -1274,24 +1509,8 @@ onUnmounted(() => {
 
 // Priority buckets — declared up here because the global `priorityFilter` setting
 // classifies every ticket into one of them before any mode-specific computation.
-const priorityBucket = (label) => {
-  const k = String(label || '').toLowerCase()
-  if (!k) return 'none'
-  if (/blocking|critical/.test(k)) return 'blocking'
-  if (/high/.test(k)) return 'high'
-  if (/medium|normal/.test(k)) return 'medium'
-  if (/low/.test(k)) return 'low'
-  return 'other'
-}
-const PRIORITY_BUCKETS = ['blocking', 'high', 'medium', 'low', 'other', 'none']
-const PRIORITY_BUCKET_COLOR = {
-  blocking: '#d32f2f', high: '#f57c00', medium: '#fbc02d',
-  low: '#7cb342', other: '#1e88e5', none: 'rgba(127,127,127,0.45)'
-}
-const PRIORITY_BUCKET_LABEL = {
-  blocking: 'Blocking', high: 'High', medium: 'Medium',
-  low: 'Low', other: 'Other', none: 'No priority'
-}
+// priorityBucket + colour/label maps live in src/utils/priorityBucket.js so the
+// list view and any future surface can use the same canonical bucketing.
 
 // --- Data helpers ---
 const safeDate = (iso) => {
@@ -1870,34 +2089,51 @@ const targetData = computed(() => {
 })
 
 // "How fast are we burning down the target?" — projects an ETA from the last 14 days of
-// closure / add rate.
+// closure / add rate. Also builds a per-day histogram of closes/adds so the ETA hover
+// can show a sparkline of the trend the projection is built from.
 const TARGET_LOOKBACK_DAYS = 14
 const targetForecast = computed(() => {
   if (!targetData.value || !targetMilestone.value) return null
   const day = 24 * 60 * 60 * 1000
   const now = Date.now()
+  const today0 = (() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime() })()
+  const startDay = today0 - (TARGET_LOOKBACK_DAYS - 1) * day
   const cutoff = now - TARGET_LOOKBACK_DAYS * day
   let closedRecent = 0, addedRecent = 0
+  const dailyClosed = new Array(TARGET_LOOKBACK_DAYS).fill(0)
+  const dailyAdded  = new Array(TARGET_LOOKBACK_DAYS).fill(0)
   for (const n of allItems.value) {
     const raw = n._raw || {}
     if (raw?.milestone?.title !== targetMilestone.value) continue
     const c = safeDate(raw.created_at)
     const cl = safeDate(raw.closed_at)
-    if (c && c >= cutoff) addedRecent++
-    if (cl && cl >= cutoff) closedRecent++
+    if (c && c >= cutoff) {
+      addedRecent++
+      const bin = Math.floor((c - startDay) / day)
+      if (bin >= 0 && bin < TARGET_LOOKBACK_DAYS) dailyAdded[bin]++
+    }
+    if (cl && cl >= cutoff) {
+      closedRecent++
+      const bin = Math.floor((cl - startDay) / day)
+      if (bin >= 0 && bin < TARGET_LOOKBACK_DAYS) dailyClosed[bin]++
+    }
   }
   const closedPerWeek = (closedRecent / TARGET_LOOKBACK_DAYS) * 7
   const addedPerWeek = (addedRecent / TARGET_LOOKBACK_DAYS) * 7
   const netPerWeek = closedPerWeek - addedPerWeek
   const open = targetData.value.open
   const round1 = (n) => Math.round(n * 10) / 10
+  const dueMs = targetData.value.due ? new Date(targetData.value.due).getTime() : null
   const out = {
     lookbackDays: TARGET_LOOKBACK_DAYS,
     closedRecent, addedRecent,
     closedPerWeek: round1(closedPerWeek),
     addedPerWeek: round1(addedPerWeek),
     netPerWeek: round1(netPerWeek),
-    open
+    open,
+    dailyClosed, dailyAdded, dailyStartMs: startDay,
+    dueMs, dueIso: targetData.value.due || null,
+    todayMs: today0
   }
   if (open === 0) { out.status = 'done'; out.message = 'All tickets in this milestone are closed.'; return out }
   if (netPerWeek <= 0) {
@@ -1910,12 +2146,13 @@ const targetForecast = computed(() => {
   const weeksToShip = open / netPerWeek
   const etaMs = now + weeksToShip * 7 * day
   out.weeksToShip = round1(weeksToShip)
+  out.etaMs = etaMs
   out.eta = new Date(etaMs).toISOString().slice(0, 10)
-  if (targetData.value.due) {
-    const dueMs = new Date(targetData.value.due).getTime()
+  if (dueMs != null) {
     if (etaMs <= dueMs) {
       const slackDays = Math.max(0, Math.round((dueMs - etaMs) / day))
       out.status = 'on-track'
+      out.slackDays = slackDays
       out.message = slackDays > 0 ? `On track · ${slackDays}d slack vs due date` : 'On track · landing on the due date'
     } else {
       const lateDays = Math.round((etaMs - dueMs) / day)
@@ -1928,6 +2165,69 @@ const targetForecast = computed(() => {
     out.message = 'No due date set on the milestone'
   }
   return out
+})
+
+// Geometry for the rich ETA hover. Pure derived state — daily bars (closed up, added
+// down) and a today / due / ETA timeline. Kept here (not inline in the template) so
+// the SVG markup stays readable.
+const etaTipChart = computed(() => {
+  const f = targetForecast.value
+  if (!f || !Array.isArray(f.dailyClosed)) return null
+  const n = f.dailyClosed.length
+  const max = Math.max(1, ...f.dailyClosed, ...f.dailyAdded)
+  const W = 360, H = 92, padL = 22, padR = 8, padT = 6, padB = 16
+  const innerW = W - padL - padR
+  const innerH = H - padT - padB
+  const mid = padT + innerH / 2
+  const colW = innerW / n
+  const barW = Math.max(2, colW * 0.62)
+  const half = (innerH / 2) - 2
+  const bars = []
+  for (let i = 0; i < n; i++) {
+    const cx = padL + colW * (i + 0.5)
+    const cH = (f.dailyClosed[i] / max) * half
+    const aH = (f.dailyAdded[i]  / max) * half
+    bars.push({
+      i,
+      x: cx - barW / 2, w: barW,
+      cY: mid - cH, cH,
+      aY: mid,      aH,
+      closed: f.dailyClosed[i],
+      added:  f.dailyAdded[i],
+      ts: f.dailyStartMs + i * 24 * 3600 * 1000
+    })
+  }
+  return { W, H, padL, padR, padT, padB, mid, max, bars, axisY: mid, leftLabel: `${n}d ago`, rightLabel: 'today' }
+})
+
+const etaTipTimeline = computed(() => {
+  const f = targetForecast.value
+  if (!f) return null
+  const day = 24 * 60 * 60 * 1000
+  const W = 360, H = 38, padL = 10, padR = 10, padT = 6, padB = 18
+  const innerW = W - padL - padR
+  const y = padT + 8
+  const today = f.todayMs
+  const due = f.dueMs
+  const eta = f.etaMs
+  if (!due && !eta) return null
+  const rightMs = Math.max(today, due || 0, eta || 0) + day
+  const leftMs  = Math.min(today, due || today, eta || today) - day
+  const span = Math.max(1, rightMs - leftMs)
+  const xOf = (ms) => padL + ((ms - leftMs) / span) * innerW
+  const fmt = (ms) => new Date(ms).toISOString().slice(0, 10)
+  const segs = []
+  if (due && eta && eta > due) {
+    segs.push({ kind: 'late', x1: xOf(due), x2: xOf(eta), y })
+  } else if (due && eta) {
+    segs.push({ kind: 'slack', x1: xOf(eta), x2: xOf(due), y })
+  }
+  const ticks = [
+    { ms: today, kind: 'today', label: 'today', x: xOf(today) }
+  ]
+  if (due) ticks.push({ ms: due, kind: 'due', label: 'due ' + fmt(due), x: xOf(due) })
+  if (eta) ticks.push({ ms: eta, kind: 'eta', label: 'ETA ' + fmt(eta), x: xOf(eta) })
+  return { W, H, y, segs, ticks }
 })
 
 // Cumulative scope vs closed over the milestone's active window. The chart is anchored
@@ -2651,6 +2951,141 @@ const risks = computed(() => {
   return { stats, offenders: offenders.slice(0, listLimit), staleThreshold }
 })
 
+// Broken tickets — tickets that have leaked out of the workflow and are likely
+// to be forgotten. Different from `risks` (which flags actionable problems like
+// "overdue" or "stale"): these are *workflow leaks*. Categories:
+//  - lostMilestone:   open ticket, milestone state is 'closed'/'expired' (orphaned)
+//  - statusMismatch:  open + status says Done / Won't do / Duplicate / etc. (should be closed)
+//  - criticalUnowned: Priority::Blocking|Critical with no assignee (fire-alarm)
+//  - forgotten:       no priority AND no assignee (truly invisible)
+//  - wipUnassigned:   "in progress"-ish status but nobody assigned (ghost WIP)
+//  - evergreen:       ticket much older than its current milestone (= carried over multiple sprints)
+//  - noMilestone:     no milestone at all (drifting work)
+//  - zombie:          created > 365d ago AND not updated > 90d (long abandoned)
+//  - noType:          no Type:: label (workflow tag missing)
+const BROKEN_KINDS = ['lostMilestone', 'statusMismatch', 'criticalUnowned', 'forgotten', 'wipUnassigned', 'evergreen', 'noMilestone', 'zombie', 'noType']
+const BROKEN_LABELS  = { lostMilestone: 'Lost milestone', statusMismatch: 'Status mismatch', criticalUnowned: 'Critical · no owner', forgotten: 'Forgotten', wipUnassigned: 'WIP · no owner', evergreen: 'Evergreen', noMilestone: 'No milestone', zombie: 'Zombie', noType: 'No type' }
+const BROKEN_ICONS   = { lostMilestone: 'mdi-flag-remove-outline', statusMismatch: 'mdi-alert-decagram-outline', criticalUnowned: 'mdi-fire-alert', forgotten: 'mdi-ghost-outline', wipUnassigned: 'mdi-account-question-outline', evergreen: 'mdi-leaf-circle-outline', noMilestone: 'mdi-flag-off-outline', zombie: 'mdi-skull-outline', noType: 'mdi-tag-off-outline' }
+const BROKEN_COLORS  = { lostMilestone: '#ef5350', statusMismatch: '#ef5350', criticalUnowned: '#ef5350', forgotten: '#ef5350', wipUnassigned: '#ffb300', evergreen: '#ffb300', noMilestone: '#ffb300', zombie: '#ffb300', noType: '#90a4ae' }
+const BROKEN_WEIGHTS = { lostMilestone: 3, statusMismatch: 3, criticalUnowned: 3, forgotten: 3, wipUnassigned: 2, evergreen: 2, noMilestone: 2, zombie: 2, noType: 1 }
+// Common "this should have been closed" status names. Matched case-insensitively
+// against `currentStatusOfRaw()` so any of the popular workflow plugins works.
+const CLOSED_STATUS_RE = /^(done|closed|won['’]?t ?do|wont ?do|duplicate|resolved|verified|invalid|completed)$/i
+const ZOMBIE_AGE_DAYS = 365
+const ZOMBIE_IDLE_DAYS = 90
+// Evergreen: prefer the real move count from `resource_milestone_events`
+// (loader sets `_raw.milestone_move_count`). When that's missing (pre-fetch /
+// older cache), fall back to a "born >90d before its current milestone started"
+// heuristic — same population, no API cost.
+const EVERGREEN_CARRY_DAYS = 90
+const brokenCfg = computed(() => settings.uiState.kiosk?.modeConfig?.broken || {})
+const brokenHideEmpty = computed(() => !!brokenCfg.value.hideEmpty)
+const brokenAllEmpty = computed(() => BROKEN_KINDS.every(k => !broken.value.stats[k]))
+// Memory cap on per-kind drill-down lists. 500 covers every realistic project
+// without ballooning the reactive state when one category dominates.
+const BROKEN_KIND_CAP = 500
+const broken = computed(() => {
+  const listLimit = Math.max(1, Number(brokenCfg.value.listLimit) || 12)
+  const now = Date.now()
+  const day = 24 * 60 * 60 * 1000
+  const stats = { lostMilestone: 0, statusMismatch: 0, criticalUnowned: 0, forgotten: 0, wipUnassigned: 0, evergreen: 0, noMilestone: 0, zombie: 0, noType: 0 }
+  const ticketsByKind = { lostMilestone: [], statusMismatch: [], criticalUnowned: [], forgotten: [], wipUnassigned: [], evergreen: [], noMilestone: [], zombie: [], noType: [] }
+  const lostMilestoneTitles = new Set()
+  const offenders = []
+  for (const n of openItems.value) {
+    const raw = n._raw || {}
+    const m = raw.milestone
+    const milestoneTitle = m?.title || ''
+    const milestoneState = String(m?.state || '').toLowerCase()
+    const milestoneStart = safeDate(m?.start_date) || 0
+    const assignees = getAssigneeNames(raw)
+    const priorityVal = getScopedLabelValue(raw.labels, 'Priority') || ''
+    const priBucket = priorityBucket(priorityVal)
+    const typeVal = getScopedLabelValue(raw.labels, 'Type') || ''
+    const status = currentStatusOfRaw(raw) || ''
+    const created = safeDate(raw.created_at) || 0
+    const updated = safeDate(raw.updated_at) || created
+
+    const problems = []
+    if (milestoneTitle && milestoneState && milestoneState !== 'active' && milestoneState !== 'opened') {
+      stats.lostMilestone++; problems.push({ kind: 'lostMilestone', detail: `${milestoneTitle} (${milestoneState})` })
+      lostMilestoneTitles.add(milestoneTitle)
+    } else if (!milestoneTitle) {
+      stats.noMilestone++; problems.push({ kind: 'noMilestone', detail: 'no milestone' })
+    }
+    if (status && CLOSED_STATUS_RE.test(status)) {
+      stats.statusMismatch++; problems.push({ kind: 'statusMismatch', detail: `status: ${status}` })
+    }
+    if (priBucket === 'blocking' && !assignees.length) {
+      stats.criticalUnowned++; problems.push({ kind: 'criticalUnowned', detail: 'critical · unassigned' })
+    }
+    if (/in.?progress|doing|wip/i.test(status) && !assignees.length) {
+      stats.wipUnassigned++; problems.push({ kind: 'wipUnassigned', detail: 'WIP · no owner' })
+    }
+    if (!priorityVal && !assignees.length) {
+      stats.forgotten++; problems.push({ kind: 'forgotten', detail: 'no priority + no owner' })
+    }
+    const moveCount = Number(raw.milestone_move_count)
+    if (Number.isFinite(moveCount)) {
+      if (moveCount > 0) {
+        stats.evergreen++; problems.push({ kind: 'evergreen', detail: `moved ${moveCount}×` })
+      }
+    } else if (milestoneTitle && milestoneStart && created && milestoneStart - created > EVERGREEN_CARRY_DAYS * day) {
+      const carriedDays = Math.floor((milestoneStart - created) / day)
+      stats.evergreen++; problems.push({ kind: 'evergreen', detail: `~${carriedDays}d carry` })
+    }
+    if (created && updated &&
+        (now - created) > ZOMBIE_AGE_DAYS * day &&
+        (now - updated) > ZOMBIE_IDLE_DAYS * day) {
+      stats.zombie++; problems.push({ kind: 'zombie', detail: `${Math.floor((now - updated) / day)}d untouched` })
+    }
+    if (!typeVal) {
+      stats.noType++; problems.push({ kind: 'noType', detail: 'no Type::' })
+    }
+
+    if (problems.length) {
+      const iid = raw.iid != null ? String(raw.iid) : ''
+      const title = raw.title || n.name
+      const url = raw.web_url || ''
+      // Per-kind drill-down lists (used by card hover tooltips + the Evergreen popover).
+      for (const p of problems) {
+        const arr = ticketsByKind[p.kind]
+        if (arr && arr.length < BROKEN_KIND_CAP) arr.push({ iid, title, url, detail: p.detail })
+      }
+      offenders.push({
+        iid, title, url,
+        milestone: milestoneTitle,
+        priority: priorityVal,
+        assignees,
+        problems,
+        score: problems.reduce((s, p) => s + (BROKEN_WEIGHTS[p.kind] || 1), 0)
+      })
+    }
+  }
+  // Worst-offender list = tickets with ≥2 problems first, then by score desc.
+  offenders.sort((a, b) => (b.problems.length >= 2 ? 1 : 0) - (a.problems.length >= 2 ? 1 : 0) || b.score - a.score)
+  return {
+    stats,
+    offenders: offenders.slice(0, listLimit),
+    kinds: BROKEN_KINDS,
+    ticketsByKind,
+    lostMilestoneTitles: [...lostMilestoneTitles]
+  }
+})
+
+// "#13675, #13678, #13680 (+5 more)" — capped preview for the card-hover title tooltip.
+const iidListShort = (tickets, max = 14) => {
+  const list = Array.isArray(tickets) ? tickets : []
+  if (!list.length) return 'No tickets'
+  const head = list.slice(0, max).map(t => `#${t.iid}`).join(', ')
+  return list.length > max ? `${head}  (+${list.length - max} more)` : head
+}
+const brokenCardTitle = (kind, hint) => {
+  const tickets = broken.value.ticketsByKind[kind]
+  const ids = iidListShort(tickets)
+  return hint ? `${hint}\n\n${ids}` : ids
+}
+
 // --- Deep-link actions (click → filter or open issue) ---
 const openIssue = (url) => { if (url) window.open(url, '_blank') }
 // All kiosk deep-link filters also propagate the target-milestone scope + priority
@@ -2731,6 +3166,40 @@ const onHeatmapByLabelCellClick = (rowLabel, cell) => {
   })
 }
 const filterUnassigned = () => applyFilter({ selectedAssignees: ['@unassigned'] })
+const filterNoMilestone = () => applyFilter({ selectedMilestones: ['@none'] })
+const filterNoType      = () => applyFilter({ selectedTypes: ['@none'] })
+const filterForgotten   = () => applyFilter({ selectedAssignees: ['@unassigned'], selectedPriorities: ['@none'] })
+// Collect actual values from the currently-loaded data, then filter — the
+// project-specific Priority::/status label spellings vary, and `selectedStatuses`
+// / `selectedPriorities` expect literal matches.
+const filterStatusMismatch = () => {
+  const seen = new Set()
+  for (const n of openItems.value) {
+    const s = currentStatusOfRaw(n._raw || {}) || ''
+    if (s && CLOSED_STATUS_RE.test(s)) seen.add(s)
+  }
+  applyFilter({ selectedStatuses: [...seen], selectedState: 'opened' })
+}
+const filterCriticalUnowned = () => {
+  const seen = new Set()
+  for (const n of openItems.value) {
+    const p = getScopedLabelValue(n._raw?.labels || [], 'Priority')
+    if (p && priorityBucket(p) === 'blocking') seen.add(p)
+  }
+  applyFilter({ selectedPriorities: [...seen], selectedAssignees: ['@unassigned'] })
+}
+const filterZombie = () => {
+  const day = 24 * 60 * 60 * 1000
+  const cutoff = new Date(Date.now() - ZOMBIE_IDLE_DAYS * day).toISOString().slice(0, 10)
+  applyFilter({ dateFilters: { updatedMode: 'before', updatedBefore: cutoff } })
+}
+// Each lost-milestone ticket may sit in a different closed/expired milestone — collect
+// every distinct title we saw and filter by all of them at once.
+const filterLostMilestone = () => {
+  const titles = broken.value.lostMilestoneTitles
+  if (!titles.length) return
+  applyFilter({ selectedMilestones: [...titles], includeClosed: true })
+}
 const filterNoDueDate  = () => applyFilter({ dueStatus: 'none' })
 const filterOverdue    = () => applyFilter({ dueStatus: 'overdue' })
 const filterBlocked    = () => applyFilter({ selectedStatuses: ['Blocked', 'On Hold/Blocked'] })
@@ -3127,6 +3596,48 @@ const relTime = (ts) => {
 .k-target-eta.is-no-deadline .v-icon { color: #90a4ae; }
 .k-target-eta.is-done        { border-left-color: #43a047; background: rgba(67, 160, 71, 0.12); }
 .k-target-eta.is-done        .v-icon { color: #ffd54f; }
+.k-eta-hoverable { cursor: help; position: relative; }
+.k-eta-hoverable .k-eta-info { opacity: 0.45; margin-left: auto; }
+.k-eta-hoverable:hover .k-eta-info { opacity: 0.85; }
+
+/* Rich ETA hover (the outer .k-eta-tip-wrap is Vuetify-rendered outside this
+   component's scope — its rule lives in a separate unscoped <style> block.) */
+.k-eta-tip { color: #e6e6e6; font-size: 12.5px; line-height: 1.45; padding: 12px 14px; }
+.k-eta-tip-head { display: flex; align-items: flex-start; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.k-eta-tip-head .v-icon { font-size: 22px !important; flex-shrink: 0; margin-top: 2px; }
+.k-eta-tip-head-text { min-width: 0; }
+.k-eta-tip-title { font-size: 14px; font-weight: 700; }
+.k-eta-tip-sub { opacity: 0.75; margin-top: 2px; }
+.k-eta-tip.is-on-track .k-eta-tip-head .v-icon { color: #66bb6a; }
+.k-eta-tip.is-late     .k-eta-tip-head .v-icon { color: #ef5350; }
+.k-eta-tip.is-stalled  .k-eta-tip-head .v-icon { color: #ffb300; }
+.k-eta-tip.is-no-deadline .k-eta-tip-head .v-icon { color: #90a4ae; }
+.k-eta-tip.is-done     .k-eta-tip-head .v-icon { color: #ffd54f; }
+.k-eta-tip-section { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.k-eta-tip-section:last-of-type { border-bottom: none; padding-bottom: 4px; }
+.k-eta-tip-section-title {
+  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
+  opacity: 0.6; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;
+}
+.k-eta-tip-legend { display: inline-flex; gap: 10px; text-transform: none; letter-spacing: 0; font-size: 10.5px; opacity: 0.85; }
+.k-eta-sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; vertical-align: -1px; margin-right: 3px; }
+.k-eta-sw-closed { background: #66bb6a; }
+.k-eta-sw-added  { background: #ef5350; }
+.k-eta-tip-svg { width: 100%; height: auto; display: block; }
+.k-eta-tip-timeline { margin-top: 4px; }
+.k-eta-tip-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.k-eta-tip-cell { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 6px 8px; text-align: center; }
+.k-eta-tip-cell-num { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.k-eta-tip-cell-lbl { font-size: 10.5px; opacity: 0.7; }
+.k-eta-tip-cell-sub { font-size: 10px; opacity: 0.5; font-variant-numeric: tabular-nums; }
+.k-eta-pos { color: #66bb6a; }
+.k-eta-neg { color: #ef5350; }
+.k-eta-tip-formula {
+  background: rgba(255,255,255,0.04); border-radius: 6px; padding: 6px 8px;
+  font-variant-numeric: tabular-nums; font-size: 12px;
+}
+.k-eta-tip-formula code { background: transparent; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+.k-eta-tip-foot { font-size: 10.5px; opacity: 0.5; padding-top: 8px; font-style: italic; }
 
 .k-target-recent {
   display: grid;
@@ -3645,6 +4156,46 @@ const relTime = (ts) => {
   grid-template-columns: repeat(6, 1fr);
   gap: 12px;
 }
+.k-empty-inline { grid-column: 1 / -1; padding: 10px 0; }
+
+/* Drill-down popover for broken-tickets categories with no clean main-view filter
+   (Evergreen). Rendered inside <v-menu> — the v-menu surface is its own component
+   so we style only the inner panel here. */
+.k-broken-popover {
+  background: rgba(20, 22, 26, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  min-width: 360px;
+  max-width: 520px;
+  max-height: 60vh;
+  overflow: auto;
+  color: #e6e6e6;
+  font-size: 12.5px;
+}
+.k-broken-popover-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  font-weight: 600;
+  position: sticky; top: 0;
+  background: rgba(20, 22, 26, 0.97);
+}
+.k-broken-popover-empty { padding: 14px; opacity: 0.6; }
+.k-broken-popover-list { list-style: none; margin: 0; padding: 6px 0; }
+.k-broken-popover-item {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: baseline;
+  gap: 10px;
+  padding: 6px 14px;
+  font-variant-numeric: tabular-nums;
+}
+.k-broken-popover-item.k-clickable { cursor: pointer; }
+.k-broken-popover-item.k-clickable:hover { background: rgba(255, 255, 255, 0.06); }
+.k-broken-popover-iid { color: #90caf9; font-weight: 700; }
+.k-broken-popover-detail { font-size: 11px; opacity: 0.7; padding: 1px 6px; border-radius: 4px; background: rgba(255, 179, 0, 0.12); color: #ffb300; }
+.k-broken-popover-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; opacity: 0.92; }
 .k-health-card {
   appearance: none;
   text-align: left;
@@ -3705,5 +4256,19 @@ const relTime = (ts) => {
 }
 @media (max-width: 640px) {
   .k-health-grid { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+
+<!-- Unscoped: the v-tooltip body is teleported to <body>, so its outer wrapper
+     (`content-class="k-eta-tip-wrap"`) is not reachable from scoped CSS. -->
+<style>
+.k-eta-tip-wrap {
+  max-width: 440px !important;
+  padding: 0 !important;
+  background: rgba(20, 22, 26, 0.97) !important;
+  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55) !important;
+  opacity: 1 !important;
 }
 </style>

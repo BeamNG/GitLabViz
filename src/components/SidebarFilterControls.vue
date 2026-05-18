@@ -541,7 +541,15 @@
 
   <v-divider class="my-2"></v-divider>
 
-  <!-- Display Settings -->
+  <!-- Columns control — only relevant in list mode (mirror of the Display
+       section, which only matters for the graph). Owns ordering / visibility
+       for the data-table view. -->
+  <SidebarListColumns v-if="viewLayout === 'list'" :state="state" />
+
+  <!-- Display Settings — Group + Color apply to both graph and list (group
+       turns into group-by header rows in the table; color into a left-edge
+       row indicator). Link mode + hide-unlinked + clone-multi-assignee are
+       graph-only and gated below. -->
   <div class="d-flex align-center justify-space-between mb-2 cursor-pointer user-select-none" @click="state.ui.showDisplay = !state.ui.showDisplay">
     <div class="text-caption font-weight-bold text-uppercase text-medium-emphasis">Display</div>
     <v-icon :icon="state.ui.showDisplay ? 'mdi-chevron-up' : 'mdi-chevron-down'" size="small" color="medium-emphasis"></v-icon>
@@ -573,7 +581,7 @@
         </v-autocomplete>
 
         <v-checkbox
-          v-if="state.view.groupingMode === 'assignee'"
+          v-if="viewLayout !== 'list' && state.view.groupingMode === 'assignee'"
           v-model="state.view.cloneMultiAssignee"
           label="Duplicate multi-assignee tickets"
           density="compact"
@@ -618,6 +626,7 @@
         ></v-text-field>
 
         <v-select
+          v-if="viewLayout !== 'list'"
           v-model="state.view.linkMode"
           :items="linkModeOptions"
           item-title="title"
@@ -640,7 +649,7 @@
         </v-select>
 
         <v-checkbox
-          v-if="state.view.linkMode === 'dependency'"
+          v-if="viewLayout !== 'list' && state.view.linkMode === 'dependency'"
           v-model="state.view.hideUnlinked"
           label="Hide issues with no links"
           density="compact"
@@ -656,6 +665,7 @@
 
 <script setup>
 import { computed, watch } from 'vue'
+import SidebarListColumns from './sidebar/SidebarListColumns.vue'
 
 const emit = defineEmits(['reset-filters'])
 const props = defineProps({
@@ -678,7 +688,10 @@ const props = defineProps({
 
   groupingModeOptions: { type: Array, required: true },
   viewModeOptions: { type: Array, required: true },
-  linkModeOptions: { type: Array, required: true }
+  linkModeOptions: { type: Array, required: true },
+  // 'graph' | 'list' — the Display section (color / group / link) is hidden
+  // when in list mode because none of those controls affect the table.
+  viewLayout: { type: String, default: 'graph' }
 })
 
 // NOTE: we intentionally mutate nested fields on `state` (prop is shallow-readonly).

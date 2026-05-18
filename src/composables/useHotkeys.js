@@ -22,6 +22,7 @@ export const HOTKEY_ACTIONS = [
   { id: 'fitGraph',              label: 'Fit graph to screen',                  default: 'shift+f',  group: 'graph' },
   { id: 'reflowGraph',           label: 'Reflow graph (restart physics)',       default: 'shift+r',  group: 'graph' },
 
+  { id: 'toggleListView',        label: 'Toggle graph / list view',             default: 'shift+v',  group: 'view' },
   { id: 'cycleColorMode',        label: 'Cycle color mode',                     default: 'c',        group: 'view' },
   { id: 'cycleGrouping',         label: 'Cycle grouping mode',                  default: 'shift+c',  group: 'view' },
   { id: 'cycleLinkMode',         label: 'Cycle link mode',                      default: 'n',        group: 'view' },

@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.12.32] - 2026-05-18
+- **Broken tickets** cards are all explorable now. **Lost milestone** is clickable — it collects every distinct closed/expired milestone title seen in the open-ticket data and applies them as `selectedMilestones` (with `includeClosed`). **Evergreen** has no clean main-view filter (no "milestone_move_count" predicate exists), so the card now opens a popover listing every evergreen ticket — `#iid · moved Nx · title`, each row opens GitLab directly. Per-card hover tooltips on every card preview the first 14 ticket iids (`#13675, #13678, … (+5 more)`) so the room can spot specific tickets without leaving the screen.
+
+## [0.12.31] - 2026-05-18
+- **Rich ETA hover** on the target-milestone header. Replaces the plain `Projected 435d late vs due date` line with a hover card that explains *how* the ETA is derived:
+  - Headline with status icon + ETA date and the slack/late delta.
+  - 14-day spark-bar (green = closes ↑, red = adds ↓ around a centre axis) so the trend the projection is built from is visible at a glance.
+  - 4-cell throughput grid: closed-in-Nd, added-in-Nd, net/wk, open remaining.
+  - Formula box `open ÷ net/wk = weeks → ETA <date>`.
+  - Mini timeline with markers for today, due, and ETA — coloured segment between due and ETA (red = late, green = slack).
+  - Footer caveat explaining it's a linear extrapolation. Hover only (`info` icon hint on the chip); the chip itself stays the same one-line summary so the wall view is unchanged.
+
+## [0.12.30] - 2026-05-18
+- Main view layout is now a URL **path segment** like the other pages: `#/list/q=foo` instead of `#/layout=list/q=foo`. `graph` is the default and stays implicit (no segment); `list` is explicit. Old `layout=list` kv-form URLs continue to decode for back-compat but the share button emits the new form. Toggling Graph ↔ List via the sidebar button (or the Shift+V hotkey) updates the URL live.
+
+## [0.12.29] - 2026-05-18
+- **Shareable list-view URLs.** The view-share codec now encodes/decodes the list-view state alongside filters + display: `layout=list` toggles the layout, `cols=…` carries column order, `colsHide=…` carries the hidden set, `colsW=key~px,…` carries per-column widths, and `sort=key~asc,key~desc,…` carries the multi-sort spec. Each piece is only emitted when it diverges from the defaults so URLs stay short. Existing graph URLs continue to work; new keys are validated on decode (unknown column keys are silently dropped). `getCurrentConfigSnapshot` includes the full `listColumns` object, and `applyConfiguration` merges over the user's saved state so a partial URL (e.g. just a sort) doesn't wipe their other customisations.
+- More columns added to the list view (Author, Labels, Comments, Weight, Epic, Iteration, Estimate, Spent, Closed) — all hidden by default. Existing users get them hidden automatically on first encounter via `sanitizeIssueListState`.
+- Group rows: click anywhere on the row toggles the group (chevron is now icon-only). Ticket count pushed to the right edge so multiple group rows have their counts in a vertical column.
+- Drag-reorder shows a primary-coloured drop-target highlight on the header you're about to drop onto. Right-click any header opens a context menu with Show/Hide checkboxes for every column + Reset.
+
+## [0.12.28] - 2026-05-18
+- List view polished:
+  - **Draggable column reorder** — grab any column header and drop it on another to swap positions. Same drag works on the rows in the "Columns" menu.
+  - **Show / hide columns** via a new "Columns" menu in the toolbar (top-right of the table). Checkbox per column + a Reset button to restore defaults.
+  - **Multi-column sort** — Vuetify's `multi-sort` enabled. Shift-click a column header to add a secondary sort; the header shows numbered badges for sort order.
+  - **Column widths fixed** so titles no longer wrap to 8-line stacks. Each column has an explicit width; Title is the flex column and uses single-line ellipsis (full title in tooltip). Table scrolls horizontally if cramped instead of squeezing everything.
+  - All three (order / hidden / sortBy) are persisted to `settings.uiState.view.listColumns` so the layout survives reloads.
+- **Graph ↔ List switcher moved** from the canvas overlay (where it overlapped the legend / sample-data watermark / kiosk header chips) into the sidebar, right above the Presets section. Same Shift+V hotkey.
+
+## [0.12.27] - 2026-05-18
+- New **list view** for tickets alongside the existing issue graph. Same `filteredNodes` powers both views, so switching has no data lag — just a render swap. Sortable `v-data-table` with columns for #, Title, State, Status, Priority, Type, Assignee, Milestone, Due, Updated, Created. Priority cells colour by canonical bucket (Blocking/High/Medium/Low/Other), assignees show as avatar + first name, dates render relative (`2h ago`, `3d ago`), closed tickets get a strike-through. Row click opens the issue in GitLab. Floating top-right toggle (`<v-btn-toggle>`) switches Graph ↔ List; hotkey **Shift+V** does the same; the choice persists via `settings.uiState.view.layout`.
+- Extracted `priorityBucket` + colour/label maps from `KioskPage.vue` into `src/utils/priorityBucket.js` so both kiosk and list view share the same canonical bucketing (no duplicate code per the no-dupes rule).
+
+## [0.12.26] - 2026-05-18
+- **Evergreen** detector now uses real history. The loader fetches each open ticket's `resource_milestone_events` (REST, concurrency 20) and stores `milestone_move_count = (distinct milestones the ticket has lived in) − 1` on `node._raw`. Chip reads `moved 3×` instead of the heuristic `~142d carry`. Fetched only for open issues that currently have a milestone; closed tickets and milestone-less ones are skipped. Cached counts survive incremental syncs (only re-fetched when the ticket itself was updated). Falls back to the original 90d-before-milestone-start heuristic when the count isn't available yet (older cache, fetch failure).
+- **Hide empty categories** toggle in Configuration → Kiosk → Broken tickets: when on, broken-ticket category cards with a count of 0 collapse out of the grid so the wall stays focused on what's actually wrong. A small "All categories clean" badge replaces the grid when everything's 0.
+
+## [0.12.25] - 2026-05-18
+- **Broken tickets** mode gains an **Evergreen** category — tickets that have been carried across multiple milestones and never seem to ship. Detection uses an `(milestone.start_date − ticket.created_at) > 90 days` heuristic: a ticket born well before its current milestone even started must have lived in a previous one before being moved here. Detail chip shows the carry-over in days (`carried 142d`). No-click card because there's no clean main-view filter for "carried days" — but the offender list surfaces them with the chip so users can drill in. Lossless alternative would be fetching `resourceMilestoneEvents` per ticket via GraphQL; the heuristic catches the same population at zero extra API cost.
+
+## [0.12.24] - 2026-05-18
+- **Broken tickets** mode expanded with three more invalid states (now 8 categories total, ordered by severity in the card grid):
+  - **Status mismatch** — open ticket whose work-item status is `Done` / `Won't do` / `Duplicate` / `Resolved` / `Verified` / `Invalid` / `Completed` / `Closed`. Pure workflow leak — they should have been closed. Click filters to those statuses on opened tickets.
+  - **Critical · no owner** — `Priority::Blocking` (or `Critical`) ticket with no assignee. Fire-alarm signal. Click filters to those priority labels + unassigned.
+  - **Zombie** — created > 365 days ago AND not updated > 90 days. Long-abandoned. Click filters by `updatedMode='before'` past the idle threshold.
+- Status-mismatch and Critical-unowned click filters collect the *actual* label / status values seen in the loaded data (so project-specific spellings like `0 - Blocking` vs `Blocking` both work) before applying.
+
+## [0.12.23] - 2026-05-18
+- New kiosk mode **Broken tickets** — surfaces tickets that have leaked out of the workflow and are likely to be forgotten. Five categories on one screen: **Lost milestone** (open ticket whose milestone is closed/expired), **No milestone** (open ticket with no milestone), **WIP · no owner** ("in progress"-ish status but nobody assigned), **Forgotten** (no priority AND no assignee — truly invisible), **No type** (no `Type::` label). Each card shows the count; clickable cards filter the main graph by the matching condition (`@none` milestone / unassigned / `@none` type / unassigned + `@none` priority). Below the cards, the worst-offender list shows tickets ranked by problem count + severity score with one chip per problem reason — same shape as Ticket health. Surfaces workflow leaks the existing modes don't.
+- Renamed "Blockers" → "Blocked issues" everywhere user-facing (kiosk section title, mode list, Configuration). Internal id `blockers` unchanged so URLs / settings stay stable.
+
 ## [0.12.22] - 2026-05-15
 - Velocity calendar: today's cell now has a bright yellow ring with a slow pulsing glow (honors `prefers-reduced-motion`) so the room can find "now" at a glance even when neighbour cells are loud red/green.
 - Milestone progress sorted properly: target pinned first, then milestones by due date (closest first), then no-deadline ones (TBD / Backlog) at the bottom. Total count is the final tiebreaker.

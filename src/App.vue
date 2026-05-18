@@ -4,6 +4,7 @@
       v-if="activePage === 'main' && !settings.uiState.ui.focusMode"
       v-model:vizMode="vizMode"
       v-model:svnVizLimit="svnVizLimit"
+      v-model:viewLayout="settings.uiState.view.layout"
       :settings="settings"
       :build-title="buildTitle"
       :app-version="appVersion"
@@ -148,6 +149,7 @@
           SAMPLE DATA
         </div>
 
+
         <div
           v-if="tokenExpired && isMockGraph"
           class="token-expired-overlay position-absolute top-0 left-0 w-100 h-100 d-flex flex-column align-center justify-center pa-8 text-center"
@@ -165,29 +167,41 @@
           </v-btn>
         </div>
         
-          <IssueGraph 
-          ref="issueGraph"
-          v-if="hasData && !(tokenExpired && isMockGraph)" 
-          :nodes="filteredNodes" 
-          :edges="filteredEdges" 
-          :color-mode="settings.uiState.view.viewMode"
-          :group-by="settings.uiState.view.groupingMode"
-          :link-mode="settings.uiState.view.linkMode"
-          :hide-unlinked="settings.uiState.view.hideUnlinked"
-          :physics-paused="physicsPaused"
-          :repulsion="settings.uiState.simulation.repulsion"
-          :friction="settings.uiState.simulation.friction"
-          :group-gravity="settings.uiState.simulation.groupGravity"
-          :link-strength="settings.uiState.simulation.linkStrength"
-          :link-distance="settings.uiState.simulation.linkDistance"
-          :center-gravity="settings.uiState.simulation.centerGravity"
-          :grid-strength="settings.uiState.simulation.gridStrength"
-          :grid-spacing="settings.uiState.simulation.gridSpacing"
-          :clone-multi-assignee="settings.uiState.view.cloneMultiAssignee"
-          :assignee-filter="assigneeFilter"
-          @issue-state-change="onIssueStateChange"
-          @issue-assignee-change="onIssueAssigneeChange"
-        />
+          <!-- Graph and list share `filteredNodes` so switching between them
+               is just a render swap — no data refetch / lag. v-if (not v-show)
+               keeps each view's resources clean while it's not visible. -->
+          <IssueGraph
+            ref="issueGraph"
+            v-if="hasData && !(tokenExpired && isMockGraph) && settings.uiState.view.layout !== 'list'"
+            :nodes="filteredNodes"
+            :edges="filteredEdges"
+            :color-mode="settings.uiState.view.viewMode"
+            :group-by="settings.uiState.view.groupingMode"
+            :link-mode="settings.uiState.view.linkMode"
+            :hide-unlinked="settings.uiState.view.hideUnlinked"
+            :physics-paused="physicsPaused"
+            :repulsion="settings.uiState.simulation.repulsion"
+            :friction="settings.uiState.simulation.friction"
+            :group-gravity="settings.uiState.simulation.groupGravity"
+            :link-strength="settings.uiState.simulation.linkStrength"
+            :link-distance="settings.uiState.simulation.linkDistance"
+            :center-gravity="settings.uiState.simulation.centerGravity"
+            :grid-strength="settings.uiState.simulation.gridStrength"
+            :grid-spacing="settings.uiState.simulation.gridSpacing"
+            :clone-multi-assignee="settings.uiState.view.cloneMultiAssignee"
+            :assignee-filter="assigneeFilter"
+            @issue-state-change="onIssueStateChange"
+            @issue-assignee-change="onIssueAssigneeChange"
+          />
+          <IssueList
+            v-else-if="hasData && !(tokenExpired && isMockGraph) && settings.uiState.view.layout === 'list'"
+            :nodes="filteredNodes"
+            :issue-open-target="settings.uiState.view.issueOpenTarget"
+            :grouping-mode="settings.uiState.view.groupingMode"
+            :color-mode="settings.uiState.view.viewMode"
+            :due-soon-days="settings.uiState.view.dueSoonDays"
+            v-model:columnState="settings.uiState.view.listColumns"
+          />
         
         <div v-else-if="!loading" class="d-flex flex-column align-center justify-center w-100 h-100 text-medium-emphasis pa-8">
           <v-icon icon="mdi-source-branch" size="64" class="mb-4"></v-icon>
@@ -264,6 +278,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick, toRaw } from 'vue'
 import { useTheme } from 'vuetify'
 import IssueGraph from './components/IssueGraph.vue'
+import IssueList from './components/IssueList.vue'
 import AppSidebar from './components/AppSidebar.vue'
 import ConfigPage from './components/ConfigPage.vue'
 import ChatToolsPage from './components/ChatToolsPage.vue'
@@ -311,7 +326,13 @@ const kioskMode = ref('today')
 // drifted last session. URL-based entries (e.g. `#/kiosk/burndown/…`) still take
 // effect because the routing parser sets `kioskMode` after this point.
 const enterKiosk = () => { kioskMode.value = ''; activePage.value = 'kiosk' }
-const { viewParam, setView } = useHashRouting({ activePage, configInitialTab, kioskMode })
+// Main-page layout (graph / list) — mirrored to the URL path so it appears as
+// the first segment (e.g. `#/list/q=foo`) rather than as a kv param.
+const mainLayout = computed({
+  get: () => settings.uiState.view.layout || 'graph',
+  set: (v) => { settings.uiState.view.layout = (v === 'list' ? 'list' : 'graph') }
+})
+const { viewParam, setView } = useHashRouting({ activePage, configInitialTab, kioskMode, mainLayout })
 const loading = ref(false)
 const loadingMessage = ref('')
 const error = ref('')
@@ -487,12 +508,14 @@ const getCurrentConfigSnapshot = () => ({
     dateFilters: { ...settings.uiState.filters.dateFilters }
   },
   view: {
+    layout: settings.uiState.view.layout,
     colorMode: settings.uiState.view.viewMode,
     grouping: settings.uiState.view.groupingMode,
     linkMode: settings.uiState.view.linkMode,
     dueSoonDays: settings.uiState.view.dueSoonDays,
     issueOpenTarget: settings.uiState.view.issueOpenTarget,
-    colorOverrides: JSON.parse(JSON.stringify(settings.uiState.view.colorOverrides || {}))
+    colorOverrides: JSON.parse(JSON.stringify(settings.uiState.view.colorOverrides || {})),
+    listColumns: JSON.parse(JSON.stringify(settings.uiState.view.listColumns || {}))
   },
   ui: {
     showFilters: settings.uiState.ui.showFilters,
@@ -930,6 +953,7 @@ const setAllSections = (open) => {
   settings.uiState.ui.showFilters = open
   settings.uiState.ui.showTemplates = open
   settings.uiState.ui.showDisplay = open
+  settings.uiState.ui.showColumns = open
   settings.uiState.ui.showAdvancedSim = open
 }
 
@@ -955,6 +979,7 @@ const hotkeyHandlers = {
   refocusGraph,
   fitGraph,
   reflowGraph,
+  toggleListView: () => { settings.uiState.view.layout = settings.uiState.view.layout === 'list' ? 'graph' : 'list' },
   cycleColorMode: () => { settings.uiState.view.viewMode = cycleValue(viewModeOptions, settings.uiState.view.viewMode) },
   cycleGrouping:  () => { settings.uiState.view.groupingMode = cycleValue(groupingModeOptions.value || [], settings.uiState.view.groupingMode) },
   cycleLinkMode:  () => { settings.uiState.view.linkMode = cycleValue(linkModeOptions, settings.uiState.view.linkMode) },
@@ -1022,12 +1047,27 @@ const applyConfiguration = (config) => {
     }
     
     if (config.view) {
+      if (config.view.layout) settings.uiState.view.layout = config.view.layout
       if (config.view.colorMode) settings.uiState.view.viewMode = config.view.colorMode
       if (config.view.grouping) settings.uiState.view.groupingMode = config.view.grouping
       if (config.view.linkMode) settings.uiState.view.linkMode = config.view.linkMode
       if (config.view.dueSoonDays != null) settings.uiState.view.dueSoonDays = config.view.dueSoonDays
       if (config.view.issueOpenTarget) settings.uiState.view.issueOpenTarget = config.view.issueOpenTarget
       if (config.view.colorOverrides) settings.uiState.view.colorOverrides = config.view.colorOverrides
+      // List-view column state — merge the URL-provided pieces over the
+      // existing saved state so a partial URL (just `sort=…` for example)
+      // doesn't wipe widths/order the user customised previously.
+      if (config.view.listColumns && typeof config.view.listColumns === 'object') {
+        const cur = settings.uiState.view.listColumns || {}
+        const incoming = config.view.listColumns
+        settings.uiState.view.listColumns = {
+          order: Array.isArray(incoming.order) ? incoming.order : (cur.order || []),
+          hidden: Array.isArray(incoming.hidden) ? incoming.hidden : (cur.hidden || []),
+          widths: (incoming.widths && typeof incoming.widths === 'object') ? incoming.widths : (cur.widths || {}),
+          sortBy: Array.isArray(incoming.sortBy) && incoming.sortBy.length ? incoming.sortBy : (cur.sortBy || [{ key: 'updatedAt', order: 'desc' }]),
+          closedGroups: Array.isArray(incoming.closedGroups) ? incoming.closedGroups : (cur.closedGroups || [])
+        }
+      }
     }
 
     if (config.ui) {
@@ -1216,6 +1256,7 @@ body {
 .token-banner {
   cursor: pointer;
 }
+
 
 .focus-exit-btn {
   position: fixed;

@@ -1131,6 +1131,25 @@ export const fetchIssueLinks = async (client, projectId, issueIid) => {
   }
 }
 
+// Resource milestone events: chronological log of milestone add/remove on an issue.
+// Used to count how many distinct milestones a ticket has lived in (= "moved Nx").
+// Returns []  on error so a partial loader can keep going.
+export const fetchIssueResourceMilestoneEvents = async (client, projectId, issueIid) => {
+  try {
+    const encodedProjectId = encodeURIComponent(projectId)
+    const response = await gitlabGet(
+      client,
+      `/projects/${encodedProjectId}/issues/${issueIid}/resource_milestone_events`,
+      { params: { per_page: PER_PAGE } },
+      { maxRetries: 1 }
+    )
+    return Array.isArray(response?.data) ? response.data : []
+  } catch (error) {
+    console.warn(`Warning: Failed to fetch milestone events for issue ${issueIid}: ${error?.message || String(error)}`)
+    return []
+  }
+}
+
 const parseScopesHeader = (v) => {
   const s = String(v || '').trim()
   if (!s) return null

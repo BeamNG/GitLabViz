@@ -12,6 +12,7 @@ vi.mock('../services/gitlab', () => {
     enrichIssuesFromGraphql: vi.fn(),
     fetchProjectIssuesRest: vi.fn(async () => []),
     fetchIssueLinks: vi.fn(async () => []),
+    fetchIssueResourceMilestoneEvents: vi.fn(async () => []),
     fetchTokenInfo: vi.fn(async () => ({ scopes: [], expiresAt: null }))
   }
 })

@@ -2,6 +2,8 @@
 // Returns "" when there's nothing non-default to share, so the URL stays clean by default.
 // Decode produces a partial snapshot compatible with applyConfiguration().
 
+import { ISSUE_LIST_DEFAULT_ORDER, ISSUE_LIST_HIDDEN_BY_DEFAULT } from './issueListColumns'
+
 // URL key ↔ snapshot field (under snapshot.filters)
 const FILTER_MAP = {
   closed: 'includeClosed',
@@ -29,8 +31,20 @@ const FILTER_ARRAYS = new Set([
 ])
 
 // URL key ↔ snapshot.view field
-const VIEW_MAP = { color: 'colorMode', group: 'grouping', links: 'linkMode', dueSoon: 'dueSoonDays' }
-const VIEW_DEFAULTS = { colorMode: 'state', grouping: 'none', linkMode: 'none', dueSoonDays: 7 }
+const VIEW_MAP = { color: 'colorMode', group: 'grouping', links: 'linkMode', dueSoon: 'dueSoonDays', layout: 'layout' }
+const VIEW_DEFAULTS = { colorMode: 'state', grouping: 'none', linkMode: 'none', dueSoonDays: 7, layout: 'graph' }
+const LAYOUT_VALUES = new Set(['graph', 'list'])
+
+// List-view column state lives under snapshot.view.listColumns. We pack the
+// four pieces (order / hidden / widths / sortBy) into four compact URL keys so
+// each can be diffed against its default independently — the URL only carries
+// pieces the user actually customised.
+//   cols=key1,key2,…      — visible-order list (omitted when equal to defaults)
+//   colsHide=key1,key2    — hidden set (omitted when equal to ISSUE_LIST_HIDDEN_BY_DEFAULT)
+//   colsW=k~px,k~px       — per-column widths (omitted when empty)
+//   sort=k~asc,k~desc     — multi-sort spec (omitted when default = updatedAt~desc)
+const LIST_COL_KEYS = ['cols', 'colsHide', 'colsW', 'sort', 'groupOff']
+const DEFAULT_SORT = [{ key: 'updatedAt', order: 'desc' }]
 
 // Public URL aliases for internal value names that read awkwardly.
 // Internally we use `tag` for "by label" (legacy); the URL exposes `label` instead.
@@ -107,10 +121,49 @@ export function encodeView (snapshot) {
 
   const view = snapshot?.view || {}
   for (const [urlKey, srcKey] of Object.entries(VIEW_MAP)) {
+    // Layout is carried as the URL path segment (#/list/...) by the router,
+    // not as a kv pair, so we skip it here. Decode still accepts the old form
+    // for back-compat with previously-shared URLs.
+    if (srcKey === 'layout') continue
     const v = view[srcKey]
     if (isEmpty(v)) continue
     if (VIEW_DEFAULTS[srcKey] !== undefined && v === VIEW_DEFAULTS[srcKey]) continue
     collect(parts, [urlKey, encVal(toPublic(urlKey, v))])
+  }
+
+  // List-view column state — each piece compared against its default before
+  // emitting so URLs only carry what the user customised.
+  const lc = view.listColumns
+  if (lc && typeof lc === 'object') {
+    if (Array.isArray(lc.order) && lc.order.length && lc.order.join(',') !== ISSUE_LIST_DEFAULT_ORDER.join(',')) {
+      collect(parts, ['cols', encVal(lc.order)])
+    }
+    if (Array.isArray(lc.hidden) &&
+        [...lc.hidden].sort().join(',') !== [...ISSUE_LIST_HIDDEN_BY_DEFAULT].sort().join(',')) {
+      collect(parts, ['colsHide', encVal(lc.hidden)])
+    }
+    if (lc.widths && typeof lc.widths === 'object') {
+      const entries = Object.entries(lc.widths).filter(([, w]) => Number.isFinite(Number(w)))
+      if (entries.length) {
+        const enc = entries.map(([k, w]) => `${encodeURIComponent(k)}~${Number(w)}`).join(',')
+        collect(parts, ['colsW', enc])
+      }
+    }
+    if (Array.isArray(lc.sortBy) && lc.sortBy.length) {
+      const isDefault = lc.sortBy.length === 1 &&
+                        lc.sortBy[0]?.key === DEFAULT_SORT[0].key &&
+                        lc.sortBy[0]?.order === DEFAULT_SORT[0].order
+      if (!isDefault) {
+        const enc = lc.sortBy
+          .filter(s => s && s.key)
+          .map(s => `${encodeURIComponent(s.key)}~${s.order === 'desc' ? 'desc' : 'asc'}`)
+          .join(',')
+        if (enc) collect(parts, ['sort', enc])
+      }
+    }
+    if (Array.isArray(lc.closedGroups) && lc.closedGroups.length) {
+      collect(parts, ['groupOff', encVal(lc.closedGroups)])
+    }
   }
 
   return parts.join('/')
@@ -128,7 +181,8 @@ export function decodeView (path) {
   }
 
   const KNOWN_KEYS = new Set([
-    ...Object.keys(FILTER_MAP), ...Object.keys(DATE_MAP), ...Object.keys(VIEW_MAP)
+    ...Object.keys(FILTER_MAP), ...Object.keys(DATE_MAP), ...Object.keys(VIEW_MAP),
+    ...LIST_COL_KEYS
   ])
 
   const pairs = {}
@@ -187,10 +241,42 @@ export function decodeView (path) {
         warnings.push(`Invalid group="${v}" — ignored.`); continue
       } else if (srcKey === 'linkMode' && !LINK_VALUES.has(v)) {
         warnings.push(`Invalid links="${v}" — ignored.`); continue
+      } else if (srcKey === 'layout' && !LAYOUT_VALUES.has(v)) {
+        warnings.push(`Invalid layout="${v}" — ignored.`); continue
       }
     }
     view[srcKey] = v
   }
+
+  // List-view column state — `sanitizeIssueListState` later drops keys we don't
+  // know, so we can keep parsing loose here. Each field is only attached when
+  // the URL actually carried it (vs default-fallback in the consumer).
+  const listColumns = {}
+  if ('cols' in pairs) listColumns.order = decVal(pairs.cols, true)
+  if ('colsHide' in pairs) listColumns.hidden = decVal(pairs.colsHide, true)
+  if ('colsW' in pairs) {
+    const widths = {}
+    for (const seg of decVal(pairs.colsW, true)) {
+      const i = seg.indexOf('~')
+      if (i < 0) continue
+      const k = seg.slice(0, i)
+      const w = Number(seg.slice(i + 1))
+      if (k && Number.isFinite(w)) widths[k] = w
+    }
+    if (Object.keys(widths).length) listColumns.widths = widths
+  }
+  if ('sort' in pairs) {
+    const sortBy = []
+    for (const seg of decVal(pairs.sort, true)) {
+      const i = seg.indexOf('~')
+      const k = i < 0 ? seg : seg.slice(0, i)
+      const order = i < 0 ? 'asc' : (seg.slice(i + 1) === 'desc' ? 'desc' : 'asc')
+      if (k) sortBy.push({ key: k, order })
+    }
+    if (sortBy.length) listColumns.sortBy = sortBy
+  }
+  if ('groupOff' in pairs) listColumns.closedGroups = decVal(pairs.groupOff, true)
+  if (Object.keys(listColumns).length) view.listColumns = listColumns
 
   const snapshot = {}
   if (Object.keys(filters).length) snapshot.filters = filters

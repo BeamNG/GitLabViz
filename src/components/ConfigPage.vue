@@ -1068,6 +1068,21 @@
                     density="compact" variant="outlined" hide-details
                   />
                 </v-col>
+                <v-col v-if="m.id === 'broken'" cols="6" sm="3">
+                  <v-text-field
+                    v-model.number="settings.uiState.kiosk.modeConfig.broken.listLimit"
+                    type="number" min="1" max="50"
+                    label="Worst-offender list size"
+                    density="compact" variant="outlined" hide-details
+                  />
+                </v-col>
+                <v-col v-if="m.id === 'broken'" cols="6" sm="3" class="d-flex align-center">
+                  <v-switch
+                    v-model="settings.uiState.kiosk.modeConfig.broken.hideEmpty"
+                    label="Hide empty categories"
+                    color="primary" density="compact" hide-details
+                  />
+                </v-col>
               </v-row>
             </v-card-text>
           </v-card>
@@ -1287,7 +1302,7 @@ import localforage from 'localforage'
 const kioskAllModes = [
   { id: 'target',     label: 'Target milestone',         icon: 'mdi-flag',                 description: 'Focused dashboard for the milestone set above (big % bar + countdown + top open).' },
   { id: 'burndown',   label: 'Milestone burndown',       icon: 'mdi-chart-areaspline',     description: 'Remaining open work over time alongside cumulative closed, clipped to today (no future projection). Ideal-burn guideline drawn up to today only.' },
-  { id: 'blockers',   label: 'Blockers',                 icon: 'mdi-alert-octagon',        description: 'Open tickets with blocking/critical priority, critical severity, or "blocked" status/label — sorted oldest first.' },
+  { id: 'blockers',   label: 'Blocked issues',           icon: 'mdi-alert-octagon',        description: 'Open tickets with blocking/critical priority, critical severity, or "blocked" status/label — sorted oldest first.' },
   { id: 'wipStale',   label: 'Stale WIP',                icon: 'mdi-progress-alert',       description: 'Tickets in "In progress" status that have not been updated in N days.' },
   { id: 'today',      label: "Today's pulse",            icon: 'mdi-pulse',                description: 'Opened / closed / updated / totals.' },
   { id: 'velocity',   label: 'Velocity',                 icon: 'mdi-trending-up',          description: 'Side-by-side GitHub-style mini heatmaps of created vs closed over the last N weeks.' },
@@ -1300,9 +1315,10 @@ const kioskAllModes = [
   { id: 'aging',      label: 'Aging buckets',            icon: 'mdi-timer-sand',           description: 'Distribution of open ticket ages.' },
   { id: 'activity',   label: 'Recent activity',          icon: 'mdi-history',              description: 'Recent opens / closes / updates with actor.' },
   { id: 'closed',     label: 'Recently closed',          icon: 'mdi-party-popper',         description: 'Celebration view — tickets closed in the last N hours.' },
-  { id: 'risks',      label: 'Ticket health',            icon: 'mdi-stethoscope',          description: 'Problem dashboard — overdue / stale / unassigned / no priority / no due date / blocked, plus the worst offenders.' }
+  { id: 'risks',      label: 'Ticket health',            icon: 'mdi-stethoscope',          description: 'Problem dashboard — overdue / stale / unassigned / no priority / no due date / blocked, plus the worst offenders.' },
+  { id: 'broken',     label: 'Broken tickets',           icon: 'mdi-ghost-outline',        description: 'Tickets lost & forgotten — open tickets in closed milestones, no milestone at all, "in-progress" with no assignee, untyped, or with no priority + no owner. Surfaces workflow leaks.' }
 ]
-const kioskHasOptions = (id) => ['velocity', 'workload', 'breakdown', 'hotLabels', 'milestones', 'burndown', 'activity', 'blockers', 'wipStale', 'closed', 'risks', 'heatmap', 'heatmapByLabel'].includes(id)
+const kioskHasOptions = (id) => ['velocity', 'workload', 'breakdown', 'hotLabels', 'milestones', 'burndown', 'activity', 'blockers', 'wipStale', 'closed', 'risks', 'broken', 'heatmap', 'heatmapByLabel'].includes(id)
 const kioskPriorityBuckets = [
   { value: 'blocking', label: 'Blocking / Critical' },
   { value: 'high',     label: 'High' },

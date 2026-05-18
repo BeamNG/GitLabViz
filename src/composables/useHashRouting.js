@@ -1,9 +1,12 @@
 import { onMounted, onUnmounted, ref, watch } from 'vue'
 
-export function useHashRouting ({ activePage, configInitialTab, kioskMode }) {
+export function useHashRouting ({ activePage, configInitialTab, kioskMode, mainLayout }) {
   // Hash routing (works for hosted + file://):
-  // - (no hash)                                    -> main, default view
-  // - #/group=author/color=priority/label=Bug      -> main + shared view (key=value segments)
+  // - (no hash)                                    -> main (graph layout, default view)
+  // - #/list                                       -> main, list layout
+  // - #/list/q=foo/group=author                    -> main, list + shared view
+  // - #/graph/...                                  -> main, graph (explicit, equivalent to no prefix)
+  // - #/group=author/color=priority/label=Bug      -> main + shared view (graph layout, implicit)
   // - #/config/gitlab
   // - #/config/display
   // - #/config                                     -> config (default tab)
@@ -40,6 +43,12 @@ export function useHashRouting ({ activePage, configInitialTab, kioskMode }) {
       page = 'kiosk'
       if (parts[1] && !isKv(parts[1])) tab = String(parts[1])
       viewParts = parts.slice(tab ? 2 : 1).filter(isKv)
+    } else if (parts[0] === 'list' || parts[0] === 'graph') {
+      // Main page with explicit layout. 'graph' is the default but accepted
+      // explicitly so users can paste either form.
+      page = 'main'
+      tab = parts[0]
+      viewParts = parts.slice(1).filter(isKv)
     } else {
       viewParts = parts.filter(isKv)
     }
@@ -55,7 +64,14 @@ export function useHashRouting ({ activePage, configInitialTab, kioskMode }) {
     const t = String(tab || '').trim()
     const v = String(view || '').trim()
     const vTail = v ? `/${v}` : ''
-    if (p === 'main') return v ? `#/${v}` : ''
+    if (p === 'main') {
+      // Layout 'graph' is the default — left out of the URL to keep it lean.
+      // Layout 'list' is emitted as the first segment so the URL reads as
+      // `#/list/...` instead of `#/layout=list/...`.
+      const layoutSeg = t === 'list' ? 'list' : ''
+      if (layoutSeg) return `#/${layoutSeg}${vTail}`
+      return v ? `#/${v}` : ''
+    }
     if (p === 'config') return `#/config${t ? `/${encodeURIComponent(t)}` : ''}${vTail}`
     if (p === 'kiosk')  return `#/kiosk${t ? `/${encodeURIComponent(t)}` : ''}${vTail}`
     return `#/${p}${vTail}`
@@ -74,6 +90,12 @@ export function useHashRouting ({ activePage, configInitialTab, kioskMode }) {
         if (tab && kioskMode) kioskMode.value = tab
         activePage.value = 'kiosk'
       } else {
+        // Main page — `tab` is the layout ('graph' / 'list'). Only update the
+        // ref when the URL carried an explicit segment; otherwise leave the
+        // user's saved layout alone.
+        if (tab && mainLayout && (tab === 'graph' || tab === 'list')) {
+          mainLayout.value = tab
+        }
         activePage.value = 'main'
       }
       viewParam.value = view
@@ -111,6 +133,7 @@ export function useHashRouting ({ activePage, configInitialTab, kioskMode }) {
   const tabForPage = (p) => {
     if (p === 'config') return configInitialTab.value
     if (p === 'kiosk') return kioskMode ? kioskMode.value : ''
+    if (p === 'main') return mainLayout ? mainLayout.value : ''
     return ''
   }
 
@@ -145,6 +168,13 @@ export function useHashRouting ({ activePage, configInitialTab, kioskMode }) {
         if (isApplyingHash) return
         if (activePage.value !== 'kiosk') return
         setHash('kiosk', t, { replace: true })
+      })
+    }
+    if (mainLayout) {
+      watch(mainLayout, (t) => {
+        if (isApplyingHash) return
+        if (activePage.value !== 'main') return
+        setHash('main', t, { replace: true })
       })
     }
   })
