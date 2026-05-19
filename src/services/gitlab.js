@@ -42,6 +42,26 @@ const getRetryAfterMs = (headers) => {
   return 0
 }
 
+// Axios "no response" failures (CORS, blocked Local Network Access prompt, TLS
+// error, DNS/firewall, offline) all surface as `Network Error` with status 0.
+// The browser doesn't tell us which one — but the user fix is the same: reload
+// and click Allow on the LNA prompt, or check VPN/cert. Returns a clear message
+// for that case, otherwise the original error message.
+export const describeGitLabRequestError = (error) => {
+  const msg = error?.message || String(error || '')
+  const hasResponse = !!error?.response
+  const isNetwork = !hasResponse && (
+    error?.code === 'ERR_NETWORK' ||
+    error?.code === 'ECONNABORTED' ||
+    msg === 'Network Error' ||
+    !!error?.request
+  )
+  if (isNetwork) {
+    return 'Cannot reach GitLab (no response from server). If your browser shows a "Local Network Access" prompt, click Allow and reload. Otherwise check VPN, certificate trust, or CORS.'
+  }
+  return msg
+}
+
 const isRetryableGitLabError = (error) => {
   const status = error?.response?.status
   // Network / timeout / no response
@@ -56,6 +76,14 @@ const isRetryableGitLabError = (error) => {
   // Rate limit + transient server errors
   return status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504
 }
+
+// Helpers that swallow errors (enrichment, links, milestone events) hide catastrophic
+// failures like Firefox's "Allow once" Local Network Access where the first request
+// succeeds and every subsequent one network-errors. Counted at the chokepoint so the
+// loader can surface a clear "browser blocked" message instead of saving partial data
+// silently. Counter lives on the client so it's per-load-session.
+export const getNetworkFailureCount = (client) => Number(client?.__glvNetworkFailures || 0)
+export const resetNetworkFailureCount = (client) => { if (client) client.__glvNetworkFailures = 0 }
 
 const gitlabRequest = async (client, method, url, config = {}, retryOptions = {}) => {
   const {
@@ -91,7 +119,14 @@ const gitlabRequest = async (client, method, url, config = {}, retryOptions = {}
 
       throw new Error(`Unsupported GitLab client method: ${m || '(empty)'}`)
     } catch (error) {
-      if (attempt >= maxRetries || !isRetryableGitLabError(error)) throw error
+      if (attempt >= maxRetries || !isRetryableGitLabError(error)) {
+        // Count "no HTTP response" failures (browser blocked / network / TLS) so callers
+        // that swallow per-request errors can still detect a systemic block.
+        if (!error?.response && client && typeof client === 'object') {
+          try { client.__glvNetworkFailures = (client.__glvNetworkFailures || 0) + 1 } catch {}
+        }
+        throw error
+      }
 
       const headers = error?.response?.headers || {}
       const retryAfterMs = getRetryAfterMs(headers)

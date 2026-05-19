@@ -56,6 +56,10 @@ export function useSettingsStore() {
       Object.assign(settings.uiState.ui, savedData.uiState?.ui || {})
       Object.assign(settings.uiState.presets, savedData.uiState?.presets || {})
       Object.assign(settings.uiState.view, savedData.uiState?.view || {})
+      // Sanitize view.layout — old builds with a 3-button v-btn-toggle could
+      // persist a numeric index (e.g. 2) instead of 'graph'/'list', which then
+      // triggers Vue String-prop warnings downstream.
+      if (settings.uiState.view.layout !== 'list') settings.uiState.view.layout = 'graph'
       Object.assign(settings.uiState.simulation, savedData.uiState?.simulation || {})
       Object.assign(settings.uiState.hotkeys, savedData.uiState?.hotkeys || {})
       const k = savedData.uiState?.kiosk

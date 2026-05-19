@@ -13,7 +13,10 @@ vi.mock('../services/gitlab', () => {
     fetchProjectIssuesRest: vi.fn(async () => []),
     fetchIssueLinks: vi.fn(async () => []),
     fetchIssueResourceMilestoneEvents: vi.fn(async () => []),
-    fetchTokenInfo: vi.fn(async () => ({ scopes: [], expiresAt: null }))
+    fetchTokenInfo: vi.fn(async () => ({ scopes: [], expiresAt: null })),
+    describeGitLabRequestError: vi.fn((e) => e?.message || String(e)),
+    getNetworkFailureCount: vi.fn(() => 0),
+    resetNetworkFailureCount: vi.fn()
   }
 })
 

@@ -55,6 +55,19 @@
       </div>
     </header>
 
+    <div v-if="isNetworkBlocked" class="kiosk-block-banner" role="alert">
+      <v-icon icon="mdi-shield-alert" size="x-large" />
+      <div class="kiosk-block-banner-text">
+        <div class="kiosk-block-banner-title">Browser blocked GitLab access</div>
+        <div class="kiosk-block-banner-sub">
+          Reload the page and click <strong>Allow</strong> on the "Local Network Access" prompt. If no prompt appears, check VPN, certificate trust, or CORS.
+        </div>
+      </div>
+      <button type="button" class="kiosk-block-banner-btn" @click="reloadPage">
+        <v-icon icon="mdi-refresh" /> Reload page
+      </button>
+    </div>
+
     <main class="kiosk-body" :class="`mode-${currentMode}`">
       <!-- Target milestone (focused view) -->
       <section v-if="currentMode === 'target'" class="k-target">
@@ -173,7 +186,13 @@
                   </template>
                   <span class="k-target-eta-msg">· {{ targetForecast.message }}</span>
                 </div>
-                <v-icon v-if="!etaAlwaysExpanded" icon="mdi-information-outline" size="16" class="k-eta-info" />
+                <v-icon
+                  :icon="etaAlwaysExpanded ? 'mdi-chevron-up' : 'mdi-information-outline'"
+                  size="16"
+                  class="k-eta-info k-eta-toggle-btn"
+                  :title="etaAlwaysExpanded ? 'Collapse ETA details' : 'Always show ETA details'"
+                  @click.stop="settings.uiState.kiosk.etaAlwaysExpanded = !etaAlwaysExpanded"
+                />
               </div>
             </template>
 
@@ -207,15 +226,15 @@
                   <line
                     :x1="etaTipChart.padL" :x2="etaTipChart.W - etaTipChart.padR"
                     :y1="etaTipChart.axisY" :y2="etaTipChart.axisY"
-                    stroke="rgba(200,200,200,0.25)" stroke-width="1"
+                    stroke="currentColor" stroke-opacity="0.25" stroke-width="1"
                   />
                   <g v-for="b in etaTipChart.bars" :key="b.i">
                     <rect v-if="b.cH > 0" :x="b.x" :y="b.cY" :width="b.w" :height="b.cH" fill="#66bb6a" rx="1" />
                     <rect v-if="b.aH > 0" :x="b.x" :y="b.aY" :width="b.w" :height="b.aH" fill="#ef5350" rx="1" />
                   </g>
-                  <text :x="etaTipChart.padL" :y="etaTipChart.H - 4" font-size="10" fill="rgba(200,200,200,0.7)">{{ etaTipChart.leftLabel }}</text>
-                  <text :x="etaTipChart.W - etaTipChart.padR" :y="etaTipChart.H - 4" font-size="10" text-anchor="end" fill="rgba(200,200,200,0.7)">{{ etaTipChart.rightLabel }}</text>
-                  <text :x="etaTipChart.padL - 4" :y="etaTipChart.padT + 8" font-size="10" text-anchor="end" fill="rgba(200,200,200,0.5)">peak {{ etaTipChart.max }}</text>
+                  <text :x="etaTipChart.padL" :y="etaTipChart.H - 4" font-size="10" fill="currentColor" fill-opacity="0.7">{{ etaTipChart.leftLabel }}</text>
+                  <text :x="etaTipChart.W - etaTipChart.padR" :y="etaTipChart.H - 4" font-size="10" text-anchor="end" fill="currentColor" fill-opacity="0.7">{{ etaTipChart.rightLabel }}</text>
+                  <text :x="etaTipChart.padL - 4" :y="etaTipChart.padT + 8" font-size="10" text-anchor="end" fill="currentColor" fill-opacity="0.5">peak {{ etaTipChart.max }}</text>
                 </svg>
               </div>
 
@@ -255,7 +274,7 @@
                   → <strong>{{ targetForecast.eta }}</strong>
                 </div>
                 <svg v-if="etaTipTimeline" :viewBox="`0 0 ${etaTipTimeline.W} ${etaTipTimeline.H}`" class="k-eta-tip-svg k-eta-tip-timeline">
-                  <line :x1="0" :x2="etaTipTimeline.W" :y1="etaTipTimeline.y" :y2="etaTipTimeline.y" stroke="rgba(200,200,200,0.2)" />
+                  <line :x1="0" :x2="etaTipTimeline.W" :y1="etaTipTimeline.y" :y2="etaTipTimeline.y" stroke="currentColor" stroke-opacity="0.2" />
                   <rect
                     v-for="(s, si) in etaTipTimeline.segs" :key="'s' + si"
                     :x="Math.min(s.x1, s.x2)" :y="s.y - 4"
@@ -272,7 +291,8 @@
                     <text
                       :x="t.x" :y="etaTipTimeline.y + 16"
                       font-size="10" text-anchor="middle"
-                      :fill="t.kind === 'today' ? 'rgba(200,200,200,0.8)' : (t.kind === 'due' ? '#ffd54f' : '#90caf9')"
+                      :fill="t.kind === 'today' ? 'currentColor' : (t.kind === 'due' ? '#ffd54f' : '#90caf9')"
+                    :fill-opacity="t.kind === 'today' ? 0.8 : 1"
                     >{{ t.label }}</text>
                   </g>
                 </svg>
@@ -313,15 +333,15 @@
                 <line
                   :x1="etaTipChart.padL" :x2="etaTipChart.W - etaTipChart.padR"
                   :y1="etaTipChart.axisY" :y2="etaTipChart.axisY"
-                  stroke="rgba(200,200,200,0.25)" stroke-width="1"
+                  stroke="currentColor" stroke-opacity="0.25" stroke-width="1"
                 />
                 <g v-for="b in etaTipChart.bars" :key="b.i">
                   <rect v-if="b.cH > 0" :x="b.x" :y="b.cY" :width="b.w" :height="b.cH" fill="#66bb6a" rx="1" />
                   <rect v-if="b.aH > 0" :x="b.x" :y="b.aY" :width="b.w" :height="b.aH" fill="#ef5350" rx="1" />
                 </g>
-                <text :x="etaTipChart.padL" :y="etaTipChart.H - 4" font-size="10" fill="rgba(200,200,200,0.7)">{{ etaTipChart.leftLabel }}</text>
-                <text :x="etaTipChart.W - etaTipChart.padR" :y="etaTipChart.H - 4" font-size="10" text-anchor="end" fill="rgba(200,200,200,0.7)">{{ etaTipChart.rightLabel }}</text>
-                <text :x="etaTipChart.padL - 4" :y="etaTipChart.padT + 8" font-size="10" text-anchor="end" fill="rgba(200,200,200,0.5)">peak {{ etaTipChart.max }}</text>
+                <text :x="etaTipChart.padL" :y="etaTipChart.H - 4" font-size="10" fill="currentColor" fill-opacity="0.7">{{ etaTipChart.leftLabel }}</text>
+                <text :x="etaTipChart.W - etaTipChart.padR" :y="etaTipChart.H - 4" font-size="10" text-anchor="end" fill="currentColor" fill-opacity="0.7">{{ etaTipChart.rightLabel }}</text>
+                <text :x="etaTipChart.padL - 4" :y="etaTipChart.padT + 8" font-size="10" text-anchor="end" fill="currentColor" fill-opacity="0.5">peak {{ etaTipChart.max }}</text>
               </svg>
             </div>
 
@@ -361,7 +381,7 @@
                 → <strong>{{ targetForecast.eta }}</strong>
               </div>
               <svg v-if="etaTipTimeline" :viewBox="`0 0 ${etaTipTimeline.W} ${etaTipTimeline.H}`" class="k-eta-tip-svg k-eta-tip-timeline">
-                <line :x1="0" :x2="etaTipTimeline.W" :y1="etaTipTimeline.y" :y2="etaTipTimeline.y" stroke="rgba(200,200,200,0.2)" />
+                <line :x1="0" :x2="etaTipTimeline.W" :y1="etaTipTimeline.y" :y2="etaTipTimeline.y" stroke="currentColor" stroke-opacity="0.2" />
                 <rect
                   v-for="(s, si) in etaTipTimeline.segs" :key="'s' + si"
                   :x="Math.min(s.x1, s.x2)" :y="s.y - 4"
@@ -378,7 +398,8 @@
                   <text
                     :x="t.x" :y="etaTipTimeline.y + 16"
                     font-size="10" text-anchor="middle"
-                    :fill="t.kind === 'today' ? 'rgba(200,200,200,0.8)' : (t.kind === 'due' ? '#ffd54f' : '#90caf9')"
+                    :fill="t.kind === 'today' ? 'currentColor' : (t.kind === 'due' ? '#ffd54f' : '#90caf9')"
+                    :fill-opacity="t.kind === 'today' ? 0.8 : 1"
                   >{{ t.label }}</text>
                 </g>
               </svg>
@@ -465,136 +486,17 @@
               <template v-if="targetBurndown.dueLabel"> · due {{ targetBurndown.dueLabel }}</template>
             </span>
           </div>
-          <svg
-            ref="burndownSvgRef"
-            class="k-burndown-svg"
-            :viewBox="targetBurndown ? `0 0 ${targetBurndown.vbWidth} ${targetBurndown.vbHeight}` : '0 0 800 320'"
-          >
-            <template v-if="targetBurndown">
-            <!-- horizontal grid -->
-            <line
-              v-for="(t, i) in targetBurndown.yTicks" :key="'yg' + i"
-              :x1="targetBurndown.innerLeft" :x2="targetBurndown.innerRight"
-              :y1="t.y" :y2="t.y"
-              stroke="rgba(127,127,127,0.18)" stroke-dasharray="3 4"
-            />
-            <text
-              v-for="(t, i) in targetBurndown.yTicks" :key="'yt' + i"
-              :x="targetBurndown.innerLeft - 8" :y="t.y + 6"
-              text-anchor="end" font-size="18" fill="rgba(200,200,200,0.85)"
-              font-weight="600"
-            >{{ t.v }}</text>
-
-            <!-- remaining work area (under the burndown line). Amber when on track,
-                 red-tinted when actual is visibly above ideal at today. -->
-            <path :d="targetBurndown.areaPath" :fill="targetBurndown.onTrack ? 'rgba(255, 179, 0, 0.22)' : 'rgba(239, 83, 80, 0.26)'" />
-
-            <!-- "Incomplete closed history" zone — left of the gitlabClosedDays cutoff.
-                 Hatched + dim so users know the remaining line in that range is unreliable
-                 (closures from before the cutoff are missing, inflating the line). -->
-            <pattern id="k-burndown-hatch" patternUnits="userSpaceOnUse" width="8" height="8" patternTransform="rotate(45)">
-              <rect width="8" height="8" fill="rgba(0, 0, 0, 0.25)" />
-              <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(255, 179, 0, 0.35)" stroke-width="2" />
-            </pattern>
-            <rect
-              v-if="targetBurndown.closedCutoffX != null"
-              :x="targetBurndown.innerLeft"
-              :y="targetBurndown.innerTop"
-              :width="targetBurndown.closedCutoffX - targetBurndown.innerLeft"
-              :height="targetBurndown.innerBottom - targetBurndown.innerTop"
-              fill="url(#k-burndown-hatch)"
-            />
-            <g v-if="targetBurndown.closedCutoffX != null">
-              <line
-                :x1="targetBurndown.closedCutoffX" :x2="targetBurndown.closedCutoffX"
-                :y1="targetBurndown.innerTop" :y2="targetBurndown.innerBottom"
-                stroke="#ffb300" stroke-width="2" stroke-dasharray="6 4"
-              />
-              <rect
-                :x="targetBurndown.closedCutoffX - 78" :y="targetBurndown.innerTop + 56"
-                width="156" height="22" rx="4" ry="4"
-                fill="rgba(255, 179, 0, 0.9)"
-              />
-              <text
-                :x="targetBurndown.closedCutoffX" :y="targetBurndown.innerTop + 71"
-                text-anchor="middle" font-size="13" font-weight="700"
-                fill="#212121"
-              >Data available from here</text>
-            </g>
-
-            <!-- ideal burn guideline (dotted) — straight line from (start, initialOpen)
-                 toward (due, 0), capped at today so it never projects into the future. -->
-            <path
-              v-if="targetBurndown.idealPath"
-              :d="targetBurndown.idealPath"
-              stroke="rgba(255, 255, 255, 0.55)" stroke-width="2.5" fill="none"
-              stroke-dasharray="8 6"
-            />
-
-            <!-- cumulative closed line — green, shows shipping momentum -->
-            <path
-              :d="targetBurndown.closedPath"
-              stroke="#66bb6a" stroke-width="2.5" fill="none" stroke-linejoin="round"
-              opacity="0.85"
-            />
-
-            <!-- actual remaining line — green when on track, red when behind ideal -->
-            <path
-              :d="targetBurndown.remainingPath"
-              :stroke="targetBurndown.onTrack ? '#66bb6a' : '#ef5350'"
-              stroke-width="3.5" fill="none" stroke-linejoin="round"
-            />
-
-            <!-- today marker at the right edge of the chart -->
-            <g>
-              <line
-                :x1="targetBurndown.todayX" :x2="targetBurndown.todayX"
-                :y1="targetBurndown.innerTop" :y2="targetBurndown.innerBottom"
-                stroke="rgba(255,255,255,0.35)" stroke-width="1.5" stroke-dasharray="5 5"
-              />
-              <rect
-                :x="targetBurndown.todayX - 42" :y="targetBurndown.innerTop - 4"
-                width="84" height="26" rx="5" ry="5"
-                fill="rgba(255, 255, 255, 0.92)"
-              />
-              <text
-                :x="targetBurndown.todayX" :y="targetBurndown.innerTop + 14"
-                text-anchor="middle" font-size="16" font-weight="800"
-                fill="#212121"
-                letter-spacing="0.5"
-              >TODAY</text>
-            </g>
-
-            <!-- end-of-line value badges at today (line endpoint -> readable count) -->
-            <g>
-              <circle :cx="targetBurndown.todayX" :cy="targetBurndown.closedEndY" r="4" fill="#66bb6a" />
-              <text
-                :x="targetBurndown.todayX + 7" :y="targetBurndown.closedLabelY + 5"
-                font-size="16" font-weight="800" fill="#66bb6a"
-                style="paint-order: stroke; stroke: #181818; stroke-width: 4px; stroke-linejoin: round;"
-              >{{ fmtNum(targetBurndown.totalClosed) }}</text>
-
-              <circle :cx="targetBurndown.todayX" :cy="targetBurndown.remainEndY" r="4" :fill="targetBurndown.onTrack ? '#66bb6a' : '#ef5350'" />
-              <text
-                :x="targetBurndown.todayX + 7" :y="targetBurndown.remainLabelY + 5"
-                font-size="16" font-weight="800" :fill="targetBurndown.onTrack ? '#66bb6a' : '#ef5350'"
-                style="paint-order: stroke; stroke: #181818; stroke-width: 4px; stroke-linejoin: round;"
-              >{{ fmtNum(targetBurndown.currentOpen) }}</text>
-            </g>
-
-            <!-- x axis ticks -->
-            <text
-              v-for="(t, i) in targetBurndown.ticks" :key="'xt' + i"
-              :x="t.x" :y="targetBurndown.innerBottom + 28"
-              text-anchor="middle" font-size="16" fill="rgba(200,200,200,0.85)"
-              font-weight="600"
-            >{{ t.label }}</text>
-            </template>
-          </svg>
+          <div class="k-burndown-canvas-wrap">
+            <canvas ref="burndownCanvasRef" />
+          </div>
           <div v-if="targetBurndown" class="k-burndown-legend">
             <span><i class="k-swatch" :style="{ background: targetBurndown.onTrack ? '#66bb6a' : '#ef5350' }" />Remaining — {{ fmtNum(targetBurndown.currentOpen) }}</span>
-            <span><i class="k-swatch" style="background: #66bb6a; opacity: 0.85;" />Closed — {{ fmtNum(targetBurndown.totalClosed) }}</span>
-            <span v-if="targetBurndown.idealPath"><i class="k-swatch k-swatch-dotted" />Ideal burn (to today)</span>
+            <span><i class="k-swatch" style="background: #66bb6a;" />Closed — {{ fmtNum(targetBurndown.totalClosed) }}</span>
+            <span v-if="targetBurndown.idealData"><i class="k-swatch k-swatch-dashed-white" />Ideal burn</span>
+            <span v-if="targetBurndown.projectionData">
+              <i class="k-swatch k-swatch-dashed-amber" :class="{ 'k-swatch-dashed-red': targetBurndown.projectionStatus === 'stalled' }" />
+              Projection<template v-if="targetBurndown.projectionLabel"> — {{ targetBurndown.projectionLabel }}</template>
+            </span>
             <span v-if="!targetBurndown.closedHistoryComplete" class="k-burndown-warn-data">
               <v-icon icon="mdi-alert-outline" size="x-small" />
               <template v-if="targetBurndown.closedDays === 0">
@@ -715,15 +617,16 @@
       <!-- Velocity (N-day created vs closed) -->
       <!-- Velocity = month-view calendar over the last N weeks (default 8 ≈
            2 months). Rows = ISO weeks (number on left), columns = Mon..Sun.
-           Each cell shows the date plus the daily NET: green = more closed
-           than created, red = more created than closed, grey = balanced/quiet.
-           Cells are clickable to filter the main graph to that day. -->
+           Each cell shows the date plus the daily NET (created − closed):
+           "+N" red = backlog grew, "−N" green = backlog shrank, grey =
+           balanced/quiet. Cells are clickable to filter the main graph to
+           that day. -->
       <section v-else-if="currentMode === 'velocity'" class="k-velocity">
         <div class="k-section-title">
           Last {{ velocity.weeks }} weeks · daily net
           <span class="k-section-sub">
-            <i class="k-swatch" style="background: #43a047;" /> closing &gt; creating ·
-            <i class="k-swatch" style="background: #d32f2f;" /> creating &gt; closing ·
+            <i class="k-swatch" style="background: #43a047;" /> &minus;N: backlog shrank ·
+            <i class="k-swatch" style="background: #d32f2f;" /> +N: backlog grew ·
             Σ created {{ fmtNum(velocity.totalCreated) }} · Σ closed {{ fmtNum(velocity.totalClosed) }} · peak swing ±{{ fmtNum(velocity.peakAbs) }}/day
           </span>
         </div>
@@ -1381,6 +1284,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
+import { Chart } from 'chart.js/auto'
 import { useSettingsStore } from '../composables/useSettingsStore'
 import { HOTKEY_ACTIONS, getEventCombo } from '../composables/useHotkeys'
 import { getAssigneeNames } from '../utils/issueFields'
@@ -1606,6 +1510,16 @@ const failureTitle = computed(() => {
   return `Refresh failing since ${since}\n${props.error || 'unknown error'}`
 })
 
+// Network-blocked failure (CORS / denied Local Network Access prompt / VPN / TLS):
+// retrying the API alone won't help — the user must reload the page so the browser
+// re-prompts. Show a prominent banner with a Reload button in that case.
+const isNetworkBlocked = computed(() => {
+  if (!lastFailedAt.value || !props.error) return false
+  const m = String(props.error).toLowerCase()
+  return m.includes('cannot reach gitlab') || m.includes('network error') || m.includes('local network access')
+})
+const reloadPage = () => { if (typeof window !== 'undefined') window.location.reload() }
+
 const onManualRefresh = () => {
   if (props.loading || typeof props.onRefresh !== 'function') return
   props.onRefresh()
@@ -1631,7 +1545,7 @@ const handleWindowKey = (e) => {
 
 // Track each per-mode SVG's actual pixel size — keeps viewBox 1:1 with screen so text
 // and strokes never get squished. Re-attaches when the relevant mode becomes current.
-let burndownRO = null
+// (Burndown uses Chart.js which handles its own resize; only the heatmap SVGs need this.)
 let heatmapRO = null
 let heatmapByLabelRO = null
 const observeSize = (existing, el, sizeRef) => {
@@ -1646,10 +1560,6 @@ const observeSize = (existing, el, sizeRef) => {
   ro.observe(el)
   return ro
 }
-// SVG refs + size refs need to be declared here so the watcher below can reference
-// them — the actual mode sections later in the file just use these same refs.
-const burndownSvgRef = ref(null)
-const burndownSize = ref(null)  // null until ResizeObserver has measured the SVG
 const heatmapSvgRef = ref(null)
 const heatmapSize = ref(null)
 const heatmapByLabelSvgRef = ref(null)
@@ -1708,12 +1618,11 @@ const offHoursDim = computed(() => {
 })
 
 const watchModeSvgs = () => {
-  burndownRO       = observeSize(burndownRO,       burndownSvgRef.value,       burndownSize)
   heatmapRO        = observeSize(heatmapRO,        heatmapSvgRef.value,        heatmapSize)
   heatmapByLabelRO = observeSize(heatmapByLabelRO, heatmapByLabelSvgRef.value, heatmapByLabelSize)
 }
 watch(
-  () => [currentMode.value, burndownSvgRef.value, heatmapSvgRef.value, heatmapByLabelSvgRef.value],
+  () => [currentMode.value, heatmapSvgRef.value, heatmapByLabelSvgRef.value],
   () => nextTick(watchModeSvgs)
 )
 
@@ -1737,9 +1646,9 @@ onUnmounted(() => {
   if (nowTickTimer) clearInterval(nowTickTimer)
   window.removeEventListener('app-theme-changed', onThemeChanged)
   window.removeEventListener('keydown', handleWindowKey)
-  if (burndownRO)       { burndownRO.disconnect();       burndownRO = null }
   if (heatmapRO)        { heatmapRO.disconnect();        heatmapRO = null }
   if (heatmapByLabelRO) { heatmapByLabelRO.disconnect(); heatmapByLabelRO = null }
+  if (burndownChart)    { burndownChart.destroy();       burndownChart = null }
   if (justRefreshedTimer) { clearTimeout(justRefreshedTimer); justRefreshedTimer = null }
   if (pixelShiftTimer)    { clearInterval(pixelShiftTimer);   pixelShiftTimer = null }
   if (pauseFlashTimer)    { clearTimeout(pauseFlashTimer);    pauseFlashTimer = null }
@@ -1839,9 +1748,10 @@ const isoWeek = (date) => {
 }
 // Velocity = month-view calendar over the last N weeks (default 8 ≈ 2 months).
 // Rows = ISO weeks, columns = Mon..Sun. Each cell shows the date number plus
-// the daily NET (closed − created): green when more closed than created
-// (shipping), red when more created than closed (drowning), grey when balanced
-// or quiet. Intensity scales with |net| against the window's peak swing.
+// the daily NET (created − closed) so the sign matches intuition: "+N" = N
+// added to backlog (red, drowning), "−N" = N drained from backlog (green,
+// shipping), grey when balanced or quiet. Matches `today.net` convention.
+// Intensity scales with |net| against the window's peak swing.
 const velocity = computed(() => {
   const weeks = Math.min(12, Math.max(1, Number(velocityCfg.value.weeks) || 8))
   const dayMs = 24 * 60 * 60 * 1000
@@ -1880,9 +1790,10 @@ const velocity = computed(() => {
     }
   }
   // Net daily change + intensity scaling against the window's peak |net|.
+  // Sign convention: positive = backlog grew (more created than closed).
   let peakAbs = 1
   for (const c of cells) {
-    c.net = c.closed - c.created
+    c.net = c.created - c.closed
     const abs = Math.abs(c.net)
     if (abs > peakAbs) peakAbs = abs
   }
@@ -1906,9 +1817,9 @@ const velocity = computed(() => {
     if (!c.inRange || (c.created === 0 && c.closed === 0)) {
       c.bg = emptyBg
     } else if (c.net > 0) {
-      c.bg = paletteClosed[level]
-    } else if (c.net < 0) {
       c.bg = paletteCreated[level]
+    } else if (c.net < 0) {
+      c.bg = paletteClosed[level]
     } else {
       // Equal volume of creates and closes — a balanced day, neutral grey.
       c.bg = balanceBg
@@ -2416,7 +2327,7 @@ const etaTipChart = computed(() => {
   if (!f || !Array.isArray(f.dailyClosed)) return null
   const n = f.dailyClosed.length
   const max = Math.max(1, ...f.dailyClosed, ...f.dailyAdded)
-  const W = 360, H = 92, padL = 22, padR = 8, padT = 6, padB = 16
+  const W = 360, H = 130, padL = 22, padR = 8, padT = 8, padB = 18
   const innerW = W - padL - padR
   const innerH = H - padT - padB
   const mid = padT + innerH / 2
@@ -2445,7 +2356,7 @@ const etaTipTimeline = computed(() => {
   const f = targetForecast.value
   if (!f) return null
   const day = 24 * 60 * 60 * 1000
-  const W = 360, H = 38, padL = 10, padR = 10, padT = 6, padB = 18
+  const W = 360, H = 56, padL = 10, padR = 10, padT = 14, padB = 22
   const innerW = W - padL - padR
   const y = padT + 8
   const today = f.todayMs
@@ -2479,19 +2390,16 @@ const etaTipTimeline = computed(() => {
 // Lines are reconstructed from each ticket's `resource_milestone_events` (loader stores
 // `_raw.milestoneEvents`), giving us real "in milestone T" intervals over time. Tickets
 // without fetched events yet fall back to `created_at`-as-entry.
-// `burndownSvgRef` + `burndownSize` are declared near the top of the script
-// alongside the other mode SVG refs so the global `watchModeSvgs` watcher can
-// reference them.
-const BURNDOWN_PAD = { top: 28, right: 50, bottom: 48, left: 58 }
 const burndownCfg = computed(() => settings.uiState.kiosk?.modeConfig?.burndown || {})
 // Burndown = remaining open work (scope − closed) over time, with a classic-Scrum
-// ideal straight line from (start, initialOpen) → (due, 0). Uses the real
+// ideal straight line from (start, initialOpen) → (due, 0) AND a projection line
+// from today using the burn rate computed in `targetForecast`. Uses real
 // `resource_milestone_events` (fetched by the loader) so a ticket that moved INTO
 // the milestone mid-flight is counted as scope at the move date — not at its
-// `created_at`, which is what the previous heuristic used (and badly over-counted
-// the "added" line in projects that re-tag tickets between milestones). Tickets
-// that have never had their events fetched fall back to the old `created_at`
-// heuristic so the chart still renders sensibly on first paint.
+// `created_at`. Tickets without fetched events fall back to `created_at`-as-entry.
+//
+// This computed only produces time-series data + metadata; the actual chart is
+// rendered with Chart.js (canvas) below in `renderBurndownChart`.
 const targetBurndown = computed(() => {
   const title = targetMilestone.value
   if (!title) return null
@@ -2551,8 +2459,7 @@ const targetBurndown = computed(() => {
     for (const e of entries) for (const iv of e.intervals) if (iv.start < earliest) earliest = iv.start
     start = Math.max(earliest, now - windowDays * day)
   }
-  const end = now
-  if (!Number.isFinite(start) || start >= end) return null
+  if (!Number.isFinite(start) || start >= now) return null
 
   // Convert intervals into (Δscope, Δclosed) timeline events. Scope deltas span
   // the whole interval; closed deltas span [closed_at .. end] within the interval
@@ -2581,130 +2488,88 @@ const targetBurndown = computed(() => {
   }
   const scopeBaseline = scopeAcc, closedBaseline = closedAcc
 
-  const dayCount = Math.max(1, Math.ceil((end - start) / day))
+  // Sample per-day, then anchor the final point exactly at `now` so a same-day
+  // delta doesn't get projected forward to the next day boundary (which was the
+  // "line goes back at today" artifact under step rendering).
+  const fullDays = Math.floor((now - start) / day)
   const points = []
-  for (let d = 0; d <= dayCount; d++) {
+  for (let d = 0; d <= fullDays; d++) {
     const ts = start + d * day
     while (di < deltas.length && deltas[di].ts <= ts) {
       scopeAcc += deltas[di].ds; closedAcc += deltas[di].dc; di++
     }
     points.push({ ts, closed: closedAcc, remaining: Math.max(0, scopeAcc - closedAcc) })
   }
+  if (points.length === 0 || points[points.length - 1].ts < now) {
+    while (di < deltas.length && deltas[di].ts <= now) {
+      scopeAcc += deltas[di].ds; closedAcc += deltas[di].dc; di++
+    }
+    points.push({ ts: now, closed: closedAcc, remaining: Math.max(0, scopeAcc - closedAcc) })
+  }
 
-  // In-window event counts for the subtitle — now reflect actual scope changes,
-  // not "tickets currently in milestone whose created_at falls in window".
+  // In-window event counts for the subtitle.
   let addedInWindow = 0, closedInWindow = 0
   for (const ev of deltas) {
-    if (ev.ts < start || ev.ts > end) continue
+    if (ev.ts < start || ev.ts > now) continue
     if (ev.ds > 0) addedInWindow += ev.ds
     if (ev.dc > 0) closedInWindow += ev.dc
   }
 
-  // Scales — driven by current container size so 1 user-space unit = 1 screen pixel.
-  if (!burndownSize.value) return null
-  const vbW = Math.max(400, burndownSize.value.w)
-  const vbH = Math.max(200, burndownSize.value.h)
   const initialOpen = Math.max(0, scopeBaseline - closedBaseline)
   const currentOpen = Math.max(0, scopeAcc - closedAcc)
-  // y-axis must contain both plotted lines — remaining can spike above initialOpen
-  // from scope creep, and cumulative closed can exceed peak remaining when lots of
-  // work ships. Missing `p.closed` here was clipping the green line off the top.
-  const maxY = Math.max(1, initialOpen, ...points.map(p => Math.max(p.remaining, p.closed)))
-  const innerW = vbW - BURNDOWN_PAD.left - BURNDOWN_PAD.right
-  const innerH = vbH - BURNDOWN_PAD.top - BURNDOWN_PAD.bottom
-  const xFor = (ts) => BURNDOWN_PAD.left + ((ts - start) / (end - start)) * innerW
-  const yFor = (n)  => BURNDOWN_PAD.top + innerH - (n / maxY) * innerH
 
-  const stepPath = (key) => {
-    let d = ''
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i]
-      const x = xFor(p.ts)
-      const y = yFor(p[key])
-      if (i === 0) d += `M${x},${y}`
-      else d += ` H${x} V${y}`
-    }
-    return d
-  }
-  // Filled area under the remaining line, baseline at y=0 (innerBottom). Drops
-  // toward the x-axis as work burns down.
-  const areaPath = () => {
-    if (!points.length) return ''
-    let d = ''
-    for (let i = 0; i < points.length; i++) {
-      const p = points[i]
-      const x = xFor(p.ts)
-      const y = yFor(p.remaining)
-      if (i === 0) d += `M${x},${y}`
-      else d += ` H${x} V${y}`
-    }
-    const lastX = xFor(points[points.length - 1].ts)
-    const firstX = xFor(points[0].ts)
-    const baseY = yFor(0)
-    return d + ` L${lastX},${baseY} L${firstX},${baseY} Z`
-  }
-
-  // Ideal-burn guideline: classic Scrum line from (start, initialOpen) toward
-  // (due, 0). We don't draw past today — instead we cap the line at today using
-  // the linearly-interpolated value, so it reads as "where remaining SHOULD be
-  // right now if we were on pace", not a forward prediction.
-  let idealPath = ''
-  if (dueMs && dueMs > start) {
-    const idealAtTodayY = initialOpen * (1 - (Math.min(now, dueMs) - start) / (dueMs - start))
-    const x0 = xFor(start), y0 = yFor(initialOpen)
-    const x1 = xFor(Math.min(now, dueMs)), y1 = yFor(Math.max(0, idealAtTodayY))
-    idealPath = `M${x0},${y0} L${x1},${y1}`
-  }
-
-  // Date ticks: ~5 evenly across the window. Year is shown on the first tick and
-  // whenever a tick crosses into a new calendar year so multi-year windows aren't
-  // ambiguous.
-  const ticks = []
-  const tickCount = 5
-  let lastTickYear = -1
-  for (let i = 0; i <= tickCount; i++) {
-    const ts = start + (i / tickCount) * (end - start)
-    const d = new Date(ts)
-    const showYear = d.getFullYear() !== lastTickYear
-    ticks.push({
-      ts, x: xFor(ts),
-      label: showYear
-        ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
-        : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
-    })
-    lastTickYear = d.getFullYear()
-  }
-  const yTicks = []
-  for (let i = 0; i <= 4; i++) {
-    const v = Math.round((i / 4) * maxY)
-    yTicks.push({ v, y: yFor(v) })
-  }
-
-  // "Data available since" marker — when `gitlabClosedDays` < chart window, closures
-  // older than (now − gitlabClosedDays) were never fetched. The closed line for that
-  // historical range is fake-flat; we draw a dim overlay + vertical marker so the team
-  // sees which portion of the chart is unreliable.
-  const closedDays = Math.max(0, Number(settings.config.gitlabClosedDays) || 0)
-  const closedAvailableMs = closedDays > 0 ? now - closedDays * day : null
-  const closedCutoffX = (closedAvailableMs != null && closedAvailableMs > start && closedAvailableMs <= end)
-    ? xFor(closedAvailableMs) : null
-  const closedHistoryComplete = closedDays === 0
-    ? false
-    : (closedAvailableMs != null && closedAvailableMs <= start)
-  const closedCutoffLabel = closedAvailableMs != null
-    ? new Date(closedAvailableMs).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  // Ideal-burn guideline: full Scrum line from (start, initialOpen) → (due, 0).
+  // We DO draw past today now — the projection line shows trajectory, ideal shows
+  // the plan, and the gap between them is the "how far off plan" story.
+  const idealData = (dueMs && dueMs > start)
+    ? [{ x: start, y: initialOpen }, { x: dueMs, y: 0 }]
     : null
 
-  // Risk colouring for the area: amber by default, dim red when the actual
-  // remaining is visibly above ideal at today (≥ 15 tickets behind).
+  // Projection line: from (now, currentOpen) using the burn rate already computed
+  // in `targetForecast` (closed/wk − added/wk over the last 14 days). Extends to
+  // ETA (y=0) when burning down, or to chart end at current slope when stalled.
+  const fc = targetForecast.value
+  let projectionData = null
+  let projectionStatus = fc?.status || null
+  let etaMs = fc?.etaMs || null
+  const netPerDay = fc ? (Number(fc.netPerWeek) || 0) / 7 : 0
+  if (fc && currentOpen > 0) {
+    if (etaMs && netPerDay > 0) {
+      projectionData = [{ x: now, y: currentOpen }, { x: etaMs, y: 0 }]
+    } else {
+      const horizonMs = (dueMs && dueMs > now) ? dueMs : now + 30 * day
+      const projY = Math.max(0, currentOpen - netPerDay * ((horizonMs - now) / day))
+      projectionData = [{ x: now, y: currentOpen }, { x: horizonMs, y: projY }]
+    }
+  }
+
+  // Chart extends from `start` past TODAY to whichever of (due, ETA) is later,
+  // plus a small buffer so the right-edge marker never sits on the chart edge.
+  const futureMs = Math.max(dueMs || 0, etaMs || 0, now)
+  const buffer = Math.max(2 * day, (futureMs - now) * 0.04)
+  const chartEnd = futureMs + buffer
+
+  // Risk colouring (amber by default, red when ≥15 behind the ideal at today).
   let onTrack = true
   if (dueMs && dueMs > start) {
     const idealAtToday = initialOpen * (1 - (Math.min(now, dueMs) - start) / (dueMs - start))
     onTrack = currentOpen <= idealAtToday + 15
   }
 
-  // Surface the due date in the subtitle instead of as an on-chart marker (since
-  // the chart no longer extends past today). Format: "Jun 30 · 47d to go".
+  // "Data available since" marker — closures older than `gitlabClosedDays` weren't
+  // fetched, so the line in that range is unreliable.
+  const closedDays = Math.max(0, Number(settings.config.gitlabClosedDays) || 0)
+  const closedAvailableMs = closedDays > 0 ? now - closedDays * day : null
+  const closedHistoryComplete = closedDays === 0
+    ? false
+    : (closedAvailableMs != null && closedAvailableMs <= start)
+  const closedCutoffLabel = closedAvailableMs != null
+    ? new Date(closedAvailableMs).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+    : null
+  const closedCutoffMs = (closedAvailableMs != null && closedAvailableMs > start && closedAvailableMs <= chartEnd)
+    ? closedAvailableMs : null
+
+  // Subtitle dueLabel — kept identical to the previous format.
   let dueLabel = null
   if (dueMs) {
     const diff = Math.round((dueMs - now) / day)
@@ -2714,52 +2579,289 @@ const targetBurndown = computed(() => {
       : (diff === 0 ? `${date} · due today` : `${date} · ${-diff}d overdue`)
   }
 
-  // End-of-line value labels at today. Clamp below the TODAY badge (which sits at
-  // innerTop − 4 + 26 high) and above the bottom; if the two lines end within
-  // ~22px vertically the labels would overlap, so push them apart while the
-  // connector dot still sits exactly on the line.
-  const remainEndY = yFor(currentOpen)
-  const closedEndY = yFor(closedAcc)
-  const labelMinY = BURNDOWN_PAD.top + 30
-  const labelMaxY = vbH - BURNDOWN_PAD.bottom - 6
-  const clampY = (y) => Math.max(labelMinY, Math.min(labelMaxY, y))
-  let remainLabelY = clampY(remainEndY)
-  let closedLabelY = clampY(closedEndY)
-  if (Math.abs(remainLabelY - closedLabelY) < 22) {
-    if (remainLabelY <= closedLabelY) { remainLabelY = clampY(remainLabelY - 11); closedLabelY = clampY(closedLabelY + 11) }
-    else                              { remainLabelY = clampY(remainLabelY + 11); closedLabelY = clampY(closedLabelY - 11) }
+  // Projection label for the legend ("ETA Jun 12 · 4d slack" or "stalled").
+  let projectionLabel = null
+  if (fc && currentOpen > 0) {
+    if (fc.status === 'on-track')   projectionLabel = `ETA ${fc.eta}${fc.slackDays ? ` · ${fc.slackDays}d slack` : ''}`
+    else if (fc.status === 'late')  projectionLabel = `ETA ${fc.eta} · ${fc.lateDays}d late`
+    else if (fc.status === 'stalled')     projectionLabel = 'Stalled — no net progress'
+    else if (fc.status === 'no-deadline') projectionLabel = `ETA ${fc.eta || '—'}`
   }
 
+  // y-axis upper bound. Include the projection endpoints so a rising "scope grew"
+  // line still fits.
+  let maxY = Math.max(1, initialOpen, ...points.map(p => Math.max(p.remaining, p.closed)))
+  if (projectionData) maxY = Math.max(maxY, projectionData[0].y, projectionData[1].y)
+
   return {
-    remainingPath: stepPath('remaining'),
-    closedPath: stepPath('closed'),
-    areaPath: areaPath(),
-    idealPath,
+    remainingData: points.map(p => ({ x: p.ts, y: p.remaining })),
+    closedData:    points.map(p => ({ x: p.ts, y: p.closed })),
+    idealData,
+    projectionData,
+    chartStart: start,
+    chartEnd,
+    todayMs: now,
+    dueMs, etaMs,
+    maxY,
     onTrack,
-    ticks, yTicks,
-    todayX: xFor(now),
-    remainEndY, closedEndY,
-    remainLabelY, closedLabelY,
+    projectionStatus,
+    projectionLabel,
     startLabel: new Date(start).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
-    endLabel: new Date(end).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }),
     dueLabel,
     initialOpen, currentOpen,
-    totalScope: scopeAcc,
     totalClosed: closedAcc,
-    scopeBaseline, closedBaseline,
     addedInWindow, closedInWindow,
     // How many tickets contributed via real events vs `created_at` fallback.
-    // Surfaces a "milestone history not fully fetched yet" warning when most
-    // tickets are still on the fallback so the room knows numbers may shift.
     entriesFromEvents, entriesFromFallback,
     windowDays,
-    maxY,
-    closedCutoffX, closedDays, closedHistoryComplete, closedCutoffLabel,
-    vbWidth: vbW, vbHeight: vbH,
-    innerLeft: BURNDOWN_PAD.left, innerTop: BURNDOWN_PAD.top,
-    innerRight: vbW - BURNDOWN_PAD.right, innerBottom: vbH - BURNDOWN_PAD.bottom
+    closedAvailableMs: closedCutoffMs,
+    closedDays, closedHistoryComplete, closedCutoffLabel
   }
 })
+
+// --- Burndown chart rendering (Chart.js) -----------------------------------
+// Canvas + chart instance — recreated whenever the canvas remounts (mode switch),
+// updated in-place when the data changes.
+const burndownCanvasRef = ref(null)
+let burndownChart = null
+let burndownPluginRegistered = false
+
+// Custom plugin: overlays drawn on top of the line datasets — future-area shading,
+// "data unavailable" hatch + cutoff badge, TODAY/DUE/ETA markers, and the two
+// end-of-line value badges sitting at TODAY.
+const burndownPlugin = {
+  id: 'kioskBurndownAnnotations',
+  afterDatasetsDraw(chart, _args, opts) {
+    if (!opts) return
+    const { ctx, chartArea, scales } = chart
+    const { left, right, top, bottom } = chartArea
+    const xs = scales.x, ys = scales.y
+    const innerH = bottom - top
+
+    ctx.save()
+
+    // 1. Future area shading (right of TODAY). Subtle so historical data still dominates.
+    if (opts.todayMs != null) {
+      const tx = xs.getPixelForValue(opts.todayMs)
+      if (tx > left && tx < right - 1) {
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.035)'
+        ctx.fillRect(tx, top, right - tx, innerH)
+      }
+    }
+
+    // 2. "Data unavailable" hatched zone — left of the gitlabClosedDays cutoff.
+    if (opts.closedAvailableMs != null) {
+      const cx = Math.max(left, Math.min(right, xs.getPixelForValue(opts.closedAvailableMs)))
+      if (cx > left + 1) {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)'
+        ctx.fillRect(left, top, cx - left, innerH)
+        ctx.save()
+        ctx.beginPath()
+        ctx.rect(left, top, cx - left, innerH)
+        ctx.clip()
+        ctx.strokeStyle = 'rgba(255, 179, 0, 0.35)'
+        ctx.lineWidth = 2
+        const step = 8 * Math.SQRT2
+        for (let x = left - innerH; x < cx; x += step) {
+          ctx.beginPath()
+          ctx.moveTo(x, top); ctx.lineTo(x + innerH, bottom); ctx.stroke()
+        }
+        ctx.restore()
+        ctx.setLineDash([6, 4])
+        ctx.strokeStyle = '#ffb300'; ctx.lineWidth = 2
+        ctx.beginPath(); ctx.moveTo(cx, top); ctx.lineTo(cx, bottom); ctx.stroke()
+        ctx.setLineDash([])
+        const bw = 156, bh = 22, by = top + 56
+        ctx.fillStyle = 'rgba(255, 179, 0, 0.9)'
+        ctx.fillRect(cx - bw / 2, by, bw, bh)
+        ctx.fillStyle = '#212121'
+        ctx.font = '700 13px sans-serif'
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+        ctx.fillText('Data available from here', cx, by + bh / 2)
+      }
+    }
+
+    // 3. Vertical markers (TODAY / DUE / ETA) with badges along the top.
+    for (const m of opts.markers || []) {
+      const x = xs.getPixelForValue(m.ts)
+      if (x < left - 1 || x > right + 1) continue
+      ctx.save()
+      ctx.setLineDash(m.dash || [5, 5])
+      ctx.strokeStyle = m.color
+      ctx.lineWidth = m.lineWidth || 1.5
+      ctx.beginPath(); ctx.moveTo(x, top); ctx.lineTo(x, bottom); ctx.stroke()
+      ctx.setLineDash([])
+      ctx.font = '800 14px sans-serif'
+      const padX = 10, h = 24
+      const lw = ctx.measureText(m.label).width + padX * 2
+      const ly = top - 6
+      const lx = Math.max(left, Math.min(right - lw, x - lw / 2))
+      ctx.fillStyle = m.badgeBg
+      ctx.fillRect(lx, ly, lw, h)
+      ctx.fillStyle = m.badgeFg
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'
+      ctx.fillText(m.label, lx + lw / 2, ly + h / 2 + 1)
+      ctx.restore()
+    }
+
+    // 4. End-of-line value badges at TODAY. Clamp under the TODAY pill and spread
+    //    the two badges apart when their endpoints land within ~22px of each other.
+    if (opts.endLabels && opts.endLabels.length) {
+      const items = opts.endLabels.map(l => ({
+        ...l,
+        x: xs.getPixelForValue(l.ts),
+        y: ys.getPixelForValue(l.y)
+      })).sort((a, b) => a.y - b.y)
+      const minY = top + 28, maxY = bottom - 6
+      for (let i = 0; i < items.length; i++) {
+        items[i].labelY = (i > 0 && items[i].y - items[i - 1].labelY < 22)
+          ? items[i - 1].labelY + 22 : items[i].y
+        items[i].labelY = Math.max(minY, Math.min(maxY, items[i].labelY))
+      }
+      for (const it of items) {
+        ctx.beginPath(); ctx.fillStyle = it.color
+        ctx.arc(it.x, it.y, 4, 0, Math.PI * 2); ctx.fill()
+        ctx.font = '800 16px sans-serif'
+        ctx.textAlign = 'left'; ctx.textBaseline = 'middle'
+        ctx.lineJoin = 'round'
+        ctx.strokeStyle = '#181818'; ctx.lineWidth = 4
+        ctx.strokeText(it.text, it.x + 7, it.labelY)
+        ctx.fillStyle = it.color
+        ctx.fillText(it.text, it.x + 7, it.labelY)
+      }
+    }
+
+    ctx.restore()
+  }
+}
+
+const buildBurndownChartConfig = (cfg) => {
+  const day = 24 * 60 * 60 * 1000
+  const remainColor = cfg.onTrack ? '#66bb6a' : '#ef5350'
+  const remainFill  = cfg.onTrack ? 'rgba(255, 179, 0, 0.22)' : 'rgba(239, 83, 80, 0.26)'
+  const closedColor = '#66bb6a'
+  const idealColor  = 'rgba(255, 255, 255, 0.55)'
+  const projColor   = cfg.projectionStatus === 'stalled' ? '#ef5350' : '#ffb300'
+
+  const datasets = [
+    { label: 'Remaining', data: cfg.remainingData,
+      borderColor: remainColor, backgroundColor: remainFill,
+      borderWidth: 3.5, pointRadius: 0, tension: 0, fill: 'origin', order: 2 },
+    { label: 'Closed', data: cfg.closedData,
+      borderColor: closedColor, borderWidth: 2.5,
+      pointRadius: 0, tension: 0, fill: false, order: 1 }
+  ]
+  if (cfg.idealData) datasets.push({
+    label: 'Ideal', data: cfg.idealData,
+    borderColor: idealColor, borderWidth: 2.5, borderDash: [8, 6],
+    pointRadius: 0, tension: 0, fill: false, order: 0
+  })
+  if (cfg.projectionData) datasets.push({
+    label: 'Projection', data: cfg.projectionData,
+    borderColor: projColor, borderWidth: 2.5, borderDash: [4, 4],
+    pointRadius: 0, tension: 0, fill: false, order: 0
+  })
+
+  // Pre-computed x ticks (Chart.js linear scale doesn't know our values are dates).
+  const span = cfg.chartEnd - cfg.chartStart
+  const stepDays = Math.max(1, Math.round(span / day / 6))
+  const xTicks = []
+  for (let t = cfg.chartStart; t <= cfg.chartEnd; t += stepDays * day) xTicks.push(t)
+  const tickFmt = (ts, idx) => {
+    const d = new Date(ts)
+    const prev = idx > 0 ? new Date(xTicks[idx - 1]) : null
+    const showYear = !prev || d.getFullYear() !== prev.getFullYear()
+    return showYear
+      ? d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+      : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+  }
+
+  // TODAY/DUE/ETA markers shown via the plugin. Skip DUE/ETA when they sit within
+  // ~1d of TODAY (collisions) or within ~2d of each other (label overlap).
+  const markers = [{
+    ts: cfg.todayMs, label: 'TODAY',
+    color: 'rgba(255,255,255,0.45)', dash: [5, 5],
+    badgeBg: 'rgba(255,255,255,0.92)', badgeFg: '#212121'
+  }]
+  if (cfg.dueMs && Math.abs(cfg.dueMs - cfg.todayMs) > day) markers.push({
+    ts: cfg.dueMs, label: 'DUE',
+    color: 'rgba(239,83,80,0.7)', dash: [5, 5],
+    badgeBg: 'rgba(239,83,80,0.92)', badgeFg: '#fff'
+  })
+  if (cfg.etaMs && Math.abs(cfg.etaMs - cfg.todayMs) > day && Math.abs(cfg.etaMs - (cfg.dueMs || 0)) > 2 * day) markers.push({
+    ts: cfg.etaMs, label: 'ETA',
+    color: 'rgba(255,179,0,0.7)', dash: [5, 5],
+    badgeBg: 'rgba(255,179,0,0.92)', badgeFg: '#212121'
+  })
+
+  return {
+    type: 'line',
+    data: { datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      parsing: false,
+      normalized: true,
+      interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      layout: { padding: { top: 30, right: 50, bottom: 6, left: 6 } },
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: false },
+        kioskBurndownAnnotations: {
+          todayMs: cfg.todayMs,
+          closedAvailableMs: cfg.closedAvailableMs,
+          markers,
+          endLabels: [
+            { ts: cfg.todayMs, y: cfg.totalClosed, text: fmtNum(cfg.totalClosed), color: closedColor },
+            { ts: cfg.todayMs, y: cfg.currentOpen, text: fmtNum(cfg.currentOpen), color: remainColor }
+          ]
+        }
+      },
+      scales: {
+        x: {
+          type: 'linear',
+          min: cfg.chartStart,
+          max: cfg.chartEnd,
+          grid: { display: false },
+          border: { display: false },
+          ticks: {
+            color: 'rgba(200,200,200,0.85)',
+            font: { size: 14, weight: '600' },
+            autoSkip: false,
+            maxRotation: 0,
+            callback(val) { const i = xTicks.indexOf(val); return i >= 0 ? tickFmt(val, i) : '' }
+          },
+          afterBuildTicks(scale) { scale.ticks = xTicks.map(value => ({ value })) }
+        },
+        y: {
+          beginAtZero: true,
+          suggestedMax: cfg.maxY,
+          grid: { color: 'rgba(127,127,127,0.18)', tickBorderDash: [3, 4] },
+          border: { display: false },
+          ticks: {
+            color: 'rgba(200,200,200,0.85)',
+            font: { size: 14, weight: '600' },
+            maxTicksLimit: 5
+          }
+        }
+      }
+    }
+  }
+}
+
+// `targetBurndown` only re-evaluates on data refresh / setting changes (Date.now()
+// inside it isn't reactive), so destroy+recreate is cheap and avoids the foot-guns
+// of partially-mutated Chart.js scales/callbacks.
+const renderBurndownChart = () => {
+  if (burndownChart) { burndownChart.destroy(); burndownChart = null }
+  const cfg = targetBurndown.value
+  const el = burndownCanvasRef.value
+  if (!el || !cfg) return
+  if (!burndownPluginRegistered) { Chart.register(burndownPlugin); burndownPluginRegistered = true }
+  burndownChart = new Chart(el, buildBurndownChartConfig(cfg))
+}
+watch([targetBurndown, burndownCanvasRef], () => nextTick(renderBurndownChart))
 
 // Recently closed / opened lists inside the target milestone (last 14 days).
 const targetRecent = computed(() => {
@@ -3809,6 +3911,29 @@ const filterBlocked    = () => applyFilter({ selectedStatuses: ['Blocked', 'On H
   0%, 100% { box-shadow: 0 0 0 0 rgba(244, 67, 54, 0); }
   50%      { box-shadow: 0 0 0 4px rgba(244, 67, 54, 0.18); }
 }
+.kiosk-block-banner {
+  display: flex; align-items: center; gap: 16px;
+  margin: 8px 16px 0;
+  padding: 14px 18px;
+  border-radius: 10px;
+  background: rgba(244, 67, 54, 0.14);
+  border: 1px solid rgba(244, 67, 54, 0.5);
+  color: #ffb4ab;
+}
+.kiosk-block-banner-text { flex: 1; min-width: 0; }
+.kiosk-block-banner-title { font-size: clamp(18px, 1.6vw, 24px); font-weight: 700; }
+.kiosk-block-banner-sub { font-size: clamp(13px, 1vw, 15px); opacity: 0.9; margin-top: 2px; }
+.kiosk-block-banner-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(244, 67, 54, 0.6);
+  background: rgba(244, 67, 54, 0.25);
+  color: inherit;
+  font-size: 14px; font-weight: 600;
+  cursor: pointer;
+}
+.kiosk-block-banner-btn:hover { background: rgba(244, 67, 54, 0.35); }
 .kiosk-icon-btn {
   width: 28px;
   height: 28px;
@@ -4069,57 +4194,71 @@ const filterBlocked    = () => applyFilter({ selectedStatuses: ['Blocked', 'On H
 .k-target-eta.is-done        { border-left-color: #43a047; background: rgba(67, 160, 71, 0.12); }
 .k-target-eta.is-done        .v-icon { color: #ffd54f; }
 .k-eta-hoverable { cursor: help; position: relative; }
-.k-eta-hoverable .k-eta-info { opacity: 0.45; margin-left: auto; }
+.k-eta-info { opacity: 0.45; margin-left: auto; transition: opacity 0.15s ease; }
 .k-eta-hoverable:hover .k-eta-info { opacity: 0.85; }
+.k-eta-toggle-btn { cursor: pointer; }
+.k-eta-toggle-btn:hover { opacity: 0.95; }
 /* Inline (always-expanded) variant: same body styling as the floating tip but
-   sits below the chip on the page instead of as a popover. Border + bg match the
-   tooltip's wrap so the visual is consistent. */
+   sits below the chip on the page instead of as a popover. Sections flow into a
+   responsive grid so the panel stays compact vertically on wall displays. */
 .k-eta-tip-inline {
   margin-top: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  background: rgba(20, 20, 22, 0.55);
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12);
+  background: rgba(var(--v-theme-on-surface), 0.04);
   border-radius: 8px;
-  max-width: 720px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  column-gap: 16px;
+  align-items: start;
 }
+.k-eta-tip-inline > .k-eta-tip-foot { grid-column: 1 / -1; }
+.k-eta-tip-inline > .k-eta-tip-section { border-bottom: none; }
+/* Head duplicates the chip above; throughput goes 2×2 so its column height
+   matches the chart / formula columns. */
+.k-eta-tip-inline > .k-eta-tip-head { display: none; }
+.k-eta-tip-inline .k-eta-tip-grid { grid-template-columns: repeat(2, 1fr); }
 
 /* Rich ETA hover (the outer .k-eta-tip-wrap is Vuetify-rendered outside this
-   component's scope — its rule lives in a separate unscoped <style> block.) */
-.k-eta-tip { color: #e6e6e6; font-size: 12.5px; line-height: 1.45; padding: 12px 14px; }
-.k-eta-tip-head { display: flex; align-items: flex-start; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid rgba(255,255,255,0.08); }
-.k-eta-tip-head .v-icon { font-size: 22px !important; flex-shrink: 0; margin-top: 2px; }
+   component's scope — its rule lives in a separate unscoped <style> block.)
+   Theme-aware via on-surface tokens so it reads in both light and dark.
+   Font-sizes are em-relative (and base scales with viewport) so the inline
+   wall-display variant grows with the available width without per-rule clamps. */
+.k-eta-tip { color: rgb(var(--v-theme-on-surface)); font-size: clamp(12.5px, 0.95vw, 16px); line-height: 1.45; padding: 0.96em 1.12em; }
+.k-eta-tip-head { display: flex; align-items: flex-start; gap: 0.8em; padding-bottom: 0.8em; border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.12); }
+.k-eta-tip-head .v-icon { font-size: 1.7em !important; flex-shrink: 0; margin-top: 0.15em; }
 .k-eta-tip-head-text { min-width: 0; }
-.k-eta-tip-title { font-size: 14px; font-weight: 700; }
-.k-eta-tip-sub { opacity: 0.75; margin-top: 2px; }
+.k-eta-tip-title { font-size: 1.12em; font-weight: 700; }
+.k-eta-tip-sub { opacity: 0.75; margin-top: 0.15em; }
 .k-eta-tip.is-on-track .k-eta-tip-head .v-icon { color: #66bb6a; }
 .k-eta-tip.is-late     .k-eta-tip-head .v-icon { color: #ef5350; }
 .k-eta-tip.is-stalled  .k-eta-tip-head .v-icon { color: #ffb300; }
 .k-eta-tip.is-no-deadline .k-eta-tip-head .v-icon { color: #90a4ae; }
 .k-eta-tip.is-done     .k-eta-tip-head .v-icon { color: #ffd54f; }
-.k-eta-tip-section { padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.06); }
-.k-eta-tip-section:last-of-type { border-bottom: none; padding-bottom: 4px; }
+.k-eta-tip-section { padding: 0.8em 0; border-bottom: 1px solid rgba(var(--v-theme-on-surface), 0.10); }
+.k-eta-tip-section:last-of-type { border-bottom: none; padding-bottom: 0.3em; }
 .k-eta-tip-section-title {
-  font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
-  opacity: 0.6; margin-bottom: 6px; display: flex; justify-content: space-between; align-items: center;
+  font-size: 0.84em; text-transform: uppercase; letter-spacing: 0.08em;
+  opacity: 0.6; margin-bottom: 0.5em; display: flex; justify-content: space-between; align-items: center;
 }
-.k-eta-tip-legend { display: inline-flex; gap: 10px; text-transform: none; letter-spacing: 0; font-size: 10.5px; opacity: 0.85; }
-.k-eta-sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; vertical-align: -1px; margin-right: 3px; }
+.k-eta-tip-legend { display: inline-flex; gap: 0.95em; text-transform: none; letter-spacing: 0; font-size: 1em; opacity: 0.85; }
+.k-eta-sw { display: inline-block; width: 0.85em; height: 0.85em; border-radius: 2px; vertical-align: -1px; margin-right: 0.3em; }
 .k-eta-sw-closed { background: #66bb6a; }
 .k-eta-sw-added  { background: #ef5350; }
 .k-eta-tip-svg { width: 100%; height: auto; display: block; }
-.k-eta-tip-timeline { margin-top: 4px; }
-.k-eta-tip-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
-.k-eta-tip-cell { background: rgba(255,255,255,0.04); border-radius: 8px; padding: 6px 8px; text-align: center; }
-.k-eta-tip-cell-num { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
-.k-eta-tip-cell-lbl { font-size: 10.5px; opacity: 0.7; }
-.k-eta-tip-cell-sub { font-size: 10px; opacity: 0.5; font-variant-numeric: tabular-nums; }
+.k-eta-tip-timeline { margin-top: 0.3em; }
+.k-eta-tip-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.6em; }
+.k-eta-tip-cell { background: rgba(var(--v-theme-on-surface), 0.06); border-radius: 8px; padding: 0.8em 0.6em; text-align: center; }
+.k-eta-tip-cell-num { font-size: 1.44em; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.k-eta-tip-cell-lbl { font-size: 0.84em; opacity: 0.7; }
+.k-eta-tip-cell-sub { font-size: 0.8em; opacity: 0.5; font-variant-numeric: tabular-nums; }
 .k-eta-pos { color: #66bb6a; }
 .k-eta-neg { color: #ef5350; }
 .k-eta-tip-formula {
-  background: rgba(255,255,255,0.04); border-radius: 6px; padding: 6px 8px;
-  font-variant-numeric: tabular-nums; font-size: 12px;
+  background: rgba(var(--v-theme-on-surface), 0.06); border-radius: 6px; padding: 0.5em 0.65em;
+  font-variant-numeric: tabular-nums; font-size: 0.96em;
 }
-.k-eta-tip-formula code { background: transparent; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
-.k-eta-tip-foot { font-size: 10.5px; opacity: 0.5; padding-top: 8px; font-style: italic; }
+.k-eta-tip-formula code { background: transparent; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; }
+.k-eta-tip-foot { font-size: 0.84em; opacity: 0.5; padding-top: 0.65em; font-style: italic; }
 
 .k-target-recent {
   display: grid;
@@ -4457,17 +4596,20 @@ const filterBlocked    = () => applyFilter({ selectedStatuses: ['Blocked', 'On H
 /* Milestone burndown */
 .k-burndown-section { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 0; }
 .k-burndown-title { display: flex; align-items: center; gap: 8px; text-transform: none; font-size: clamp(18px, 1.8vw, 24px); letter-spacing: 0; opacity: 1; }
-.k-burndown-svg { flex: 1; min-height: 0; width: 100%; height: 100%; }
+.k-burndown-canvas-wrap { flex: 1; min-height: 0; position: relative; }
+.k-burndown-canvas-wrap > canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
 .k-burndown-legend { display: flex; gap: 20px; flex-wrap: wrap; font-size: 15px; opacity: 0.9; font-weight: 500; }
 .k-burndown-legend .k-swatch { display: inline-block; width: 14px; height: 14px; border-radius: 3px; margin-right: 6px; vertical-align: middle; }
-.k-burndown-legend .k-swatch-dotted {
+.k-burndown-legend .k-swatch-dashed-white,
+.k-burndown-legend .k-swatch-dashed-amber,
+.k-burndown-legend .k-swatch-dashed-red {
   background: transparent !important;
-  border-top: 2px dashed rgba(255, 255, 255, 0.55);
-  height: 0; border-radius: 0;
-  width: 16px;
-  vertical-align: middle;
-  margin-top: 5px;
+  height: 0; border-radius: 0; width: 18px;
+  vertical-align: middle; margin-top: 5px;
 }
+.k-burndown-legend .k-swatch-dashed-white { border-top: 2px dashed rgba(255, 255, 255, 0.7); }
+.k-burndown-legend .k-swatch-dashed-amber { border-top: 2px dashed #ffb300; }
+.k-burndown-legend .k-swatch-dashed-red   { border-top: 2px dashed #ef5350; }
 .k-burndown-legend .k-legend-spacer { flex: 1; }
 .k-burndown-warn { color: #ef5350; font-weight: 600; }
 .k-burndown-warn-data {
@@ -4795,10 +4937,10 @@ const filterBlocked    = () => applyFilter({ selectedStatuses: ['Blocked', 'On H
 .k-eta-tip-wrap {
   max-width: 440px !important;
   padding: 0 !important;
-  background: rgba(20, 22, 26, 0.97) !important;
-  border: 1px solid rgba(255, 255, 255, 0.08) !important;
+  background: rgb(var(--v-theme-surface)) !important;
+  border: 1px solid rgba(var(--v-theme-on-surface), 0.12) !important;
   border-radius: 12px !important;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55) !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35) !important;
   opacity: 1 !important;
 }
 </style>

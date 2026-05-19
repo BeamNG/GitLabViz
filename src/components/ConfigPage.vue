@@ -839,13 +839,6 @@
                 density="comfortable"
                 prepend-inner-icon="mdi-flag"
               />
-              <v-checkbox
-                v-model="settings.uiState.kiosk.etaAlwaysExpanded"
-                label="Always show ETA details (no hover required)"
-                hint="On the Target screen, render the throughput / formula / timeline panel inline below the ETA chip. Useful for wall displays where nobody can hover."
-                persistent-hint hide-details="auto" density="compact"
-                class="mt-2"
-              />
 
               <v-divider class="my-4" />
               <div class="text-overline text-medium-emphasis mb-2">Screen burn-in protection</div>
@@ -941,6 +934,14 @@
               </div>
 
               <v-row v-if="settings.uiState.kiosk.modes[m.id] && kioskHasOptions(m.id)" dense class="mt-2 kiosk-mode-options">
+                <v-col v-if="m.id === 'target'" cols="12">
+                  <v-checkbox
+                    v-model="settings.uiState.kiosk.etaAlwaysExpanded"
+                    label="Always show ETA details (no hover required)"
+                    hint="Renders the throughput / formula / timeline panel inline below the ETA chip. Useful for wall displays where nobody can hover."
+                    persistent-hint hide-details="auto" density="compact"
+                  />
+                </v-col>
                 <v-col v-if="m.id === 'velocity'" cols="6" sm="3">
                   <v-text-field
                     v-model.number="settings.uiState.kiosk.modeConfig.velocity.weeks"
@@ -1368,7 +1369,7 @@
 import { computed, onMounted, ref, toRaw, watch } from 'vue'
 import { cacheGetPath, cacheOpenFolder, svnCacheGetStats } from '../services/cache'
 import { mattermostLogin } from '../services/mattermost'
-import { createGitLabClient, fetchTokenInfo, normalizeGitLabApiBaseUrl } from '../services/gitlab'
+import { createGitLabClient, describeGitLabRequestError, fetchTokenInfo, normalizeGitLabApiBaseUrl } from '../services/gitlab'
 import { getTokenExpiry } from '../utils/tokenExpiry'
 import { useSettingsStore } from '../composables/useSettingsStore'
 import HotkeysSettings from './HotkeysSettings.vue'
@@ -1394,7 +1395,7 @@ const kioskAllModes = [
   { id: 'risks',      label: 'Ticket health',            icon: 'mdi-stethoscope',          description: 'Problem dashboard — overdue / stale / unassigned / no priority / no due date / blocked, plus the worst offenders.' },
   { id: 'broken',     label: 'Broken tickets',           icon: 'mdi-ghost-outline',        description: 'Tickets lost & forgotten — open tickets in closed milestones, no milestone at all, "in-progress" with no assignee, untyped, or with no priority + no owner. Surfaces workflow leaks.' }
 ]
-const kioskHasOptions = (id) => ['velocity', 'workload', 'breakdown', 'hotLabels', 'milestones', 'burndown', 'activity', 'blockers', 'wipStale', 'closed', 'leaderboard', 'risks', 'broken', 'heatmap', 'heatmapByLabel'].includes(id)
+const kioskHasOptions = (id) => ['target', 'velocity', 'workload', 'breakdown', 'hotLabels', 'milestones', 'burndown', 'activity', 'blockers', 'wipStale', 'closed', 'leaderboard', 'risks', 'broken', 'heatmap', 'heatmapByLabel'].includes(id)
 const kioskPriorityBuckets = [
   { value: 'blocking', label: 'Blocking / Critical' },
   { value: 'high',     label: 'High' },
@@ -1556,7 +1557,7 @@ async function runGitLabTest ({ requireToken = false, requireProject = false } =
     if (status === 404 && requireProject) {
       return { ok: false, type: 'error', message: 'Project not found (404). Check Project ID / Path, or token permissions.' }
     }
-    return { ok: false, type: 'error', message: e?.message || String(e) }
+    return { ok: false, type: 'error', message: describeGitLabRequestError(e) }
   } finally {
     gitlabTestLoading.value = false
   }

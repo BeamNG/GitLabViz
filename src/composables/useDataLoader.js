@@ -3,13 +3,16 @@ import localforage from 'localforage'
 import {
   createGitLabClient,
   createGitLabGraphqlClient,
+  describeGitLabRequestError,
   enrichEpicTitlesFromRest,
   enrichIssuesFromGraphql,
   fetchProjectIssuesRest,
   fetchIssueLinks,
   fetchIssueResourceMilestoneEvents,
   fetchTokenInfo,
-  normalizeGitLabApiBaseUrl
+  getNetworkFailureCount,
+  normalizeGitLabApiBaseUrl,
+  resetNetworkFailureCount
 } from '../services/gitlab'
 import { createSvnClient, fetchSvnLog } from '../services/svn'
 import { svnCacheGetMeta, svnCacheClear, normalizeRepoUrl } from '../services/cache'
@@ -311,6 +314,8 @@ export function useDataLoader ({
 
     const restClient = doGitLab ? createGitLabClient(gitlabApiBaseUrl, settings.config.token) : null
     const gqlClient = doGitLab ? createGitLabGraphqlClient(gitlabApiBaseUrl, settings.config.token) : null
+    resetNetworkFailureCount(restClient)
+    resetNetworkFailureCount(gqlClient)
     let didGitLabFetch = false
     let gitlabSyncCursorForSave = null
 
@@ -543,9 +548,17 @@ export function useDataLoader ({
           settings.meta.gitlabSyncCursor = startedCursor
         } catch (e) {
           console.error(e)
-          error.value = `GitLab Error: ${e?.message || String(e)}`
-          // If SVN is enabled, continue?
+          error.value = `GitLab Error: ${describeGitLabRequestError(e)}`
           if (!settings.config.enableSvn) throw e
+        }
+
+        // Firefox "Allow once" LNA + similar: the GitLab try-block can finish without
+        // throwing because enrichment / links / milestone-events helpers swallow per-
+        // request errors. Surface those swallowed network failures so the kiosk shows
+        // the actionable banner instead of saving partial data silently.
+        const swallowedNetFailures = getNetworkFailureCount(restClient) + getNetworkFailureCount(gqlClient)
+        if (swallowedNetFailures > 0 && !error.value) {
+          error.value = `GitLab Error: ${describeGitLabRequestError({ message: 'Network Error' })}`
         }
       }
 
