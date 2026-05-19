@@ -97,6 +97,27 @@
                 hide-details
                 class="mt-3"
               />
+
+              <v-select
+                v-model.number="settings.uiState.ui.updateCheckMinutes"
+                :items="[
+                  { title: 'Disabled', value: 0 },
+                  { title: 'Every 1 min', value: 1 },
+                  { title: 'Every 5 min', value: 5 },
+                  { title: 'Every 15 min', value: 15 },
+                  { title: 'Every 30 min', value: 30 },
+                  { title: 'Every hour', value: 60 },
+                  { title: 'Every 6 hours', value: 360 }
+                ]"
+                item-title="title"
+                item-value="value"
+                label="Check for app updates"
+                variant="outlined"
+                density="comfortable"
+                bg-color="surface"
+                hide-details
+                class="mt-3"
+              />
             </v-card-text>
           </v-card>
         </v-container>

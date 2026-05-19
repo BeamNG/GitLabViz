@@ -74,7 +74,11 @@ export const defaultSettings = () => ({
       showAdvancedSim: false,
       theme: 'system', // 'system' | 'dark' | 'light'
       currentTemplateName: '',
-      focusMode: false // hides sidebar + banners, leaving only the graph
+      focusMode: false, // hides sidebar + banners, leaving only the graph
+      // How often to poll current_version.json and hard-reload when a newer build ships.
+      // Reload only fires when a strictly newer version is detected, so short intervals
+      // are safe (no churn on idle deploys). 0 = disabled.
+      updateCheckMinutes: 60
     },
     hotkeys: {}, // action id -> combo string; empty = use built-in defaults
     kiosk: {

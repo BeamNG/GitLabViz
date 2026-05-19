@@ -43,12 +43,13 @@
           } catch {}
         }
 
-        // Exposed so App.vue can re-check on "Refresh data" without duplicating logic.
+        // Exposed so App.vue / kiosk can re-check on "Refresh data" without duplicating logic.
+        // Works on any HTTP host (GitHub Pages, internal Apache/nginx, …); skipped on
+        // file:// (Electron) where there's no remote deploy to compare against.
         window.__glvCheckForUpdate = async () => {
           try {
-            const host = String(location.hostname || '').toLowerCase()
-            const isGitHubPages = host.endsWith('github.io')
-            if (!IS_PROD_BUILD || !isGitHubPages) return false
+            const isHttp = location.protocol === 'http:' || location.protocol === 'https:'
+            if (!IS_PROD_BUILD || !isHttp) return false
 
             removeCacheBustParamIfCurrent()
 

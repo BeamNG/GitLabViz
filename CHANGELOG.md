@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.12.40] - 2026-05-19
+- **App-wide auto-update.** Always-on tabs / kiosks pick up new deploys automatically. The bootstrap update check (poll `current_version.json`, hard-reload via `?v=<newVersion>` cache-buster on a strictly-newer version) is no longer GitHub-Pages-only — it now runs on any HTTP host (internal Apache/nginx/IIS deployments included) and is skipped on `file://` (Electron) where there's no remote deploy to compare against. New **Check for app updates** combo box in Configuration → Display lets you set the poll interval (Disabled / 1m / 5m / 15m / 30m / 1h / 6h, default 5m). Reload only fires when a newer version is detected, so short intervals are safe — no churn while idle. Setting changes take effect immediately (no app restart needed).
+
 ## [0.12.39] - 2026-05-18
 - New **Leaderboard** kiosk mode — five side-by-side podiums highlighting the team from different angles: **Most closed today**, **Most opened today**, **Most active · 7d** (combined closures + opens), **Top discussion** (sum of comment counts on tickets they raised — GitLab doesn't expose per-user note counts so author is the cleanest proxy), and **Heaviest workload** (current open assigned). Each card highlights its top 3 with gold/silver/bronze medals; the overall "Most active today" person gets a crown banner up top with a quick-glance summary of their closed/opened/workload counts. Click any row to filter the graph by that person. Per-category row count is configurable in Configuration → Kiosk → Leaderboard (default 5).
 

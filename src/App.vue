@@ -392,6 +392,18 @@ const lastUpdated = ref(null)
 const nowTick = ref(Date.now())
 let nowTickInterval = null
 
+// Poll current_version.json on a user-configurable interval. The check (defined in
+// index.html) only hard-reloads when a strictly newer version ships, so short intervals
+// are safe. Re-arms when the user changes the setting.
+let updateCheckInterval = null
+const startUpdateCheck = () => {
+  if (updateCheckInterval) { clearInterval(updateCheckInterval); updateCheckInterval = null }
+  const m = Math.max(0, Number(settings.uiState.ui?.updateCheckMinutes) || 0)
+  if (!m || typeof window.__glvCheckForUpdate !== 'function') return
+  updateCheckInterval = setInterval(() => { window.__glvCheckForUpdate() }, m * 60 * 1000)
+}
+watch(() => settings.uiState.ui?.updateCheckMinutes, startUpdateCheck)
+
 const appVersion = (() => {
   try {
     return __APP_VERSION__
@@ -811,6 +823,8 @@ onMounted(async () => {
   nowTick.value = Date.now()
   nowTickInterval = setInterval(() => { nowTick.value = Date.now() }, 10 * 60 * 1000)
 
+  startUpdateCheck()
+
   await initCachedData()
 
   // Fire-and-forget: detect token scopes + expiry on startup so the UI can warn about expiring tokens
@@ -824,6 +838,8 @@ onMounted(async () => {
 onUnmounted(() => {
   if (nowTickInterval) clearInterval(nowTickInterval)
   nowTickInterval = null
+  if (updateCheckInterval) clearInterval(updateCheckInterval)
+  updateCheckInterval = null
   if (import.meta.env.DEV) window.removeEventListener('keydown', onGlobalKeydown)
 })
 
