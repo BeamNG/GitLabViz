@@ -1407,6 +1407,26 @@ const refreshMin = computed(() => numFromUrl('refresh') ?? Math.max(0, Number(se
 
 let cycleTimer = null
 let refreshTimer = null
+let safetyReloadTimer = null
+// Belt-and-suspenders: if the auto-update channel is broken (DNS issue, proxy
+// intercepting current_version.json, server down) the wall could sit on a stale
+// build indefinitely. Once a day, during the 3am hour, force a hard reload — but
+// ONLY when the version check has been failing (no successful poll in the last
+// hour). Healthy kiosks never see this. Date stamp persisted in localStorage so
+// the post-reload run doesn't loop.
+const SAFETY_RELOAD_KEY = 'glv_kiosk_last_safety_reload'
+const checkSafetyReload = () => {
+  const now = new Date()
+  if (now.getHours() !== 3) return
+  const today = `${now.getFullYear()}-${now.getMonth() + 1}-${now.getDate()}`
+  let last = ''
+  try { last = localStorage.getItem(SAFETY_RELOAD_KEY) || '' } catch {}
+  if (last === today) return
+  const lastOk = Number(window.__glvLastVersionCheckOk) || 0
+  if (lastOk && (Date.now() - lastOk) < 60 * 60 * 1000) return
+  try { localStorage.setItem(SAFETY_RELOAD_KEY, today) } catch {}
+  location.reload()
+}
 const startCycle = () => {
   if (cycleTimer) clearInterval(cycleTimer)
   if (!cycleSec.value) return
@@ -1447,6 +1467,19 @@ const lastRefreshTitle = computed(() => {
   if (!props.lastUpdated) return 'Never refreshed'
   return `Last refreshed: ${new Date(props.lastUpdated).toLocaleString()}`
 })
+
+// Defined here (not later) so the data-age / failure computeds below can call it
+// without hitting a TDZ error when the template renders during setup.
+const relTime = (ts) => {
+  const diff = Math.max(0, nowTick.value - ts)
+  const m = Math.floor(diff / 60000)
+  if (m < 1) return 'just now'
+  if (m < 60) return `${m}m ago`
+  const h = Math.floor(m / 60)
+  if (h < 24) return `${h}h ago`
+  const d = Math.floor(h / 24)
+  return `${d}d ago`
+}
 
 // Surface refresh failures (offline / token expiry / GitLab down) on the wall instead
 // of letting them fail silently. Stamp the first failure since the last success; clear
@@ -1579,6 +1612,7 @@ onMounted(() => {
   if (props.error && !props.loading) lastFailedAt.value = Date.now()
   startCycle()
   startRefresh()
+  safetyReloadTimer = setInterval(checkSafetyReload, 60 * 1000)
   nowTickTimer = setInterval(() => { nowTick.value = Date.now() }, 1000)
   pixelShiftTimer = setInterval(tickPixelShift, 60000)
   tickPixelShift()
@@ -1589,6 +1623,7 @@ onMounted(() => {
 onUnmounted(() => {
   if (cycleTimer) clearInterval(cycleTimer)
   if (refreshTimer) clearInterval(refreshTimer)
+  if (safetyReloadTimer) clearInterval(safetyReloadTimer)
   if (nowTickTimer) clearInterval(nowTickTimer)
   window.removeEventListener('keydown', handleWindowKey)
   if (burndownRO)       { burndownRO.disconnect();       burndownRO = null }
@@ -3486,16 +3521,6 @@ const filterNoDueDate  = () => applyFilter({ dueStatus: 'none' })
 const filterOverdue    = () => applyFilter({ dueStatus: 'overdue' })
 const filterBlocked    = () => applyFilter({ selectedStatuses: ['Blocked', 'On Hold/Blocked'] })
 
-const relTime = (ts) => {
-  const diff = Math.max(0, nowTick.value - ts)
-  const m = Math.floor(diff / 60000)
-  if (m < 1) return 'just now'
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  const d = Math.floor(h / 24)
-  return `${d}d ago`
-}
 </script>
 
 <style scoped>

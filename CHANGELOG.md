@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.12.44] - 2026-05-19
+- **Kiosk: daily 3am safety reload when auto-update is broken.** Belt-and-suspenders against walls getting stuck on a stale build because the version-check channel itself is broken (DNS hiccup, proxy intercepting `current_version.json`, server down). Once per day during the 3am hour the kiosk force-reloads the page — but only when no successful version-check has happened in the last hour, so healthy kiosks never see it. Last reload date persisted in `localStorage` so the post-reload run doesn't loop.
+
+## [0.12.43] - 2026-05-19
+- **List view avatars: graceful fallback on broken images.** Author / assignee photos that fail to load (404, CORS-blocked, GitLab avatar host hiccups) now silently swap to the initials+colour bubble instead of rendering as a broken-image icon. Tracks failed URLs in a small in-memory set so other rows sharing the same URL also fall back without re-trying. Working photos continue to render as before.
+
+## [0.12.42] - 2026-05-19
+- Fix `Cannot access 'pt' before initialization` crash on kiosk mount in 0.12.41 — the new data-age / refresh-failure computeds referenced `relTime` which was declared later in the same setup block (TDZ). Moved the helper above its consumers.
+
 ## [0.12.41] - 2026-05-19
 - **Kiosk header surfaces data age + refresh failures.** A new "data: 5m ago" chip in the header keeps the room aware of how stale the wall is, and refresh failures no longer go quietly — when a sync fails (offline, GitLab down, expired token) a pulsing red "Refresh failed Xm ago" chip appears next to the clock, the refresh button itself flips red, and the tooltip shows the underlying error plus the timestamp of the first failure since the last success. The chip clears automatically on the next successful sync.
 

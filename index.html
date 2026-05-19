@@ -59,6 +59,9 @@
             if (!res.ok) return false
 
             const remote = await res.json()
+            // Stamp last successful check (fetch + parse OK, regardless of whether an update is
+            // needed) so kiosk's daily 3am safety reload knows the auto-update channel is healthy.
+            window.__glvLastVersionCheckOk = Date.now()
             const remoteVersion = remote && remote.version ? String(remote.version) : ''
             if (!remoteVersion || !LOCAL_VERSION) return false
 

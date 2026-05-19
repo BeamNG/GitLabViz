@@ -51,11 +51,11 @@
                 <div
                   v-if="groupingByPerson"
                   class="il-avatar"
-                  :class="{ 'il-avatar--photo': !!groupAvatarFor(item) }"
-                  :style="!groupAvatarFor(item) ? { background: avatarColor(item.value) } : undefined"
+                  :class="{ 'il-avatar--photo': photoOk(groupAvatarFor(item)) }"
+                  :style="!photoOk(groupAvatarFor(item)) ? { background: avatarColor(item.value) } : undefined"
                   :title="item.value"
                 >
-                  <img v-if="groupAvatarFor(item)" :src="groupAvatarFor(item)" :alt="item.value" referrerpolicy="no-referrer" />
+                  <img v-if="photoOk(groupAvatarFor(item))" :src="groupAvatarFor(item)" :alt="item.value" referrerpolicy="no-referrer" @error="markAvatarBroken(groupAvatarFor(item))" />
                   <template v-else>{{ initialsOf(item.value) }}</template>
                 </div>
                 <span v-else class="il-group-dot" :style="{ background: groupColorFor(item.value) }" />
@@ -178,10 +178,10 @@
         <div v-if="item.assignees.length" class="d-flex align-center ga-1" :title="item.assignees.join(', ')">
           <div
             class="il-avatar"
-            :class="{ 'il-avatar--photo': !!item.assigneeAvatar }"
-            :style="!item.assigneeAvatar ? { background: avatarColor(item.assignees[0]) } : undefined"
+            :class="{ 'il-avatar--photo': photoOk(item.assigneeAvatar) }"
+            :style="!photoOk(item.assigneeAvatar) ? { background: avatarColor(item.assignees[0]) } : undefined"
           >
-            <img v-if="item.assigneeAvatar" :src="item.assigneeAvatar" :alt="item.assignees[0]" referrerpolicy="no-referrer" />
+            <img v-if="photoOk(item.assigneeAvatar)" :src="item.assigneeAvatar" :alt="item.assignees[0]" referrerpolicy="no-referrer" @error="markAvatarBroken(item.assigneeAvatar)" />
             <template v-else>{{ initialsOf(item.assignees[0]) }}</template>
           </div>
           <span class="text-caption text-truncate">{{ item.assignees[0] }}{{ item.assignees.length > 1 ? ` +${item.assignees.length - 1}` : '' }}</span>
@@ -213,10 +213,10 @@
         <div v-if="item.author" class="d-flex align-center ga-1" :title="item.author">
           <div
             class="il-avatar"
-            :class="{ 'il-avatar--photo': !!item.authorAvatar }"
-            :style="!item.authorAvatar ? { background: avatarColor(item.author) } : undefined"
+            :class="{ 'il-avatar--photo': photoOk(item.authorAvatar) }"
+            :style="!photoOk(item.authorAvatar) ? { background: avatarColor(item.author) } : undefined"
           >
-            <img v-if="item.authorAvatar" :src="item.authorAvatar" :alt="item.author" referrerpolicy="no-referrer" />
+            <img v-if="photoOk(item.authorAvatar)" :src="item.authorAvatar" :alt="item.author" referrerpolicy="no-referrer" @error="markAvatarBroken(item.authorAvatar)" />
             <template v-else>{{ initialsOf(item.author) }}</template>
           </div>
           <span class="text-caption text-truncate">{{ item.author }}</span>
@@ -1258,6 +1258,17 @@ const avatarColor = (name) => {
   let h = 0
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0
   return `hsl(${Math.abs(h) % 360}, 42%, 42%)`
+}
+// Track avatar URLs that failed to load (404, CORS, etc.) so we fall back to the
+// initials+colour bubble instead of a permanently-broken <img>. Set is replaced on
+// add so Vue's reactivity propagates to all rows sharing that URL.
+const brokenAvatars = ref(new Set())
+const photoOk = (url) => !!url && !brokenAvatars.value.has(url)
+const markAvatarBroken = (url) => {
+  if (!url || brokenAvatars.value.has(url)) return
+  const next = new Set(brokenAvatars.value)
+  next.add(url)
+  brokenAvatars.value = next
 }
 </script>
 
