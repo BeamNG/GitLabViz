@@ -3,6 +3,36 @@
     <v-app-bar-nav-icon @click="$emit('close')" title="Back" icon="mdi-arrow-left" />
     <v-app-bar-title>Flake History</v-app-bar-title>
     <v-spacer />
+    <v-text-field
+      v-if="bundle"
+      v-model="searchQuery"
+      density="compact" hide-details variant="outlined"
+      placeholder="Search tests..."
+      prepend-inner-icon="mdi-magnify"
+      clearable
+      style="max-width: 280px"
+      class="mr-2"
+    />
+    <v-tooltip :text="`Theme: ${currentTheme} (click to cycle)`" location="bottom">
+      <template #activator="{ props: tipProps }">
+        <v-btn icon v-bind="tipProps" @click="cycleTheme">
+          <v-icon :icon="themeIcon" />
+        </v-btn>
+      </template>
+    </v-tooltip>
+    <v-tooltip text="What do the classifications mean?" location="bottom">
+      <template #activator="{ props: tipProps }">
+        <v-btn icon v-bind="tipProps" @click="infoDialog = true">
+          <v-icon icon="mdi-information-outline" />
+        </v-btn>
+      </template>
+    </v-tooltip>
+    <v-btn icon @click="reload" :loading="loading" title="Refresh now" class="mr-2">
+      <v-icon icon="mdi-refresh" />
+    </v-btn>
+  </v-app-bar>
+
+  <v-toolbar v-if="bundle" density="compact" elevation="0" color="surface" class="flake-subtoolbar">
     <v-select
       v-if="filterOptions.suites.length > 1"
       v-model="suiteFilter"
@@ -10,6 +40,7 @@
       density="compact" hide-details variant="underlined"
       style="max-width: 160px"
       label="Suite"
+      class="ml-2"
     />
     <v-select
       v-if="filterOptions.gfxApis.length > 1"
@@ -18,19 +49,24 @@
       density="compact" hide-details variant="underlined"
       style="max-width: 140px"
       label="Gfx"
+      class="ml-2"
     />
     <v-slider
-      v-if="bundle"
       v-model="lastNRuns"
       :min="5" :max="100" :step="1"
       hide-details density="compact"
-      style="max-width: 200px"
+      style="max-width: 220px; min-width: 160px"
       :label="`Last ${lastNRuns} runs`"
+      class="ml-4"
     />
-    <v-btn icon @click="reload" :loading="loading" title="Refresh now" class="mr-2">
-      <v-icon icon="mdi-refresh" />
-    </v-btn>
-  </v-app-bar>
+    <v-spacer />
+    <v-switch
+      v-model="showAllTests"
+      density="compact" hide-details color="primary"
+      :label="showAllTests ? 'Showing all' : 'Top 100'"
+      class="mr-4"
+    />
+  </v-toolbar>
 
   <v-main class="flake-main">
     <!-- Loading -->
@@ -103,8 +139,13 @@
 
     <!-- Loaded: leaderboard + heatmap -->
     <div v-else-if="bundle" class="flake-grid">
-      <section class="flake-leaderboard">
-        <h3 class="text-subtitle-1 pa-2">Leaderboard <span class="text-caption">(most flaky first)</span></h3>
+      <section class="flake-section flake-leaderboard">
+        <header class="flake-section-header">
+          <h3 class="text-subtitle-1">
+            Leaderboard
+            <span class="text-caption text-medium-emphasis">({{ leaderboard.length }} {{ leaderboard.length === 1 ? 'test' : 'tests' }}, most flaky first)</span>
+          </h3>
+        </header>
         <v-data-table
           :headers="leaderboardHeaders"
           :items="leaderboard"
@@ -112,8 +153,6 @@
           density="compact"
           item-value="test_id"
           v-model:selected="selectedTestIds"
-          select-strategy="single"
-          show-select
           @click:row="onRowClick"
           class="flake-table"
         >
@@ -126,8 +165,17 @@
         </v-data-table>
       </section>
 
-      <section class="flake-heatmap">
-        <h3 class="text-subtitle-1 pa-2">Heatmap <span class="text-caption">(rightmost = most recent)</span></h3>
+      <section class="flake-section flake-heatmap">
+        <header class="flake-section-header">
+          <h3 class="text-subtitle-1">
+            Heatmap
+            <span class="text-caption text-medium-emphasis">(rightmost = most recent)</span>
+          </h3>
+        </header>
+        <div class="flake-cells-hint">
+          <v-icon icon="mdi-cursor-default-click-outline" size="14" class="mr-1" />
+          Click any cell to open the pipeline where that result was recorded.
+        </div>
         <div class="flake-heatmap-scroll">
           <table class="flake-heatmap-table">
             <thead>
@@ -152,11 +200,15 @@
                 </td>
                 <td
                   v-for="(cell, i) in heatmap.cells[t.test_id]" :key="i"
-                  :class="['flake-cell', `flake-cell--${cell}`,
-                           heatmap.interruptedRunIds.has(heatmap.runs[i].run_id) ? 'flake-cell--interrupted' : '']"
+                  class="flake-cell-td"
                   :title="cellTooltip(t, heatmap.runs[i], cell)"
                   @click.stop="openPipeline(heatmap.runs[i])"
-                ></td>
+                >
+                  <div
+                    :class="['flake-cell', `flake-cell--${cell}`,
+                             heatmap.interruptedRunIds.has(heatmap.runs[i].run_id) ? 'flake-cell--interrupted' : '']"
+                  ></div>
+                </td>
               </tr>
             </tbody>
           </table>
@@ -164,6 +216,42 @@
       </section>
     </div>
   </v-main>
+
+  <v-dialog v-model="infoDialog" max-width="560">
+    <v-card>
+      <v-card-title>Flake classifications</v-card-title>
+      <v-card-text>
+        <p class="mb-4 text-body-2">
+          Each test is bucketed by its pass rate across all retained runs in the bundle.
+          The bundler computes the label; the viewer just displays it.
+        </p>
+        <div class="flake-class-row">
+          <v-chip color="success" size="small" variant="tonal">stable</v-chip>
+          <span>Pass rate <strong>≥ 95%</strong>, or zero failures observed.</span>
+        </div>
+        <div class="flake-class-row">
+          <v-chip color="warning" size="small" variant="tonal">intermittent</v-chip>
+          <span>Pass rate <strong>≥ 50%</strong> and <strong>&lt; 95%</strong>.</span>
+        </div>
+        <div class="flake-class-row">
+          <v-chip color="error" size="small" variant="tonal">actively_flaky</v-chip>
+          <span>Pass rate <strong>&lt; 50%</strong>, still passing sometimes.</span>
+        </div>
+        <div class="flake-class-row">
+          <v-chip color="error" size="small" variant="tonal">broken</v-chip>
+          <span>Zero passes observed across the window.</span>
+        </div>
+        <v-alert density="compact" variant="tonal" type="info" class="mt-5">
+          Thresholds live in <code>bundle_flake_history.py</code> (<code>_flake_classification</code>) and
+          can be tuned in one place if the studio team's intuition differs.
+        </v-alert>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn @click="infoDialog = false">Close</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup>
@@ -193,6 +281,9 @@ const suiteFilter = ref('(all)')
 const gfxFilter = ref('(all)')
 const lastNRuns = ref(30)
 const selectedTestIds = ref([])
+const searchQuery = ref('')
+const showAllTests = ref(false)
+const infoDialog = ref(false)
 
 const form = ref({
   projectId: flakeSettings.value.projectId || '',
@@ -210,14 +301,29 @@ const facet = computed(() => ({
   gfxApi: gfxFilter.value === '(all)' ? null : gfxFilter.value,
 }))
 
-const leaderboard = computed(() =>
-  bundle.value ? selectFlakeLeaderboard(bundle.value, { ...facet.value, limit: 100 }) : []
-)
-const heatmap = computed(() =>
-  bundle.value
-    ? selectHeatmapMatrix(bundle.value, { ...facet.value, lastNRuns: lastNRuns.value })
-    : { runs: [], tests: [], cells: {}, interruptedRunIds: new Set() }
-)
+const leaderboardLimit = computed(() => showAllTests.value ? Infinity : 100)
+
+const matchesSearch = (t) => {
+  const q = (searchQuery.value || '').trim().toLowerCase()
+  if (!q) return true
+  return (
+    (t.name   || '').toLowerCase().includes(q) ||
+    (t.module || '').toLowerCase().includes(q) ||
+    (t.test_id || '').toLowerCase().includes(q)
+  )
+}
+
+const leaderboard = computed(() => {
+  if (!bundle.value) return []
+  const rows = selectFlakeLeaderboard(bundle.value, { ...facet.value, limit: leaderboardLimit.value })
+  return rows.filter(matchesSearch)
+})
+
+const heatmap = computed(() => {
+  if (!bundle.value) return { runs: [], tests: [], cells: {}, interruptedRunIds: new Set() }
+  const raw = selectHeatmapMatrix(bundle.value, { ...facet.value, lastNRuns: lastNRuns.value })
+  return { ...raw, tests: raw.tests.filter(matchesSearch) }
+})
 
 const leaderboardHeaders = [
   { title: 'Test', key: 'name' },
@@ -249,6 +355,23 @@ const openPipeline = (r) => {
 const isConfigured = () => Boolean(
   props.settings.config.gitlabApiBaseUrl && flakeSettings.value.projectId
 )
+
+// Theme — reuses settings.uiState.ui.theme and the same cycle order used by
+// the app-wide hotkey so all toggles agree on what "next" means.
+const THEME_ORDER = ['light', 'dark', 'system', 'schedule']
+const currentTheme = computed(() => props.settings?.uiState?.ui?.theme || 'system')
+const themeIcon = computed(() => ({
+  light: 'mdi-weather-sunny',
+  dark: 'mdi-weather-night',
+  system: 'mdi-theme-light-dark',
+  schedule: 'mdi-calendar-clock',
+}[currentTheme.value] || 'mdi-theme-light-dark'))
+const cycleTheme = () => {
+  const ui = props.settings?.uiState?.ui
+  if (!ui) return
+  const i = THEME_ORDER.indexOf(ui.theme || 'system')
+  ui.theme = THEME_ORDER[(i + 1) % THEME_ORDER.length]
+}
 
 const reload = async () => {
   if (!isConfigured()) {
@@ -298,35 +421,108 @@ onBeforeUnmount(() => { if (refreshTimer) clearInterval(refreshTimer) })
 </script>
 
 <style scoped>
-.flake-main { padding: 0; }
+.flake-main { padding: 0; background: rgb(var(--v-theme-background)); }
+
+.flake-subtoolbar {
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
 .flake-grid {
   display: grid;
-  grid-template-columns: 30% 70%;
-  height: calc(100vh - 64px);
+  grid-template-columns: 32% 68%;
+  gap: 12px;
+  padding: 12px;
+  height: calc(100vh - 112px); /* app-bar + subtoolbar */
   overflow: hidden;
 }
-.flake-leaderboard, .flake-heatmap { overflow: hidden; display: flex; flex-direction: column; }
+.flake-section {
+  background: rgb(var(--v-theme-surface));
+  border: 1px solid rgba(127, 127, 127, 0.18);
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.flake-section-header {
+  padding: 8px 12px 4px;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.12);
+}
+.flake-leaderboard, .flake-heatmap { overflow: hidden; }
 .flake-table { flex: 1; overflow: auto; }
 .flake-heatmap-scroll { flex: 1; overflow: auto; }
-.flake-heatmap-table { border-collapse: collapse; font-size: 11px; }
+
+.flake-cells-hint {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.12);
+}
+
+.flake-heatmap-table { border-collapse: separate; border-spacing: 0; font-size: 11px; }
 .flake-heatmap-table th, .flake-heatmap-table td {
-  padding: 2px 4px;
-  border-right: 1px solid rgba(127, 127, 127, 0.2);
+  padding: 0;
   white-space: nowrap;
+}
+.flake-heatmap-table th {
+  padding: 2px 4px;
+  font-weight: 500;
 }
 .flake-heatmap-test-col {
   min-width: 240px; max-width: 360px;
+  padding: 2px 8px !important;
   overflow: hidden; text-overflow: ellipsis;
   position: sticky; left: 0;
-  background: var(--v-theme-surface, #fff);
+  background: rgb(var(--v-theme-surface));
   z-index: 1;
+  border-right: 1px solid rgba(127, 127, 127, 0.18);
 }
-.flake-heatmap-run-col { writing-mode: vertical-rl; transform: rotate(180deg); }
-.flake-cell { width: 14px; height: 14px; cursor: pointer; }
+.flake-heatmap-run-col {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  padding-bottom: 6px !important;
+  border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+
+/* Cells: padded td + inner colored div = visually distinct tiles rather than
+   a fused band. Hover lifts the tile to advertise clickability. */
+.flake-cell-td {
+  width: 16px;
+  height: 16px;
+  padding: 1px !important;
+  cursor: pointer;
+  position: relative;
+}
+.flake-cell {
+  width: 100%;
+  height: 100%;
+  border-radius: 3px;
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
 .flake-cell--pass    { background: #4caf50; }
 .flake-cell--fail    { background: #f44336; }
-.flake-cell--not_run { background: #555; opacity: 0.18; }
-.flake-cell--interrupted { box-shadow: inset 0 0 0 2px #f44336; background: transparent; }
-tr.selected td { background: rgba(33, 150, 243, 0.12); }
+.flake-cell--not_run { background: rgba(127, 127, 127, 0.25); }
+.flake-cell--interrupted {
+  box-shadow: inset 0 0 0 2px #f44336;
+  background: rgba(244, 67, 54, 0.12);
+}
+.flake-cell-td:hover { z-index: 2; }
+.flake-cell-td:hover .flake-cell {
+  transform: scale(1.45);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55), 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+.flake-cell-td:focus-visible { outline: 2px solid rgb(var(--v-theme-primary)); outline-offset: -1px; }
+
+tr.selected td { background: rgba(var(--v-theme-primary), 0.12); }
+
 .flake-empty { padding-top: 48px; }
+
+.flake-class-row {
+  display: grid;
+  grid-template-columns: 120px 1fr;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+}
 </style>

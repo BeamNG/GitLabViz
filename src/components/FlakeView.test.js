@@ -47,6 +47,7 @@ const mountFlakeView = async (settings) => {
       'v-container': true, 'v-card': true, 'v-card-title': true, 'v-card-text': true,
       'v-card-actions': true, 'v-text-field': true, 'v-alert': true,
       'v-data-table': true, 'v-chip': true,
+      'v-toolbar': true, 'v-switch': true, 'v-tooltip': true, 'v-dialog': true,
     } },
   })
   await flushPromises()
