@@ -167,6 +167,7 @@
             <v-btn :active="viewLayoutProxy === 'graph'" size="small" class="flex-grow-1 text-none" prepend-icon="mdi-graph-outline" title="Graph view (Shift+V)" @click="viewLayoutProxy = 'graph'">Graph</v-btn>
             <v-btn :active="viewLayoutProxy === 'list'" size="small" class="flex-grow-1 text-none" prepend-icon="mdi-format-list-bulleted-square" title="List view (Shift+V)" @click="viewLayoutProxy = 'list'">List</v-btn>
             <v-btn size="small" class="flex-grow-1 text-none" prepend-icon="mdi-monitor-dashboard" title="Open kiosk dashboard (Shift+K)" @click="onEnterKiosk">Kiosk</v-btn>
+            <v-btn size="small" class="flex-grow-1 text-none" prepend-icon="mdi-fire" title="Open flake history" @click="onEnterFlake">Flake</v-btn>
           </v-btn-group>
 
           <!-- Presets Section -->
@@ -400,7 +401,8 @@ const props = defineProps({
   onReflowGraph: { type: Function, required: true },
   onResetFilters: { type: Function, required: true },
   onShowSvnLog: { type: Function, required: true },
-  onEnterKiosk: { type: Function, required: true }
+  onEnterKiosk: { type: Function, required: true },
+  onEnterFlake: { type: Function, default: () => {} }
 })
 
 const emit = defineEmits(['update:vizMode', 'update:svnVizLimit', 'update:viewLayout'])

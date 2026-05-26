@@ -1267,6 +1267,10 @@
           </li>
         </ul>
       </section>
+
+      <section v-else-if="currentMode === 'flake'" class="k-flake">
+        <FlakeKioskPanel :settings="settings" />
+      </section>
     </main>
 
     <footer class="kiosk-foot">
@@ -1291,6 +1295,7 @@ import { getAssigneeNames } from '../utils/issueFields'
 import { getScopedLabelValue, isScopedLabel } from '../utils/scopedLabels'
 import { priorityBucket, PRIORITY_BUCKETS, PRIORITY_BUCKET_COLOR, PRIORITY_BUCKET_LABEL } from '../utils/priorityBucket'
 import { currentStatusOfRaw } from '../composables/useGraphDerivedState'
+import FlakeKioskPanel from './FlakeKioskPanel.vue'
 
 const props = defineProps({
   nodes: { type: Object, default: () => ({}) },
@@ -1324,7 +1329,8 @@ const ALL_MODES = [
   { id: 'closed',     label: 'Recently closed' },
   { id: 'leaderboard', label: 'Leaderboard' },
   { id: 'risks',          label: 'Ticket health' },
-  { id: 'broken',         label: 'Broken tickets' }
+  { id: 'broken',         label: 'Broken tickets' },
+  { id: 'flake',          label: 'Flake history' }
 ]
 
 const activeModes = computed(() => {

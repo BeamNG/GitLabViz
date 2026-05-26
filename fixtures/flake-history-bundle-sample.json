@@ -1,0 +1,289 @@
+{
+  "_comment": "Sample flake-history bundle (fictional data). See docs/flake-history-integration.md and docs/flake-history-bundle.v1.schema.json. Loaded by Vitest as the canonical example.",
+  "schema_version": 1,
+  "generated_at": "2026-05-21T15:00:00Z",
+  "generator": { "name": "example-bundler", "version": "1.0.0" },
+  "window": {
+    "retention_days": 14,
+    "oldest_run_uploaded_at": "2026-05-19T08:01:00Z",
+    "newest_run_uploaded_at": "2026-05-21T14:58:00Z"
+  },
+  "runs": [
+    {
+      "run_id": "5cb34a1f",
+      "suite": "smoketest",
+      "gfx_api": "dx12",
+      "quality": "highest",
+      "custom_profile_hash": null,
+      "source_revision": "175500",
+      "source_branch": "trunk",
+      "pipeline_id": 12340,
+      "pipeline_url": "https://gitlab.example.com/example-team/example-project/-/pipelines/12340",
+      "started_at": "2026-05-19T08:00:00Z",
+      "finished_at": "2026-05-19T08:55:00Z",
+      "duration_seconds": 3300,
+      "runner_id": "runner-03",
+      "status": "complete"
+    },
+    {
+      "run_id": "38cb3117",
+      "suite": "smoketest",
+      "gfx_api": "vulkan",
+      "quality": "highest",
+      "custom_profile_hash": null,
+      "source_revision": "175518",
+      "source_branch": "trunk",
+      "pipeline_id": 12345,
+      "pipeline_url": "https://gitlab.example.com/example-team/example-project/-/pipelines/12345",
+      "started_at": "2026-05-21T12:00:00Z",
+      "finished_at": "2026-05-21T12:59:00Z",
+      "duration_seconds": 3540,
+      "runner_id": "runner-03",
+      "status": "complete"
+    },
+    {
+      "run_id": "a882cfbe",
+      "suite": "nightly",
+      "gfx_api": "vulkan",
+      "quality": "highest",
+      "custom_profile_hash": null,
+      "source_revision": "175518",
+      "source_branch": "trunk",
+      "pipeline_id": 12346,
+      "pipeline_url": "https://gitlab.example.com/example-team/example-project/-/pipelines/12346",
+      "started_at": "2026-05-21T13:00:00Z",
+      "finished_at": null,
+      "duration_seconds": null,
+      "runner_id": "runner-04",
+      "status": "interrupted"
+    },
+    {
+      "run_id": "f5354954",
+      "suite": "nightly",
+      "gfx_api": "dx12",
+      "quality": "highest",
+      "custom_profile_hash": null,
+      "source_revision": "175518",
+      "source_branch": "trunk",
+      "pipeline_id": 12347,
+      "pipeline_url": "https://gitlab.example.com/example-team/example-project/-/pipelines/12347",
+      "started_at": "2026-05-21T14:00:00Z",
+      "finished_at": "2026-05-21T14:54:00Z",
+      "duration_seconds": 3240,
+      "runner_id": "runner-04",
+      "status": "complete"
+    }
+  ],
+  "tests": [
+    {
+      "test_id": "smoketest::vehicle_test.py::test_handbrake[etk800]",
+      "suite": "smoketest",
+      "name": "test_handbrake[etk800]",
+      "module": "vehicle_test.py",
+      "results_by_context": [
+        {
+          "gfx_api": "dx12",
+          "quality": "highest",
+          "custom_profile_hash": null,
+          "passing_run_ids": ["5cb34a1f"],
+          "failing_run_ids": [],
+          "pass_count": 1,
+          "fail_count": 0,
+          "pass_rate": 1.0,
+          "last_status": "pass",
+          "last_run_id": "5cb34a1f"
+        },
+        {
+          "gfx_api": "vulkan",
+          "quality": "highest",
+          "custom_profile_hash": null,
+          "passing_run_ids": ["38cb3117"],
+          "failing_run_ids": [],
+          "pass_count": 1,
+          "fail_count": 0,
+          "pass_rate": 1.0,
+          "last_status": "pass",
+          "last_run_id": "38cb3117"
+        }
+      ],
+      "overall": {
+        "pass_count": 2,
+        "fail_count": 0,
+        "pass_rate": 1.0,
+        "is_flaky": false,
+        "flake_classification": "stable"
+      }
+    },
+    {
+      "test_id": "smoketest::mission_test.py::test_mission[city_chase]",
+      "suite": "smoketest",
+      "name": "test_mission[city_chase]",
+      "module": "mission_test.py",
+      "results_by_context": [
+        {
+          "gfx_api": "dx12",
+          "quality": "highest",
+          "custom_profile_hash": null,
+          "passing_run_ids": [],
+          "failing_run_ids": ["5cb34a1f"],
+          "pass_count": 0,
+          "fail_count": 1,
+          "pass_rate": 0.0,
+          "last_status": "fail",
+          "last_run_id": "5cb34a1f"
+        },
+        {
+          "gfx_api": "vulkan",
+          "quality": "highest",
+          "custom_profile_hash": null,
+          "passing_run_ids": [],
+          "failing_run_ids": ["38cb3117"],
+          "pass_count": 0,
+          "fail_count": 1,
+          "pass_rate": 0.0,
+          "last_status": "fail",
+          "last_run_id": "38cb3117"
+        }
+      ],
+      "overall": {
+        "pass_count": 0,
+        "fail_count": 2,
+        "pass_rate": 0.0,
+        "is_flaky": false,
+        "flake_classification": "broken"
+      }
+    },
+    {
+      "test_id": "nightly::level_test.py::test_level[italy]",
+      "suite": "nightly",
+      "name": "test_level[italy]",
+      "module": "level_test.py",
+      "results_by_context": [
+        {
+          "gfx_api": "vulkan",
+          "quality": "highest",
+          "custom_profile_hash": null,
+          "passing_run_ids": ["38cb3117", "5cb34a1f"],
+          "failing_run_ids": ["a882cfbe"],
+          "pass_count": 2,
+          "fail_count": 1,
+          "pass_rate": 0.6667,
+          "last_status": "fail",
+          "last_run_id": "a882cfbe"
+        },
+        {
+          "gfx_api": "dx12",
+          "quality": "highest",
+          "custom_profile_hash": null,
+          "passing_run_ids": ["f5354954"],
+          "failing_run_ids": [],
+          "pass_count": 1,
+          "fail_count": 0,
+          "pass_rate": 1.0,
+          "last_status": "pass",
+          "last_run_id": "f5354954"
+        }
+      ],
+      "overall": {
+        "pass_count": 3,
+        "fail_count": 1,
+        "pass_rate": 0.75,
+        "is_flaky": true,
+        "flake_classification": "intermittent"
+      }
+    },
+    {
+      "test_id": "nightly::vehicle_test.py::test_drift[scintilla]",
+      "suite": "nightly",
+      "name": "test_drift[scintilla]",
+      "module": "vehicle_test.py",
+      "results_by_context": [
+        {
+          "gfx_api": "vulkan",
+          "quality": "highest",
+          "custom_profile_hash": null,
+          "passing_run_ids": ["38cb3117"],
+          "failing_run_ids": ["a882cfbe", "5cb34a1f"],
+          "pass_count": 1,
+          "fail_count": 2,
+          "pass_rate": 0.3333,
+          "last_status": "fail",
+          "last_run_id": "a882cfbe"
+        },
+        {
+          "gfx_api": "dx12",
+          "quality": "highest",
+          "custom_profile_hash": null,
+          "passing_run_ids": [],
+          "failing_run_ids": ["f5354954"],
+          "pass_count": 0,
+          "fail_count": 1,
+          "pass_rate": 0.0,
+          "last_status": "fail",
+          "last_run_id": "f5354954"
+        }
+      ],
+      "overall": {
+        "pass_count": 1,
+        "fail_count": 3,
+        "pass_rate": 0.25,
+        "is_flaky": true,
+        "flake_classification": "actively_flaky"
+      }
+    },
+    {
+      "test_id": "smoketest::visual_test.py::test_visual[main_menu]",
+      "suite": "smoketest",
+      "name": "test_visual[main_menu]",
+      "module": "visual_test.py",
+      "results_by_context": [
+        {
+          "gfx_api": "vulkan",
+          "quality": "highest",
+          "custom_profile_hash": null,
+          "passing_run_ids": ["38cb3117"],
+          "failing_run_ids": [],
+          "pass_count": 1,
+          "fail_count": 0,
+          "pass_rate": 1.0,
+          "last_status": "pass",
+          "last_run_id": "38cb3117"
+        }
+      ],
+      "overall": {
+        "pass_count": 1,
+        "fail_count": 0,
+        "pass_rate": 1.0,
+        "is_flaky": false,
+        "flake_classification": "stable"
+      }
+    },
+    {
+      "test_id": "nightly::mission_test.py::test_mission[airport_delivery]",
+      "suite": "nightly",
+      "name": "test_mission[airport_delivery]",
+      "module": "mission_test.py",
+      "results_by_context": [
+        {
+          "gfx_api": "dx12",
+          "quality": "highest",
+          "custom_profile_hash": null,
+          "passing_run_ids": ["f5354954", "5cb34a1f"],
+          "failing_run_ids": [],
+          "pass_count": 2,
+          "fail_count": 0,
+          "pass_rate": 1.0,
+          "last_status": "pass",
+          "last_run_id": "f5354954"
+        }
+      ],
+      "overall": {
+        "pass_count": 2,
+        "fail_count": 0,
+        "pass_rate": 1.0,
+        "is_flaky": false,
+        "flake_classification": "stable"
+      }
+    }
+  ]
+}

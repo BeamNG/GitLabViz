@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://beamng.github.io/GitLabViz/schemas/flake-history-bundle.v1.schema.json",
+  "title": "flake-history-bundle.v1",
+  "description": "Public bundle shape consumed by GitLabViz's Flake History view. The bundle is the only contract between producer and viewer; producers may differ in their internal stats representation as long as the published bundle matches this schema. Additive fields are permitted within v1; breaking changes bump to v2 and viewers will refuse to read v2 until upgraded.",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "runs", "tests"],
+  "additionalProperties": true,
+  "properties": {
+    "_comment": { "type": "string", "description": "Optional free-text description; ignored by consumers." },
+    "schema_version": {
+      "type": "integer",
+      "const": 1,
+      "description": "MUST be 1 for this schema. Bumped to 2 on a breaking change."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp when the bundle was produced. ISO 8601, e.g. \"2026-05-21T15:00:00Z\"."
+    },
+    "generator": {
+      "type": "object",
+      "description": "Identifies the tool that produced the bundle. Diagnostic only.",
+      "properties": {
+        "name":    { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "additionalProperties": true
+    },
+    "window": {
+      "type": "object",
+      "description": "Time window covered by the bundle.",
+      "properties": {
+        "retention_days": { "type": "integer", "minimum": 1 },
+        "oldest_run_uploaded_at": { "type": ["string", "null"], "format": "date-time" },
+        "newest_run_uploaded_at": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "additionalProperties": true
+    },
+    "runs": {
+      "type": "array",
+      "description": "One entry per distinct test-suite run. Test cells reference these by run_id.",
+      "items": { "$ref": "#/$defs/Run" }
+    },
+    "tests": {
+      "type": "array",
+      "description": "One entry per distinct test, with per-context cell aggregates.",
+      "items": { "$ref": "#/$defs/Test" }
+    }
+  },
+
+  "$defs": {
+    "Run": {
+      "type": "object",
+      "required": ["run_id", "status"],
+      "additionalProperties": true,
+      "properties": {
+        "run_id": { "type": "string", "description": "Producer-stable run identifier. Referenced from tests[].results_by_context[].passing_run_ids / failing_run_ids." },
+        "suite": { "type": ["string", "null"] },
+        "gfx_api": { "type": ["string", "null"], "description": "Graphics backend label, e.g. \"dx12\" or \"vulkan\"." },
+        "quality": { "type": ["string", "null"] },
+        "custom_profile_hash": { "type": ["string", "null"] },
+        "source_revision": { "type": ["string", "null"], "description": "VCS revision under test (string so SVN revisions and git SHAs both fit)." },
+        "source_branch": { "type": ["string", "null"] },
+        "pipeline_id": { "type": ["integer", "null"] },
+        "pipeline_url": { "type": ["string", "null"], "format": "uri", "description": "Optional. Producers not using GitLab CI may omit; viewer renders a non-clickable cell." },
+        "started_at": { "type": ["string", "null"], "format": "date-time" },
+        "finished_at": { "type": ["string", "null"], "format": "date-time" },
+        "duration_seconds": { "type": ["integer", "null"], "minimum": 0 },
+        "runner_id": { "type": ["string", "null"] },
+        "status": {
+          "type": "string",
+          "enum": ["complete", "interrupted", "unknown"],
+          "description": "complete: every test in the suite ran to completion. interrupted: suite was killed mid-run (cells reference a partial result set). unknown: producer could not determine."
+        }
+      }
+    },
+
+    "Test": {
+      "type": "object",
+      "required": ["test_id", "name", "results_by_context", "overall"],
+      "additionalProperties": true,
+      "properties": {
+        "test_id": { "type": "string", "description": "Stable primary key. Conventionally <suite>::<module>::<test_name>, but consumers MUST treat as opaque." },
+        "suite": { "type": ["string", "null"] },
+        "name": { "type": "string" },
+        "module": { "type": ["string", "null"] },
+        "results_by_context": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ContextResult" },
+          "description": "One entry per (gfx_api, quality, custom_profile_hash) under which this test was observed."
+        },
+        "overall": { "$ref": "#/$defs/OverallStats" }
+      }
+    },
+
+    "ContextResult": {
+      "type": "object",
+      "required": ["passing_run_ids", "failing_run_ids"],
+      "additionalProperties": true,
+      "properties": {
+        "gfx_api": { "type": ["string", "null"] },
+        "quality": { "type": ["string", "null"] },
+        "custom_profile_hash": { "type": ["string", "null"] },
+        "passing_run_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "run_ids in which this test passed, in this context."
+        },
+        "failing_run_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "run_ids in which this test failed, in this context."
+        },
+        "pass_count": { "type": "integer", "minimum": 0 },
+        "fail_count": { "type": "integer", "minimum": 0 },
+        "pass_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "last_status": { "type": ["string", "null"], "enum": ["pass", "fail", null] },
+        "last_run_id": { "type": ["string", "null"] }
+      }
+    },
+
+    "OverallStats": {
+      "type": "object",
+      "required": ["pass_count", "fail_count", "is_flaky", "flake_classification"],
+      "additionalProperties": true,
+      "properties": {
+        "pass_count": { "type": "integer", "minimum": 0 },
+        "fail_count": { "type": "integer", "minimum": 0 },
+        "pass_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "is_flaky": { "type": "boolean" },
+        "flake_classification": {
+          "type": "string",
+          "enum": ["stable", "intermittent", "actively_flaky", "broken"],
+          "description": "Producer-derived label. Viewer treats as opaque (uses it only for grouping and color). See docs/flake-history-integration.md for recommended thresholds."
+        }
+      }
+    }
+  }
+}

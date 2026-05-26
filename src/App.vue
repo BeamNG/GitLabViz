@@ -51,6 +51,7 @@
       :on-reset-filters="resetFilters"
       :on-show-svn-log="openSvnLog"
       :on-enter-kiosk="enterKiosk"
+      :on-enter-flake="enterFlake"
     />
 
     <!-- <v-app-bar color="primary" density="compact" elevation="1">
@@ -137,6 +138,11 @@
         @update:view-param="setView"
         @apply-filter="applyKioskFilter"
         @open-config="configInitialTab = 'kiosk'; activePage = 'config'"
+        @close="activePage = 'main'"
+      />
+      <FlakeView
+        v-else-if="activePage === 'flake'"
+        :settings="settings"
         @close="activePage = 'main'"
       />
       <v-container v-else fluid class="pa-0 fill-height position-relative d-flex flex-column">
@@ -289,6 +295,7 @@ import AppSidebar from './components/AppSidebar.vue'
 import ConfigPage from './components/ConfigPage.vue'
 import ChatToolsPage from './components/ChatToolsPage.vue'
 import KioskPage from './components/KioskPage.vue'
+import FlakeView from './components/FlakeView.vue'
 import SvnLogDialog from './components/SvnLogDialog.vue'
 import { useAppTheme } from './composables/useAppTheme'
 import { useHashRouting } from './composables/useHashRouting'
@@ -324,7 +331,7 @@ const svnUrl = computed({
   set: v => { if (primarySvnRepo.value) primarySvnRepo.value.url = v }
 })
 
-const activePage = ref('main') // 'main' | 'config' | 'chattools' | 'kiosk'
+const activePage = ref('main') // 'main' | 'config' | 'chattools' | 'kiosk' | 'flake'
 const configInitialTab = ref('gitlab')
 // Remember where the user came from so the config back-arrow returns there
 // (e.g. kiosk → config → back goes to kiosk, not main).
@@ -338,6 +345,7 @@ const kioskMode = ref('today')
 // drifted last session. URL-based entries (e.g. `#/kiosk/burndown/…`) still take
 // effect because the routing parser sets `kioskMode` after this point.
 const enterKiosk = () => { kioskMode.value = ''; activePage.value = 'kiosk' }
+const enterFlake = () => { activePage.value = 'flake' }
 // Main-page layout (graph / list) — mirrored to the URL path so it appears as
 // the first segment (e.g. `#/list/q=foo`) rather than as a kv param.
 const mainLayout = computed({

@@ -134,6 +134,11 @@ Organize the chaos.
 - **Single page application**: One HTML page, no server needed
 
 
+### 🔥 Flake History (optional integration)
+
+GitLabViz can also render a heatmap and leaderboard of your test suite's flake history when a compatible JSON bundle is published as a GitLab Generic Package. Bring your own bundler that emits the public [`flake-history-bundle.v1`](docs/flake-history-bundle.v1.schema.json) shape and point the **Flake History source** settings panel at the package — see [docs/flake-history-integration.md](docs/flake-history-integration.md) for the schema, fetch contract, and a copy-paste `curl` example for a minimal producer.
+
+
 ## Getting Started
 
 Download the html from above and open it :)

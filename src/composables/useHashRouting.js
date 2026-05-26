@@ -14,6 +14,7 @@ export function useHashRouting ({ activePage, configInitialTab, kioskMode, mainL
   // - #/kiosk                                      -> kiosk (default mode)
   // - #/kiosk/workload                             -> kiosk on a specific mode
   // - #/kiosk/today/paused=1/cycle=10              -> kiosk + mode + kv args (paused/cycle/refresh)
+  // - #/flake                                      -> flake history view
   let isApplyingHash = false
   // Raw "key=value/key=value" portion that follows the page on main view (or trailing on other pages).
   const viewParam = ref('')
@@ -43,6 +44,9 @@ export function useHashRouting ({ activePage, configInitialTab, kioskMode, mainL
       page = 'kiosk'
       if (parts[1] && !isKv(parts[1])) tab = String(parts[1])
       viewParts = parts.slice(tab ? 2 : 1).filter(isKv)
+    } else if (parts[0] === 'flake') {
+      page = 'flake'
+      viewParts = parts.slice(1).filter(isKv)
     } else if (parts[0] === 'list' || parts[0] === 'graph') {
       // Main page with explicit layout. 'graph' is the default but accepted
       // explicitly so users can paste either form.
@@ -60,6 +64,7 @@ export function useHashRouting ({ activePage, configInitialTab, kioskMode, mainL
     const p = page === 'config' ? 'config'
       : page === 'chattools' ? 'chattools'
       : page === 'kiosk' ? 'kiosk'
+      : page === 'flake' ? 'flake'
       : 'main'
     const t = String(tab || '').trim()
     const v = String(view || '').trim()
@@ -74,6 +79,7 @@ export function useHashRouting ({ activePage, configInitialTab, kioskMode, mainL
     }
     if (p === 'config') return `#/config${t ? `/${encodeURIComponent(t)}` : ''}${vTail}`
     if (p === 'kiosk')  return `#/kiosk${t ? `/${encodeURIComponent(t)}` : ''}${vTail}`
+    if (p === 'flake')  return `#/flake${vTail}`
     return `#/${p}${vTail}`
   }
 
@@ -89,6 +95,8 @@ export function useHashRouting ({ activePage, configInitialTab, kioskMode, mainL
       } else if (page === 'kiosk') {
         if (tab && kioskMode) kioskMode.value = tab
         activePage.value = 'kiosk'
+      } else if (page === 'flake') {
+        activePage.value = 'flake'
       } else {
         // Main page — `tab` is the layout ('graph' / 'list'). Only update the
         // ref when the URL carried an explicit segment; otherwise leave the

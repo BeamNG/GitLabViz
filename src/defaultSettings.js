@@ -13,6 +13,16 @@ export const defaultSettings = () => ({
     svnRepos: [{ id: 'default', url: '', enabled: true }],
     gitlabClosedDays: 180,
 
+    // Flake history (optional). Project id/path + package name configured by
+    // the user; URL + token reused from the GitLab fields above. Empty
+    // projectId disables the view entirely (renders a not-configured panel
+    // pointing at the docs).
+    flakeHistory: {
+      projectId: '',
+      packageName: 'flake-history',
+      refreshMinutes: 60,
+    },
+
     // ChatTools (Mattermost) assimilation
     mattermostUrl: '',
     mattermostToken: '',
@@ -124,7 +134,11 @@ export const defaultSettings = () => ({
         workload: true, breakdown: true, hotLabels: true,
         milestones: true, aging: true,
         activity: true, closed: true, leaderboard: true,
-        risks: true, broken: true
+        risks: true, broken: true,
+        // Opt-in: false by default so existing users don't suddenly see a
+        // "Not configured" panel in their kiosk rotation. The flake settings
+        // panel under the main app turns this on once a bundle is wired up.
+        flake: false
       },
       // Per-mode tuning. Modes without an entry have no options yet.
       modeConfig: {

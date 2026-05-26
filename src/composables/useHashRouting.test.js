@@ -74,5 +74,48 @@ describe('useHashRouting', () => {
 
     replaceSpy.mockRestore()
   })
+
+  it('navigates to flake page and does not bounce activePage back to main', async () => {
+    window.location.hash = ''
+    const activePage = ref('main')
+    const configInitialTab = ref('gitlab')
+
+    const Cmp = defineComponent({
+      setup () {
+        useHashRouting({ activePage, configInitialTab })
+        return { activePage }
+      },
+      template: '<div />'
+    })
+
+    mount(Cmp)
+    await nextTick()
+
+    activePage.value = 'flake'
+    await nextTick()
+    await nextTick()
+
+    expect(activePage.value).toBe('flake')
+    expect(window.location.hash).toBe('#/flake')
+  })
+
+  it('syncs flake page from hash on mount', async () => {
+    window.location.hash = '#/flake'
+    const activePage = ref('main')
+    const configInitialTab = ref('gitlab')
+
+    const Cmp = defineComponent({
+      setup () {
+        useHashRouting({ activePage, configInitialTab })
+        return { activePage }
+      },
+      template: '<div />'
+    })
+
+    mount(Cmp)
+    await nextTick()
+
+    expect(activePage.value).toBe('flake')
+  })
 })
 
