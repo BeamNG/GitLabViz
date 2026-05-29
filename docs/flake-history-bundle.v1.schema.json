@@ -64,6 +64,7 @@
         "source_branch": { "type": ["string", "null"] },
         "pipeline_id": { "type": ["integer", "null"] },
         "pipeline_url": { "type": ["string", "null"], "format": "uri", "description": "Optional. Producers not using GitLab CI may omit; viewer renders a non-clickable cell." },
+        "artifacts_url": { "type": ["string", "null"], "format": "uri", "description": "Optional. Direct download URL for this run's CI artifacts. When present the viewer makes the heatmap cell download artifacts on click; otherwise the cell falls back to opening pipeline_url. Producers should omit (or null) it once artifacts have expired." },
         "started_at": { "type": ["string", "null"], "format": "date-time" },
         "finished_at": { "type": ["string", "null"], "format": "date-time" },
         "duration_seconds": { "type": ["integer", "null"], "minimum": 0 },

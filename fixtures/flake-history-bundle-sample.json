@@ -67,6 +67,7 @@
       "source_branch": "trunk",
       "pipeline_id": 12347,
       "pipeline_url": "https://gitlab.example.com/example-team/example-project/-/pipelines/12347",
+      "artifacts_url": "https://gitlab.example.com/example-team/example-project/-/jobs/45678/artifacts/download",
       "started_at": "2026-05-21T14:00:00Z",
       "finished_at": "2026-05-21T14:54:00Z",
       "duration_seconds": 3240,
