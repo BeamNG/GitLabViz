@@ -7,6 +7,13 @@ import { normalizeGitLabApiBaseUrl } from './gitlab'
 // silently displays as v1.
 export const SUPPORTED_SCHEMA_VERSION = 1
 export const DEFAULT_PACKAGE_NAME = 'flake-history'
+
+// How long CI keeps job artifacts before they expire. The bundle does not
+// carry a per-run expiry, so the heatmap derives "are the artifacts still
+// downloadable?" from run age: a run older than this has dead artifacts and is
+// rendered in a darker shade. Keep this in sync with the CI artifact:expire_in
+// policy if it changes — it's the single place the viewer assumes a value.
+export const ARTIFACT_RETENTION_DAYS = 30
 const BUNDLE_FILENAME = 'bundle.json'
 const CACHE_KEY = 'flake_bundle'
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -214,17 +221,49 @@ export const selectFlakeLeaderboard = (bundle, {
 }
 
 /**
+ * Suite-independent grouping key for a test. The same test (e.g.
+ * test_level[west_coast_usa]) is run by several flavours — smoketest,
+ * continuous, nightly — and the producer encodes the flavour into the
+ * test_id (<suite>::<module>::<name>), so it arrives as several distinct
+ * tests[] entries. They are the *same* test; the heatmap collapses them onto
+ * one row keyed by (module, name) so the flavours line up column-for-column
+ * instead of stacking three near-identical rows.
+ */
+const heatmapGroupKey = (t) => `${t.module || ''}::${t.name || ''}`
+
+/**
+ * True when a run's CI artifacts have almost certainly expired, based on run
+ * age vs ARTIFACT_RETENTION_DAYS. A run with no parseable timestamp is treated
+ * as expired (we can't prove the artifacts are alive). Used to dim heatmap
+ * cells whose pipeline artifacts can no longer be downloaded.
+ */
+const runArtifactsExpired = (run, now, retentionDays) => {
+  const base = run.finished_at || run.started_at
+  const t = base ? Date.parse(base) : NaN
+  if (!Number.isFinite(t)) return true
+  return (now - t) > retentionDays * 86_400_000
+}
+
+/**
  * Heatmap projection: tests × runs (most recent rightmost), cells = 'pass' |
  * 'fail' | 'not_run'. Runs filtered to the facet; tests with no observation
  * in the filtered run window are dropped.
+ *
+ * Same-test rows are grouped across suites (see heatmapGroupKey). Each row's
+ * test_id is the group key and carries member_ids — the original per-suite
+ * test_ids — so leaderboard↔heatmap selection still cross-links.
+ *
+ * `now` is injectable so artifact-expiry derivation is deterministic in tests.
  */
 export const selectHeatmapMatrix = (bundle, {
   suite = null,
   gfxApi = null,
   quality = null,
   lastNRuns = 30,
+  now = Date.now(),
+  artifactRetentionDays = ARTIFACT_RETENTION_DAYS,
 } = {}) => {
-  if (!bundle) return { runs: [], tests: [], cells: {} }
+  if (!bundle) return { runs: [], tests: [], cells: {}, interruptedRunIds: new Set(), expiredRunIds: new Set() }
   const facet = { suite, gfxApi, quality }
   const filteredRuns = (bundle.runs || [])
     .filter(r => matchesFacet(r, facet))
@@ -234,34 +273,50 @@ export const selectHeatmapMatrix = (bundle, {
   const runIds = new Set(filteredRuns.map(r => r.run_id))
   const interruptedRunIds = new Set(filteredRuns
     .filter(r => r.status === 'interrupted').map(r => r.run_id))
+  const expiredRunIds = new Set(filteredRuns
+    .filter(r => runArtifactsExpired(r, now, artifactRetentionDays))
+    .map(r => r.run_id))
   const runIdToIdx = new Map(filteredRuns.map((r, i) => [r.run_id, i]))
 
-  const tests = []
-  const cells = {} // test_id -> Array<'pass'|'fail'|'not_run'>
+  // group_key -> { meta, row, members, touched }
+  const groups = new Map()
   for (const t of bundle.tests || []) {
-    const row = new Array(filteredRuns.length).fill('not_run')
-    let touched = false
+    const key = heatmapGroupKey(t)
+    let g = groups.get(key)
+    if (!g) {
+      g = {
+        test_id: key,
+        name: t.name,
+        module: t.module,
+        member_ids: [],
+        row: new Array(filteredRuns.length).fill('not_run'),
+        touched: false,
+      }
+      groups.set(key, g)
+    }
+    if (t.test_id && !g.member_ids.includes(t.test_id)) g.member_ids.push(t.test_id)
     for (const ctx of t.results_by_context || []) {
       for (const rid of ctx.passing_run_ids || []) {
         if (!runIds.has(rid)) continue
-        row[runIdToIdx.get(rid)] = 'pass'
-        touched = true
+        g.row[runIdToIdx.get(rid)] = 'pass'
+        g.touched = true
       }
+      // Failing after passing: a fail in any member wins for that column.
       for (const rid of ctx.failing_run_ids || []) {
         if (!runIds.has(rid)) continue
-        row[runIdToIdx.get(rid)] = 'fail'
-        touched = true
+        g.row[runIdToIdx.get(rid)] = 'fail'
+        g.touched = true
       }
     }
-    if (!touched) continue
-    tests.push({
-      test_id: t.test_id,
-      name: t.name,
-      module: t.module,
-      classification: t.overall?.flake_classification || null,
-    })
-    cells[t.test_id] = row
   }
 
-  return { runs: filteredRuns, tests, cells, interruptedRunIds }
+  const tests = []
+  const cells = {} // group_key -> Array<'pass'|'fail'|'not_run'>
+  for (const g of groups.values()) {
+    if (!g.touched) continue
+    tests.push({ test_id: g.test_id, name: g.name, module: g.module, member_ids: g.member_ids })
+    cells[g.test_id] = g.row
+  }
+
+  return { runs: filteredRuns, tests, cells, interruptedRunIds, expiredRunIds }
 }

@@ -228,10 +228,10 @@ describe('selectHeatmapMatrix', () => {
 
   it('cells default to not_run when a test was absent in that run', () => {
     const m = selectHeatmapMatrix(sampleBundle, { lastNRuns: 10 })
-    // smoketest::visual_test.py::test_visual[main_menu] only ran in the
-    // vulkan smoketest run 38cb3117 — so every other column for that test
-    // must read "not_run".
-    const tid = 'smoketest::visual_test.py::test_visual[main_menu]'
+    // visual_test.py::test_visual[main_menu] only ran in the vulkan smoketest
+    // run 38cb3117 — so every other column for that test must read "not_run".
+    // Rows are keyed by the suite-independent group key (module::name).
+    const tid = 'visual_test.py::test_visual[main_menu]'
     const row = m.cells[tid]
     const runIdx = m.runs.findIndex(r => r.run_id === '38cb3117')
     expect(row[runIdx]).toBe('pass')
@@ -248,5 +248,55 @@ describe('selectHeatmapMatrix', () => {
     for (const tid of Object.keys(m.cells)) {
       expect(m.cells[tid].length).toBe(2)
     }
+  })
+
+  it('groups the same test across suites into one row spanning all run columns', () => {
+    // test_level[west_coast_usa] runs under three flavours; the producer encodes
+    // the flavour into test_id, so it arrives as three tests[] entries. The
+    // heatmap must collapse them onto a single row keyed by module::name, with
+    // the pass/fail outcome of each flavour's run lined up on its own column.
+    const bundle = {
+      schema_version: 1,
+      runs: [
+        { run_id: 's1', suite: 'smoketest',  gfx_api: 'vulkan', status: 'complete', started_at: '2026-05-20T00:00:00Z' },
+        { run_id: 'c1', suite: 'continuous', gfx_api: 'vulkan', status: 'complete', started_at: '2026-05-20T01:00:00Z' },
+        { run_id: 'n1', suite: 'nightly',    gfx_api: 'vulkan', status: 'complete', started_at: '2026-05-20T02:00:00Z' },
+      ],
+      tests: [
+        { test_id: 'smoketest::level_test.py::test_level[west_coast_usa]',  name: 'test_level[west_coast_usa]', module: 'level_test.py', suite: 'smoketest',
+          overall: {}, results_by_context: [{ passing_run_ids: ['s1'], failing_run_ids: [] }] },
+        { test_id: 'continuous::level_test.py::test_level[west_coast_usa]', name: 'test_level[west_coast_usa]', module: 'level_test.py', suite: 'continuous',
+          overall: {}, results_by_context: [{ passing_run_ids: [], failing_run_ids: ['c1'] }] },
+        { test_id: 'nightly::level_test.py::test_level[west_coast_usa]',    name: 'test_level[west_coast_usa]', module: 'level_test.py', suite: 'nightly',
+          overall: {}, results_by_context: [{ passing_run_ids: ['n1'], failing_run_ids: [] }] },
+      ],
+    }
+    const m = selectHeatmapMatrix(bundle, { lastNRuns: 10, now: Date.parse('2026-05-21T00:00:00Z') })
+    expect(m.tests.length).toBe(1)
+    const row = m.tests[0]
+    expect(row.test_id).toBe('level_test.py::test_level[west_coast_usa]')
+    expect(row.member_ids).toHaveLength(3)
+    // Columns are ordered by started_at: smoketest pass, continuous fail, nightly pass.
+    expect(m.cells[row.test_id]).toEqual(['pass', 'fail', 'pass'])
+  })
+
+  it('marks runs whose artifacts have expired (older than retention or undated)', () => {
+    const now = Date.parse('2026-06-30T00:00:00Z')
+    const bundle = {
+      schema_version: 1,
+      runs: [
+        { run_id: 'old',   suite: 's', gfx_api: 'v', status: 'complete', started_at: '2026-05-01T00:00:00Z', finished_at: '2026-05-01T01:00:00Z' },
+        { run_id: 'fresh', suite: 's', gfx_api: 'v', status: 'complete', started_at: '2026-06-28T00:00:00Z', finished_at: '2026-06-28T01:00:00Z' },
+        { run_id: 'undated', suite: 's', gfx_api: 'v', status: 'complete' },
+      ],
+      tests: [
+        { test_id: 's::m.py::t', name: 't', module: 'm.py', suite: 's', overall: {},
+          results_by_context: [{ passing_run_ids: ['old', 'fresh', 'undated'], failing_run_ids: [] }] },
+      ],
+    }
+    const m = selectHeatmapMatrix(bundle, { lastNRuns: 10, now, artifactRetentionDays: 30 })
+    expect(m.expiredRunIds.has('old')).toBe(true)      // ~60 days old
+    expect(m.expiredRunIds.has('fresh')).toBe(false)   // 2 days old
+    expect(m.expiredRunIds.has('undated')).toBe(true)  // no timestamp -> assume expired
   })
 })

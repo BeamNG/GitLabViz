@@ -177,7 +177,15 @@
         </header>
         <div class="flake-cells-hint">
           <v-icon icon="mdi-cursor-default-click-outline" size="14" class="mr-1" />
-          Click any cell to open the pipeline where that result was recorded.
+          Click any cell to download that run's artifacts — or open its pipeline when artifacts have expired.
+        </div>
+        <div class="flake-legend" aria-label="Heatmap legend">
+          <span class="flake-legend-item"><i class="flake-cell flake-cell--pass" />Pass · artifacts live</span>
+          <span class="flake-legend-item"><i class="flake-cell flake-cell--pass flake-cell--expired" />Pass · expired</span>
+          <span class="flake-legend-item"><i class="flake-cell flake-cell--fail" />Fail · artifacts live</span>
+          <span class="flake-legend-item"><i class="flake-cell flake-cell--fail flake-cell--expired" />Fail · expired</span>
+          <span class="flake-legend-item"><i class="flake-cell flake-cell--not_run" />Not run</span>
+          <span class="flake-legend-item"><i class="flake-cell flake-cell--fail flake-cell--interrupted" />Interrupted run</span>
         </div>
         <div class="flake-heatmap-scroll">
           <table class="flake-heatmap-table">
@@ -195,20 +203,21 @@
               <tr
                 v-for="t in heatmap.tests"
                 :key="t.test_id"
-                :class="{ selected: selectedTestIds.includes(t.test_id) }"
-                @click="selectedTestIds = [t.test_id]"
+                :class="{ selected: isRowSelected(t) }"
+                @click="selectedTestIds = t.member_ids"
               >
                 <td class="flake-heatmap-test-col">
-                  <span :title="t.test_id">{{ t.name }}</span>
+                  <span :title="t.member_ids.join('\n')">{{ t.name }}</span>
                 </td>
                 <td
                   v-for="(cell, i) in heatmap.cells[t.test_id]" :key="i"
                   class="flake-cell-td"
                   :title="cellTooltip(t, heatmap.runs[i], cell)"
-                  @click.stop="openPipeline(heatmap.runs[i])"
+                  @click.stop="openArtifactOrPipeline(heatmap.runs[i])"
                 >
                   <div
                     :class="['flake-cell', `flake-cell--${cell}`,
+                             heatmap.expiredRunIds.has(heatmap.runs[i].run_id) ? 'flake-cell--expired' : '',
                              heatmap.interruptedRunIds.has(heatmap.runs[i].run_id) ? 'flake-cell--interrupted' : '']"
                   ></div>
                 </td>
@@ -327,10 +336,14 @@ const leaderboard = computed(() => {
 })
 
 const heatmap = computed(() => {
-  if (!bundle.value) return { runs: [], tests: [], cells: {}, interruptedRunIds: new Set() }
+  if (!bundle.value) return { runs: [], tests: [], cells: {}, interruptedRunIds: new Set(), expiredRunIds: new Set() }
   const raw = selectHeatmapMatrix(bundle.value, { ...facet.value, lastNRuns: lastNRuns.value })
   return { ...raw, tests: raw.tests.filter(matchesSearch) }
 })
+
+// A grouped heatmap row is selected when any of its member test_ids (the
+// original per-suite ids the leaderboard still emits) is in the selection.
+const isRowSelected = (t) => (t.member_ids || []).some(id => selectedTestIds.value.includes(id))
 
 const leaderboardHeaders = [
   { title: 'Test', key: 'name' },
@@ -354,10 +367,22 @@ const formatTickLabel = (iso) => {
   return iso.slice(5, 10) // MM-DD
 }
 const runTooltip = (r) => `${r.suite || '?'} • ${r.gfx_api || '?'} • ${r.runner_id || '?'} • ${r.started_at || ''} • status=${r.status}`
-const cellTooltip = (t, r, cell) => `${t.name}\nrun: ${r.run_id}\n${cell}${r.status === 'interrupted' ? ' (run was interrupted)' : ''}`
+const cellTooltip = (t, r, cell) => {
+  const expired = heatmap.value.expiredRunIds.has(r.run_id)
+  const artifacts = r.artifacts_url ? 'artifacts available' : (expired ? 'artifacts expired' : 'artifacts unknown')
+  return `${t.name}\nrun: ${r.run_id}\n${cell} • ${artifacts}${r.status === 'interrupted' ? ' (run was interrupted)' : ''}`
+}
 
 const openPipeline = (r) => {
   if (r?.pipeline_url) window.open(r.pipeline_url, '_blank', 'noopener')
+}
+
+// Click priority: download the run's artifacts when the producer supplied a
+// direct URL; otherwise fall back to opening the pipeline (the old behavior),
+// which is also where expired-artifact runs land.
+const openArtifactOrPipeline = (r) => {
+  if (r?.artifacts_url) { window.open(r.artifacts_url, '_blank', 'noopener'); return }
+  openPipeline(r)
 }
 
 const isConfigured = () => Boolean(
@@ -468,6 +493,24 @@ onBeforeUnmount(() => { if (refreshTimer) clearInterval(refreshTimer) })
   border-bottom: 1px solid rgba(127, 127, 127, 0.12);
 }
 
+.flake-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 16px;
+  padding: 6px 12px;
+  font-size: 11px;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+  border-bottom: 1px solid rgba(127, 127, 127, 0.12);
+}
+.flake-legend-item { display: inline-flex; align-items: center; }
+.flake-legend-item .flake-cell {
+  width: 12px; height: 12px;
+  margin-right: 5px;
+  flex: 0 0 auto;
+  transition: none;
+}
+
 .flake-heatmap-table { border-collapse: separate; border-spacing: 0; font-size: 11px; }
 .flake-heatmap-table th, .flake-heatmap-table td {
   padding: 0;
@@ -511,6 +554,10 @@ onBeforeUnmount(() => { if (refreshTimer) clearInterval(refreshTimer) })
 .flake-cell--pass    { background: #4caf50; }
 .flake-cell--fail    { background: #f44336; }
 .flake-cell--not_run { background: rgba(127, 127, 127, 0.25); }
+/* Expired artifacts: same hue, darker — the result still counts, but the
+   pipeline's downloadable artifacts are gone. */
+.flake-cell--pass.flake-cell--expired { background: #1b5e20; }
+.flake-cell--fail.flake-cell--expired { background: #7f1d1d; }
 .flake-cell--interrupted {
   box-shadow: inset 0 0 0 2px #f44336;
   background: rgba(244, 67, 54, 0.12);

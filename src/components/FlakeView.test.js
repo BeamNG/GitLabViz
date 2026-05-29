@@ -106,4 +106,20 @@ describe('FlakeView', () => {
     expect(wrapper.vm.errorKind).toBe('error')
     expect(wrapper.vm.errorMessage).toContain('boom')
   })
+
+  it('clicking a cell downloads artifacts when present, else opens the pipeline', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    }))
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/download', pipeline_url: 'https://pipe' })
+    expect(open).toHaveBeenLastCalledWith('https://art/download', '_blank', 'noopener')
+
+    wrapper.vm.openArtifactOrPipeline({ pipeline_url: 'https://pipe' })
+    expect(open).toHaveBeenLastCalledWith('https://pipe', '_blank', 'noopener')
+
+    open.mockRestore()
+  })
 })
