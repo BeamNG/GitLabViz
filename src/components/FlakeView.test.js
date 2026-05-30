@@ -107,17 +107,23 @@ describe('FlakeView', () => {
     expect(wrapper.vm.errorMessage).toContain('boom')
   })
 
-  it('clicking a cell downloads artifacts when present, else opens the pipeline', async () => {
+  it('clicking a cell downloads live artifacts, else opens the pipeline', async () => {
     nextResult = sampleBundle
     const wrapper = await mountFlakeView(baseSettings({
       flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
     }))
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
 
-    wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/download', pipeline_url: 'https://pipe' })
+    // Live artifacts (not expired) -> download.
+    wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/download', pipeline_url: 'https://pipe' }, false)
     expect(open).toHaveBeenLastCalledWith('https://art/download', '_blank', 'noopener')
 
-    wrapper.vm.openArtifactOrPipeline({ pipeline_url: 'https://pipe' })
+    // Expired -> pipeline, even though the run still carries an artifacts_url.
+    wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/download', pipeline_url: 'https://pipe' }, true)
+    expect(open).toHaveBeenLastCalledWith('https://pipe', '_blank', 'noopener')
+
+    // No artifacts_url -> pipeline.
+    wrapper.vm.openArtifactOrPipeline({ pipeline_url: 'https://pipe' }, false)
     expect(open).toHaveBeenLastCalledWith('https://pipe', '_blank', 'noopener')
 
     open.mockRestore()

@@ -213,7 +213,7 @@
                   v-for="(cell, i) in heatmap.cells[t.test_id]" :key="i"
                   class="flake-cell-td"
                   :title="cellTooltip(t, heatmap.runs[i], cell)"
-                  @click.stop="openArtifactOrPipeline(heatmap.runs[i])"
+                  @click.stop="openArtifactOrPipeline(heatmap.runs[i], heatmap.expiredRunIds.has(heatmap.runs[i].run_id))"
                 >
                   <div
                     :class="['flake-cell', `flake-cell--${cell}`,
@@ -369,7 +369,7 @@ const formatTickLabel = (iso) => {
 const runTooltip = (r) => `${r.suite || '?'} • ${r.gfx_api || '?'} • ${r.runner_id || '?'} • ${r.started_at || ''} • status=${r.status}`
 const cellTooltip = (t, r, cell) => {
   const expired = heatmap.value.expiredRunIds.has(r.run_id)
-  const artifacts = r.artifacts_url ? 'artifacts available' : (expired ? 'artifacts expired' : 'artifacts unknown')
+  const artifacts = expired ? 'artifacts expired' : (r.artifacts_url ? 'artifacts available' : 'artifacts unknown')
   return `${t.name}\nrun: ${r.run_id}\n${cell} • ${artifacts}${r.status === 'interrupted' ? ' (run was interrupted)' : ''}`
 }
 
@@ -378,10 +378,11 @@ const openPipeline = (r) => {
 }
 
 // Click priority: download the run's artifacts when the producer supplied a
-// direct URL; otherwise fall back to opening the pipeline (the old behavior),
-// which is also where expired-artifact runs land.
-const openArtifactOrPipeline = (r) => {
-  if (r?.artifacts_url) { window.open(r.artifacts_url, '_blank', 'noopener'); return }
+// direct URL AND we estimate they still exist. Once a run's artifacts have
+// expired (per-suite window) the URL would 404, so we fall back to opening the
+// pipeline — the old behavior, and where runs without any URL land too.
+const openArtifactOrPipeline = (r, expired = false) => {
+  if (r?.artifacts_url && !expired) { window.open(r.artifacts_url, '_blank', 'noopener'); return }
   openPipeline(r)
 }
 
