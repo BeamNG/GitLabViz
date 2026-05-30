@@ -280,23 +280,28 @@ describe('selectHeatmapMatrix', () => {
     expect(m.cells[row.test_id]).toEqual(['pass', 'fail', 'pass'])
   })
 
-  it('marks runs whose artifacts have expired (older than retention or undated)', () => {
-    const now = Date.parse('2026-06-30T00:00:00Z')
+  it('marks runs expired per-suite: nightly outlives smoketest, undated always expired', () => {
+    // now is ~72h after the runs started. With smoketest=48h and nightly=336h
+    // retention, the smoketest run's artifacts are gone but the nightly run's
+    // are still alive — same age, different window.
+    const now = Date.parse('2026-05-04T00:00:00Z')
     const bundle = {
       schema_version: 1,
       runs: [
-        { run_id: 'old',   suite: 's', gfx_api: 'v', status: 'complete', started_at: '2026-05-01T00:00:00Z', finished_at: '2026-05-01T01:00:00Z' },
-        { run_id: 'fresh', suite: 's', gfx_api: 'v', status: 'complete', started_at: '2026-06-28T00:00:00Z', finished_at: '2026-06-28T01:00:00Z' },
-        { run_id: 'undated', suite: 's', gfx_api: 'v', status: 'complete' },
+        { run_id: 'smoke',   suite: 'smoketest', gfx_api: 'v', status: 'complete', started_at: '2026-05-01T00:00:00Z', finished_at: '2026-05-01T01:00:00Z' },
+        { run_id: 'night',   suite: 'nightly',   gfx_api: 'v', status: 'complete', started_at: '2026-05-01T00:00:00Z', finished_at: '2026-05-01T01:00:00Z' },
+        { run_id: 'mystery', suite: 'oddball',   gfx_api: 'v', status: 'complete', started_at: '2026-05-01T00:00:00Z', finished_at: '2026-05-01T01:00:00Z' },
+        { run_id: 'undated', suite: 'nightly',   gfx_api: 'v', status: 'complete' },
       ],
       tests: [
         { test_id: 's::m.py::t', name: 't', module: 'm.py', suite: 's', overall: {},
-          results_by_context: [{ passing_run_ids: ['old', 'fresh', 'undated'], failing_run_ids: [] }] },
+          results_by_context: [{ passing_run_ids: ['smoke', 'night', 'mystery', 'undated'], failing_run_ids: [] }] },
       ],
     }
-    const m = selectHeatmapMatrix(bundle, { lastNRuns: 10, now, artifactRetentionDays: 30 })
-    expect(m.expiredRunIds.has('old')).toBe(true)      // ~60 days old
-    expect(m.expiredRunIds.has('fresh')).toBe(false)   // 2 days old
-    expect(m.expiredRunIds.has('undated')).toBe(true)  // no timestamp -> assume expired
+    const m = selectHeatmapMatrix(bundle, { lastNRuns: 10, now })
+    expect(m.expiredRunIds.has('smoke')).toBe(true)     // 72h old > 48h smoketest window
+    expect(m.expiredRunIds.has('night')).toBe(false)    // 72h old < 336h nightly window
+    expect(m.expiredRunIds.has('mystery')).toBe(true)   // unknown suite -> 24h default -> expired
+    expect(m.expiredRunIds.has('undated')).toBe(true)   // no timestamp -> assume expired
   })
 })

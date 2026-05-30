@@ -8,12 +8,20 @@ import { normalizeGitLabApiBaseUrl } from './gitlab'
 export const SUPPORTED_SCHEMA_VERSION = 1
 export const DEFAULT_PACKAGE_NAME = 'flake-history'
 
-// How long CI keeps job artifacts before they expire. The bundle does not
-// carry a per-run expiry, so the heatmap derives "are the artifacts still
-// downloadable?" from run age: a run older than this has dead artifacts and is
-// rendered in a darker shade. Keep this in sync with the CI artifact:expire_in
-// policy if it changes — it's the single place the viewer assumes a value.
-export const ARTIFACT_RETENTION_DAYS = 30
+// How long CI keeps each suite's job artifacts before they expire. The bundle
+// does not carry a per-run expiry, so the heatmap derives "are the artifacts
+// still downloadable?" from run age: a run older than its suite's window has
+// dead artifacts and is rendered in a darker shade. Keep these in sync with the
+// per-suite artifact:expire_in values in testing-ci/.gitlab-ci.yml — this is
+// the single place the viewer assumes them.
+export const ARTIFACT_RETENTION_HOURS = {
+  smoketest: 48,
+  continuous: 96,
+  nightly: 336, // 2 weeks
+}
+// Fallback for runs whose suite has no entry above (mirrors .test_suite_base's
+// 24h default). Undated runs are treated as expired regardless.
+export const DEFAULT_ARTIFACT_RETENTION_HOURS = 24
 const BUNDLE_FILENAME = 'bundle.json'
 const CACHE_KEY = 'flake_bundle'
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -233,15 +241,17 @@ const heatmapGroupKey = (t) => `${t.module || ''}::${t.name || ''}`
 
 /**
  * True when a run's CI artifacts have almost certainly expired, based on run
- * age vs ARTIFACT_RETENTION_DAYS. A run with no parseable timestamp is treated
- * as expired (we can't prove the artifacts are alive). Used to dim heatmap
- * cells whose pipeline artifacts can no longer be downloaded.
+ * age vs its suite's retention window (retentionHours[suite], falling back to
+ * defaultHours). A run with no parseable timestamp is treated as expired (we
+ * can't prove the artifacts are alive). Used to dim heatmap cells whose
+ * pipeline artifacts can no longer be downloaded.
  */
-const runArtifactsExpired = (run, now, retentionDays) => {
+const runArtifactsExpired = (run, now, retentionHours, defaultHours) => {
   const base = run.finished_at || run.started_at
   const t = base ? Date.parse(base) : NaN
   if (!Number.isFinite(t)) return true
-  return (now - t) > retentionDays * 86_400_000
+  const hours = retentionHours[run.suite] ?? defaultHours
+  return (now - t) > hours * 3_600_000
 }
 
 /**
@@ -261,7 +271,8 @@ export const selectHeatmapMatrix = (bundle, {
   quality = null,
   lastNRuns = 30,
   now = Date.now(),
-  artifactRetentionDays = ARTIFACT_RETENTION_DAYS,
+  artifactRetentionHours = ARTIFACT_RETENTION_HOURS,
+  defaultRetentionHours = DEFAULT_ARTIFACT_RETENTION_HOURS,
 } = {}) => {
   if (!bundle) return { runs: [], tests: [], cells: {}, interruptedRunIds: new Set(), expiredRunIds: new Set() }
   const facet = { suite, gfxApi, quality }
@@ -274,7 +285,7 @@ export const selectHeatmapMatrix = (bundle, {
   const interruptedRunIds = new Set(filteredRuns
     .filter(r => r.status === 'interrupted').map(r => r.run_id))
   const expiredRunIds = new Set(filteredRuns
-    .filter(r => runArtifactsExpired(r, now, artifactRetentionDays))
+    .filter(r => runArtifactsExpired(r, now, artifactRetentionHours, defaultRetentionHours))
     .map(r => r.run_id))
   const runIdToIdx = new Map(filteredRuns.map((r, i) => [r.run_id, i]))
 

@@ -63,7 +63,7 @@ Each entry describes one distinct execution of the test suite. Test results refe
 | `source_revision`, `source_branch` | string | VCS state under test. Strings, so SVN revisions and git SHAs both fit. |
 | `pipeline_id` | integer | The CI pipeline that contributed this run. |
 | `pipeline_url` | string (uri) | **Optional.** When present the viewer renders cells as clickable links to this URL. Omit if you don't have GitLab pipeline URLs — viewer will show a non-clickable cell. |
-| `artifacts_url` | string (uri) | **Optional.** Direct download URL for the run's CI artifacts. When present, clicking a heatmap cell downloads the artifacts instead of opening the pipeline. Omit or `null` once artifacts have expired. The viewer independently dims cells whose artifacts it estimates have expired (run older than ~30 days), regardless of this field. |
+| `artifacts_url` | string (uri) | **Optional.** Direct download URL for the run's CI artifacts. When present, clicking a heatmap cell downloads the artifacts instead of opening the pipeline. Omit or `null` once artifacts have expired. The viewer independently dims cells whose artifacts it estimates have expired (based on the run's age against a per-suite retention window), regardless of this field. |
 | `started_at`, `finished_at` | ISO 8601 UTC | `finished_at` may be `null` for an interrupted run. |
 | `duration_seconds` | integer ≥ 0 | Optional; derivable from start/finish if you'd rather not store it. |
 | `runner_id` | string | Whatever identifies the host. |
