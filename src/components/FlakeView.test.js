@@ -210,4 +210,30 @@ describe('FlakeView', () => {
     open.mockRestore()
     delete window.electronAPI
   })
+
+  it('config dialog save round-trips all four flake fields including gameInstallPath', async () => {
+    nextResult = sampleBundle
+    const settings = baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    })
+    const wrapper = await mountFlakeView(settings)
+
+    wrapper.vm.openConfigDialog()
+    expect(wrapper.vm.configDialog).toBe(true)
+    // Dialog seeds the form from current settings.
+    expect(wrapper.vm.form.projectId).toBe('12')
+
+    wrapper.vm.form.gameInstallPath = 'D:\\BeamNG.drive'
+    wrapper.vm.form.refreshMinutes = 15
+    wrapper.vm.saveForm()
+    await flushPromises()
+
+    expect(settings.config.flakeHistory).toEqual({
+      projectId: '12',
+      packageName: 'flake-history',
+      refreshMinutes: 15,
+      gameInstallPath: 'D:\\BeamNG.drive',
+    })
+    expect(wrapper.vm.configDialog).toBe(false)
+  })
 })

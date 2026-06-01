@@ -27,6 +27,13 @@
         </v-btn>
       </template>
     </v-tooltip>
+    <v-tooltip text="Flake history settings" location="bottom">
+      <template #activator="{ props: tipProps }">
+        <v-btn icon v-bind="tipProps" @click="openConfigDialog">
+          <v-icon icon="mdi-cog" />
+        </v-btn>
+      </template>
+    </v-tooltip>
     <v-btn icon @click="reload" :loading="loading" title="Refresh now" class="mr-2">
       <v-icon icon="mdi-refresh" />
     </v-btn>
@@ -106,6 +113,15 @@
             min="0"
             density="compact"
             class="mt-3"
+          />
+          <v-text-field
+            v-model="form.gameInstallPath"
+            label="Game install folder (optional)"
+            placeholder="D:\BeamNG.drive"
+            density="compact"
+            class="mt-3"
+            hint="Path to your BeamNG install — clicking an artifact also opens game\test_viewer.html"
+            persistent-hint
           />
           <v-alert
             v-if="!hasGitlabConfigured"
@@ -264,6 +280,51 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <v-dialog v-model="configDialog" max-width="560">
+    <v-card>
+      <v-card-title>Flake history settings</v-card-title>
+      <v-card-text>
+        <v-text-field
+          v-model="form.projectId"
+          label="GitLab project ID or path"
+          placeholder="123  or  mygroup/myproj"
+          density="compact"
+          hint="Numeric ID or 'group/project' — same project that publishes the bundle"
+          persistent-hint
+        />
+        <v-text-field
+          v-model="form.packageName"
+          label="Package name"
+          placeholder="flake-history"
+          density="compact"
+          class="mt-3"
+        />
+        <v-text-field
+          v-model.number="form.refreshMinutes"
+          type="number"
+          label="Refresh interval (minutes; 0 = manual)"
+          min="0"
+          density="compact"
+          class="mt-3"
+        />
+        <v-text-field
+          v-model="form.gameInstallPath"
+          label="Game install folder"
+          placeholder="D:\BeamNG.drive"
+          density="compact"
+          class="mt-3"
+          hint="Path to your BeamNG install — clicking an artifact also opens game\test_viewer.html"
+          persistent-hint
+        />
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn @click="configDialog = false">Cancel</v-btn>
+        <v-btn color="primary" @click="saveForm" :disabled="!form.projectId">Save</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup>
@@ -301,7 +362,21 @@ const form = ref({
   projectId: flakeSettings.value.projectId || '',
   packageName: flakeSettings.value.packageName || 'flake-history',
   refreshMinutes: flakeSettings.value.refreshMinutes ?? 60,
+  gameInstallPath: flakeSettings.value.gameInstallPath || '',
 })
+
+// Settings dialog (gear button in the app bar). Reseeds the shared form from
+// the live settings each open so it reflects edits made via the inline form.
+const configDialog = ref(false)
+const openConfigDialog = () => {
+  form.value = {
+    projectId: flakeSettings.value.projectId || '',
+    packageName: flakeSettings.value.packageName || 'flake-history',
+    refreshMinutes: flakeSettings.value.refreshMinutes ?? 60,
+    gameInstallPath: flakeSettings.value.gameInstallPath || '',
+  }
+  configDialog.value = true
+}
 
 const filterOptions = computed(() => ({
   suites: [...new Set((bundle.value?.runs || []).map(r => r.suite).filter(Boolean))].sort(),
@@ -476,7 +551,9 @@ const saveForm = () => {
     projectId: form.value.projectId.trim(),
     packageName: (form.value.packageName || 'flake-history').trim(),
     refreshMinutes: Math.max(0, Number(form.value.refreshMinutes) || 0),
+    gameInstallPath: (form.value.gameInstallPath || '').trim(),
   }
+  configDialog.value = false
   reload()
 }
 
