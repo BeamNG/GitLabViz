@@ -377,12 +377,50 @@ const openPipeline = (r) => {
   if (r?.pipeline_url) window.open(r.pipeline_url, '_blank', 'noopener')
 }
 
+// Relative path of the local results viewer inside a game install.
+const VIEWER_REL = 'game/test_viewer.html'
+
+// Build a file:// URL to the local test viewer from the game install ROOT.
+// Pure + unit-tested: tolerates backslashes and a trailing separator, preserves
+// a Windows drive letter (D:), and URI-encodes the remaining segments. Returns
+// '' when no root is configured.
+const buildViewerFileUrl = (root) => {
+  const r = String(root || '').trim()
+  if (!r) return ''
+  const norm = r.replace(/\\/g, '/').replace(/\/+$/, '')
+  const encoded = `${norm}/${VIEWER_REL}`
+    .split('/')
+    .map((seg, i) => (i === 0 && /^[A-Za-z]:$/.test(seg)) ? seg : encodeURIComponent(seg))
+    .join('/')
+  return `file:///${encoded}`
+}
+
+// Open the local results viewer for the configured game install. Best-effort:
+// real open via Electron's shell.openPath; in the browser we attempt a file://
+// URL (commonly blocked — that's fine). Never throws so it can't break the
+// artifact download it accompanies. No-op when gameInstallPath is unset.
+const openTestViewer = () => {
+  const root = (flakeSettings.value.gameInstallPath || '').trim()
+  if (!root) return
+  try {
+    if (window.electronAPI?.openPath) { window.electronAPI.openPath(root); return }
+    const url = buildViewerFileUrl(root)
+    if (url) window.open(url, '_blank', 'noopener')
+  } catch { /* opening the viewer is best-effort; never break the download */ }
+}
+
 // Click priority: download the run's artifacts when the producer supplied a
-// direct URL AND we estimate they still exist. Once a run's artifacts have
-// expired (per-suite window) the URL would 404, so we fall back to opening the
-// pipeline — the old behavior, and where runs without any URL land too.
+// direct URL AND we estimate they still exist. On that download branch we also
+// open the local test viewer (if configured) so results are one click away.
+// Once a run's artifacts have expired (per-suite window) the URL would 404, so
+// we fall back to opening the pipeline — the old behavior, and where runs
+// without any URL land too; no viewer there since nothing was downloaded.
 const openArtifactOrPipeline = (r, expired = false) => {
-  if (r?.artifacts_url && !expired) { window.open(r.artifacts_url, '_blank', 'noopener'); return }
+  if (r?.artifacts_url && !expired) {
+    window.open(r.artifacts_url, '_blank', 'noopener')
+    openTestViewer()
+    return
+  }
   openPipeline(r)
 }
 

@@ -128,4 +128,68 @@ describe('FlakeView', () => {
 
     open.mockRestore()
   })
+
+  it('builds a file:// URL for the local viewer, tolerating backslashes and a trailing slash', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    }))
+    expect(wrapper.vm.buildViewerFileUrl('D:\\BeamNG.drive\\'))
+      .toBe('file:///D:/BeamNG.drive/game/test_viewer.html')
+    expect(wrapper.vm.buildViewerFileUrl('D:/BeamNG.drive'))
+      .toBe('file:///D:/BeamNG.drive/game/test_viewer.html')
+    expect(wrapper.vm.buildViewerFileUrl('')).toBe('')
+  })
+
+  it('opens the local viewer alongside the download when gameInstallPath is set (browser)', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0, gameInstallPath: 'D:\\BeamNG.drive' },
+    }))
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    // Live artifacts -> download AND viewer.
+    wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/dl', pipeline_url: 'https://pipe' }, false)
+    expect(open).toHaveBeenCalledWith('https://art/dl', '_blank', 'noopener')
+    expect(open).toHaveBeenCalledWith('file:///D:/BeamNG.drive/game/test_viewer.html', '_blank', 'noopener')
+
+    open.mockClear()
+    // Expired -> pipeline only, NO viewer.
+    wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/dl', pipeline_url: 'https://pipe' }, true)
+    expect(open).toHaveBeenCalledWith('https://pipe', '_blank', 'noopener')
+    expect(open).not.toHaveBeenCalledWith('file:///D:/BeamNG.drive/game/test_viewer.html', '_blank', 'noopener')
+
+    open.mockRestore()
+  })
+
+  it('uses electronAPI.openPath for the viewer when running under Electron', async () => {
+    nextResult = sampleBundle
+    const openPath = vi.fn(() => Promise.resolve({ success: true }))
+    window.electronAPI = { openPath }
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0, gameInstallPath: 'D:\\BeamNG.drive' },
+    }))
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/dl' }, false)
+    expect(open).toHaveBeenCalledWith('https://art/dl', '_blank', 'noopener')
+    expect(openPath).toHaveBeenCalledWith('D:\\BeamNG.drive')
+    // Electron handles it -> no file:// fallback.
+    expect(open).not.toHaveBeenCalledWith('file:///D:/BeamNG.drive/game/test_viewer.html', '_blank', 'noopener')
+
+    open.mockRestore()
+    delete window.electronAPI
+  })
+
+  it('does not open the viewer when gameInstallPath is empty', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    }))
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/dl' }, false)
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(open).toHaveBeenCalledWith('https://art/dl', '_blank', 'noopener')
+    open.mockRestore()
+  })
 })
