@@ -192,4 +192,22 @@ describe('FlakeView', () => {
     expect(open).toHaveBeenCalledWith('https://art/dl', '_blank', 'noopener')
     open.mockRestore()
   })
+
+  it('survives a rejecting electronAPI.openPath without throwing', async () => {
+    nextResult = sampleBundle
+    const openPath = vi.fn(() => Promise.reject(new Error('nope')))
+    window.electronAPI = { openPath }
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0, gameInstallPath: 'D:\\BeamNG.drive' },
+    }))
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    // Must not throw even though openPath rejects.
+    expect(() => wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/dl' }, false)).not.toThrow()
+    expect(open).toHaveBeenCalledWith('https://art/dl', '_blank', 'noopener')
+    expect(openPath).toHaveBeenCalledWith('D:\\BeamNG.drive')
+
+    open.mockRestore()
+    delete window.electronAPI
+  })
 })

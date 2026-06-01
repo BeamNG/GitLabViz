@@ -403,7 +403,7 @@ const openTestViewer = () => {
   const root = (flakeSettings.value.gameInstallPath || '').trim()
   if (!root) return
   try {
-    if (window.electronAPI?.openPath) { window.electronAPI.openPath(root); return }
+    if (window.electronAPI?.openPath) { window.electronAPI.openPath(root).catch(() => {}); return }
     const url = buildViewerFileUrl(root)
     if (url) window.open(url, '_blank', 'noopener')
   } catch { /* opening the viewer is best-effort; never break the download */ }
