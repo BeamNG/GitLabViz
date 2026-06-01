@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   cacheDelete: (key) => ipcRenderer.invoke('cache-delete', { key }),
   cacheGetPath: () => ipcRenderer.invoke('cache-get-path'),
   cacheOpenFolder: () => ipcRenderer.invoke('cache-open-folder'),
+  // Open the local test results viewer. `root` is the game install ROOT; the
+  // main process appends game/test_viewer.html before calling shell.openPath.
+  openPath: (root) => ipcRenderer.invoke('open-path', { path: root }),
   openDevTools: () => ipcRenderer.invoke('open-devtools'),
   settingsGet: () => ipcRenderer.invoke('settings-get'),
   settingsSet: (settings) => ipcRenderer.invoke('settings-set', { settings }),
