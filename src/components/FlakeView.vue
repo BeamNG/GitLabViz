@@ -310,7 +310,7 @@
         />
         <v-text-field
           v-model="form.gameInstallPath"
-          label="Game install folder"
+          label="Game install folder (optional)"
           placeholder="D:\BeamNG.drive"
           density="compact"
           class="mt-3"

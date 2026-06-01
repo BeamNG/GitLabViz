@@ -114,9 +114,10 @@ describe('FlakeView', () => {
     }))
     const open = vi.spyOn(window, 'open').mockImplementation(() => null)
 
-    // Live artifacts (not expired) -> download.
+    // Live artifacts (not expired) -> download (no gameInstallPath, so no viewer).
     wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/download', pipeline_url: 'https://pipe' }, false)
-    expect(open).toHaveBeenLastCalledWith('https://art/download', '_blank', 'noopener')
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(open).toHaveBeenCalledWith('https://art/download', '_blank', 'noopener')
 
     // Expired -> pipeline, even though the run still carries an artifacts_url.
     wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/download', pipeline_url: 'https://pipe' }, true)
