@@ -314,7 +314,16 @@
           placeholder="D:\BeamNG.drive"
           density="compact"
           class="mt-3"
-          hint="Path to your BeamNG install — clicking an artifact also opens game\test-viewer.html"
+          hint="Path to your BeamNG install — clicking an artifact also opens the viewer file below"
+          persistent-hint
+        />
+        <v-text-field
+          v-model="form.viewerRelPath"
+          label="Viewer file (relative to install folder, optional)"
+          placeholder="game/test-viewer.html"
+          density="compact"
+          class="mt-3"
+          hint="Joined to the install folder on artifact click. Default: game/test-viewer.html"
           persistent-hint
         />
       </v-card-text>
@@ -363,6 +372,7 @@ const form = ref({
   packageName: flakeSettings.value.packageName || 'flake-history',
   refreshMinutes: flakeSettings.value.refreshMinutes ?? 60,
   gameInstallPath: flakeSettings.value.gameInstallPath || '',
+  viewerRelPath: flakeSettings.value.viewerRelPath || '',
 })
 
 // Settings dialog (gear button in the app bar). Reseeds the shared form from
@@ -374,6 +384,7 @@ const openConfigDialog = () => {
     packageName: flakeSettings.value.packageName || 'flake-history',
     refreshMinutes: flakeSettings.value.refreshMinutes ?? 60,
     gameInstallPath: flakeSettings.value.gameInstallPath || '',
+    viewerRelPath: flakeSettings.value.viewerRelPath || '',
   }
   configDialog.value = true
 }
@@ -452,19 +463,22 @@ const openPipeline = (r) => {
   if (r?.pipeline_url) window.open(r.pipeline_url, '_blank', 'noopener')
 }
 
-// Relative path of the local results viewer inside a game install.
-// NOTE: keep in sync with the main-process handler in electron/main.cjs.
+// Default viewer file, relative to the install root. Overridable per-user via
+// config.flakeHistory.viewerRelPath.
+// NOTE: keep the default in sync with the main-process handler in electron/main.cjs.
 const VIEWER_REL = 'game/test-viewer.html'
 
-// Build a file:// URL to the local test viewer from the game install ROOT.
-// Pure + unit-tested: tolerates backslashes and a trailing separator, preserves
-// a Windows drive letter (D:), and URI-encodes the remaining segments. Returns
-// '' when no root is configured.
-const buildViewerFileUrl = (root) => {
+// Build a file:// URL to the local test viewer from the game install ROOT and a
+// relative viewer path (defaults to VIEWER_REL). Pure + unit-tested: tolerates
+// backslashes and a trailing separator on the root, normalizes the relative
+// path (backslashes + leading separators), preserves a Windows drive letter
+// (D:), and URI-encodes the remaining segments. Returns '' when no root is set.
+const buildViewerFileUrl = (root, rel = VIEWER_REL) => {
   const r = String(root || '').trim()
   if (!r) return ''
   const norm = r.replace(/\\/g, '/').replace(/\/+$/, '')
-  const encoded = `${norm}/${VIEWER_REL}`
+  const relNorm = String(rel || VIEWER_REL).replace(/\\/g, '/').replace(/^\/+/, '')
+  const encoded = `${norm}/${relNorm}`
     .split('/')
     .map((seg, i) => (i === 0 && /^[A-Za-z]:$/.test(seg)) ? seg : encodeURIComponent(seg))
     .join('/')
@@ -478,9 +492,10 @@ const buildViewerFileUrl = (root) => {
 const openTestViewer = () => {
   const root = (flakeSettings.value.gameInstallPath || '').trim()
   if (!root) return
+  const rel = (flakeSettings.value.viewerRelPath || '').trim() || VIEWER_REL
   try {
-    if (window.electronAPI?.openPath) { window.electronAPI.openPath(root).catch(() => {}); return }
-    const url = buildViewerFileUrl(root)
+    if (window.electronAPI?.openPath) { window.electronAPI.openPath(root, rel).catch(() => {}); return }
+    const url = buildViewerFileUrl(root, rel)
     if (url) window.open(url, '_blank', 'noopener')
   } catch { /* opening the viewer is best-effort; never break the download */ }
 }
@@ -553,6 +568,7 @@ const saveForm = () => {
     packageName: (form.value.packageName || 'flake-history').trim(),
     refreshMinutes: Math.max(0, Number(form.value.refreshMinutes) || 0),
     gameInstallPath: (form.value.gameInstallPath || '').trim(),
+    viewerRelPath: (form.value.viewerRelPath || '').trim(),
   }
   configDialog.value = false
   reload()

@@ -437,11 +437,13 @@ ipcMain.handle('cache-open-folder', async () => {
   }
 })
 
-// Open <root>/game/test-viewer.html in the OS default handler. Used by the
-// Flake History page so clicking an artifact can also surface its results.
-ipcMain.handle('open-path', async (_e, { path: root }) => {
+// Open <root>/<rel> in the OS default handler (rel defaults to
+// game/test-viewer.html). Used by the Flake History page so clicking an
+// artifact can also surface its results.
+ipcMain.handle('open-path', async (_e, { path: root, rel }) => {
   try {
-    const target = path.join(String(root || ''), 'game', 'test-viewer.html')
+    const relPath = String(rel || '').trim() || 'game/test-viewer.html'
+    const target = path.join(String(root || ''), relPath)
     const result = await shell.openPath(target)
     if (result) return { success: false, error: result }
     return { success: true }
