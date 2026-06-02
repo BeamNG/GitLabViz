@@ -184,6 +184,7 @@
         </v-data-table>
       </section>
 
+      <div class="flake-right">
       <section class="flake-section flake-heatmap">
         <header class="flake-section-header">
           <h3 class="text-subtitle-1">
@@ -242,6 +243,27 @@
           </table>
         </div>
       </section>
+
+      <section class="flake-section flake-cards">
+        <header class="flake-section-header">
+          <h3 class="text-subtitle-1">
+            Build health
+            <span class="text-caption text-medium-emphasis">(most recent build per suite, all gfx)</span>
+          </h3>
+        </header>
+        <div class="flake-cards-row">
+          <div
+            v-for="card in incidentCards" :key="card.suite"
+            class="flake-incident-card"
+            :class="`flake-incident--${card.status}`"
+          >
+            <div class="flake-incident-title">Days without {{ titleCase(card.suite) }} failures</div>
+            <div class="flake-incident-number">{{ card.status === 'none' ? '—' : card.daysWithoutFailure }}</div>
+            <div class="flake-incident-sub">{{ gfxLine(card) }}</div>
+          </div>
+        </div>
+      </section>
+      </div>
     </div>
   </v-main>
 
@@ -339,7 +361,7 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import {
-  fetchLatestBundle, selectFlakeLeaderboard, selectHeatmapMatrix,
+  fetchLatestBundle, selectFlakeLeaderboard, selectHeatmapMatrix, selectSuiteIncidentCards,
   FlakeNotConfiguredError, FlakeBundleNotFoundError, UnsupportedSchemaVersionError,
   SUPPORTED_SCHEMA_VERSION,
 } from '../services/flake'
@@ -426,6 +448,12 @@ const heatmap = computed(() => {
   const raw = selectHeatmapMatrix(bundle.value, { ...facet.value, lastNRuns: lastNRuns.value })
   return { ...raw, tests: raw.tests.filter(matchesSearch) }
 })
+
+// Suite "days without incident" cards — a fixed status dashboard, intentionally
+// independent of the suite/gfx/search facets that filter the heatmap above.
+const incidentCards = computed(() => (bundle.value ? selectSuiteIncidentCards(bundle.value) : []))
+const titleCase = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s)
+const gfxLine = (card) => card.gfx.map(g => `${g.gfx_api}: ${g.passed}/${g.total}`).join(', ')
 
 // A grouped heatmap row is selected when any of its member test_ids (the
 // original per-suite ids the leaderboard still emits) is in the selection.
@@ -616,6 +644,59 @@ onBeforeUnmount(() => { if (refreshTimer) clearInterval(refreshTimer) })
 .flake-leaderboard, .flake-heatmap { overflow: hidden; }
 .flake-table { flex: 1; overflow: auto; }
 .flake-heatmap-scroll { flex: 1; overflow: auto; }
+
+/* Right column: heatmap on top (2/3), build-health cards below (1/3). */
+.flake-right {
+  display: grid;
+  grid-template-rows: 2fr 1fr;
+  gap: 12px;
+  min-height: 0;
+  overflow: hidden;
+}
+.flake-right > .flake-section { min-height: 0; }
+
+.flake-cards { overflow: hidden; }
+.flake-cards-row {
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  flex: 1;
+  min-height: 0;
+  align-items: stretch;
+  overflow: auto;
+}
+.flake-incident-card {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 8px;
+  border: 1px solid rgba(127, 127, 127, 0.18);
+  border-radius: 8px;
+  text-align: center;
+}
+.flake-incident-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(var(--v-theme-on-surface), 0.7);
+}
+.flake-incident-number { font-size: 40px; font-weight: 700; line-height: 1; }
+.flake-incident-sub {
+  font-size: 11px;
+  color: rgba(var(--v-theme-on-surface), 0.6);
+  word-break: break-word;
+}
+.flake-incident--pass { border-color: rgba(76, 175, 80, 0.5);  background: rgba(76, 175, 80, 0.08); }
+.flake-incident--warn { border-color: rgba(255, 152, 0, 0.5);  background: rgba(255, 152, 0, 0.08); }
+.flake-incident--fail { border-color: rgba(244, 67, 54, 0.5);  background: rgba(244, 67, 54, 0.10); }
+.flake-incident--none { border-color: rgba(127, 127, 127, 0.3); }
+.flake-incident--pass .flake-incident-number { color: #4caf50; }
+.flake-incident--warn .flake-incident-number { color: #ff9800; }
+.flake-incident--fail .flake-incident-number { color: #f44336; }
+.flake-incident--none .flake-incident-number { color: rgba(127, 127, 127, 0.6); }
 
 .flake-cells-hint {
   display: flex;

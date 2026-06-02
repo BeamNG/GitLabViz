@@ -3,6 +3,7 @@ import {
   fetchLatestBundle,
   selectFlakeLeaderboard,
   selectHeatmapMatrix,
+  selectSuiteIncidentCards,
   classifyFromCounts,
   FlakeNotConfiguredError,
   FlakeBundleNotFoundError,
@@ -303,5 +304,146 @@ describe('selectHeatmapMatrix', () => {
     expect(m.expiredRunIds.has('night')).toBe(false)    // 72h old < 336h nightly window
     expect(m.expiredRunIds.has('mystery')).toBe(true)   // unknown suite -> 24h default -> expired
     expect(m.expiredRunIds.has('undated')).toBe(true)   // no timestamp -> assume expired
+  })
+})
+
+describe('selectSuiteIncidentCards', () => {
+  // Build a bundle where each run gets exactly `pass` passing + `fail` failing
+  // synthetic tests, so the selector's per-run tally is deterministic.
+  // runs: [{ run_id, suite, gfx_api, started_at }]; counts: { run_id: { pass, fail } }
+  const makeBundle = ({ generated_at, runs, counts }) => {
+    const tests = []
+    let n = 0
+    for (const r of runs) {
+      const c = counts[r.run_id] || { pass: 0, fail: 0 }
+      for (let i = 0; i < c.pass; i++) {
+        tests.push({ test_id: `t${n++}`, suite: r.suite, name: `n${n}`, module: 'm',
+          results_by_context: [{ gfx_api: r.gfx_api, passing_run_ids: [r.run_id], failing_run_ids: [] }] })
+      }
+      for (let i = 0; i < c.fail; i++) {
+        tests.push({ test_id: `t${n++}`, suite: r.suite, name: `n${n}`, module: 'm',
+          results_by_context: [{ gfx_api: r.gfx_api, passing_run_ids: [], failing_run_ids: [r.run_id] }] })
+      }
+    }
+    return { generated_at, runs, tests }
+  }
+
+  const threeGfx = (suite, day, counts) => ([
+    { run_id: `${suite}-dx11-${day}`, suite, gfx_api: 'dx11', started_at: `2026-05-${day}T08:00:00Z` },
+    { run_id: `${suite}-dx12-${day}`, suite, gfx_api: 'dx12', started_at: `2026-05-${day}T08:00:00Z` },
+    { run_id: `${suite}-vulkan-${day}`, suite, gfx_api: 'vulkan', started_at: `2026-05-${day}T08:00:00Z` },
+  ])
+
+  it('returns [] for a missing or malformed bundle', () => {
+    expect(selectSuiteIncidentCards(null)).toEqual([])
+    expect(selectSuiteIncidentCards({})).toEqual([])
+  })
+
+  it('all gfx passing in the latest build -> green, full clean streak', () => {
+    const runs = threeGfx('smoketest', '20')
+    const b = makeBundle({
+      generated_at: '2026-05-21T08:00:00Z',
+      runs,
+      counts: {
+        'smoketest-dx11-20': { pass: 26, fail: 0 },
+        'smoketest-dx12-20': { pass: 26, fail: 0 },
+        'smoketest-vulkan-20': { pass: 26, fail: 0 },
+      },
+    })
+    const [card] = selectSuiteIncidentCards(b)
+    expect(card.suite).toBe('smoketest')
+    expect(card.status).toBe('pass')
+    expect(card.gfx).toEqual([
+      { gfx_api: 'dx11', passed: 26, total: 26 },
+      { gfx_api: 'dx12', passed: 26, total: 26 },
+      { gfx_api: 'vulkan', passed: 26, total: 26 },
+    ])
+    // No failures in window -> clean streak from oldest run (05-20) to generated_at (05-21) = 1 day.
+    expect(card.daysWithoutFailure).toBe(1)
+  })
+
+  it('one gfx failing in the latest build -> orange, 0 days', () => {
+    const runs = threeGfx('smoketest', '21')
+    const b = makeBundle({
+      generated_at: '2026-05-21T12:00:00Z',
+      runs,
+      counts: {
+        'smoketest-dx11-21': { pass: 3, fail: 23 },
+        'smoketest-dx12-21': { pass: 26, fail: 0 },
+        'smoketest-vulkan-21': { pass: 26, fail: 0 },
+      },
+    })
+    const [card] = selectSuiteIncidentCards(b)
+    expect(card.status).toBe('warn')
+    expect(card.daysWithoutFailure).toBe(0)
+    expect(card.gfx.find(g => g.gfx_api === 'dx11')).toEqual({ gfx_api: 'dx11', passed: 3, total: 26 })
+  })
+
+  it('all gfx failing in the latest build -> red, 0 days', () => {
+    const runs = threeGfx('smoketest', '21')
+    const b = makeBundle({
+      generated_at: '2026-05-21T12:00:00Z',
+      runs,
+      counts: {
+        'smoketest-dx11-21': { pass: 1, fail: 25 },
+        'smoketest-dx12-21': { pass: 10, fail: 16 },
+        'smoketest-vulkan-21': { pass: 0, fail: 26 },
+      },
+    })
+    const [card] = selectSuiteIncidentCards(b)
+    expect(card.status).toBe('fail')
+    expect(card.daysWithoutFailure).toBe(0)
+  })
+
+  it('color comes from the latest build but days-without reflects the last failure in history', () => {
+    // An old failing dx11 build (05-18), then a clean build for all gfx on 05-21.
+    const runs = [
+      { run_id: 'old', suite: 'smoketest', gfx_api: 'dx11', started_at: '2026-05-18T08:00:00Z' },
+      ...threeGfx('smoketest', '21'),
+    ]
+    const b = makeBundle({
+      generated_at: '2026-05-21T08:00:00Z',
+      runs,
+      counts: {
+        old: { pass: 0, fail: 5 },
+        'smoketest-dx11-21': { pass: 26, fail: 0 },
+        'smoketest-dx12-21': { pass: 26, fail: 0 },
+        'smoketest-vulkan-21': { pass: 26, fail: 0 },
+      },
+    })
+    const [card] = selectSuiteIncidentCards(b)
+    // Latest dx11 build passes -> not aggregated with the old failing run.
+    expect(card.gfx.find(g => g.gfx_api === 'dx11')).toEqual({ gfx_api: 'dx11', passed: 26, total: 26 })
+    expect(card.status).toBe('pass')
+    // Last failure 05-18, generated_at 05-21 -> 3 days.
+    expect(card.daysWithoutFailure).toBe(3)
+  })
+
+  it('renders one card per suite, ordered smoketest -> continuous -> nightly', () => {
+    const runs = [
+      ...threeGfx('nightly', '20'),
+      ...threeGfx('smoketest', '20'),
+      ...threeGfx('continuous', '20'),
+    ]
+    const counts = {}
+    for (const r of runs) counts[r.run_id] = { pass: 26, fail: 0 }
+    const cards = selectSuiteIncidentCards(makeBundle({ generated_at: '2026-05-21T00:00:00Z', runs, counts }))
+    expect(cards.map(c => c.suite)).toEqual(['smoketest', 'continuous', 'nightly'])
+  })
+
+  it('a suite whose latest runs have no test data -> status none', () => {
+    const runs = threeGfx('smoketest', '21')
+    const b = makeBundle({
+      generated_at: '2026-05-21T00:00:00Z',
+      runs,
+      counts: {}, // no tests reference any run
+    })
+    const [card] = selectSuiteIncidentCards(b)
+    expect(card.status).toBe('none')
+    expect(card.gfx).toEqual([
+      { gfx_api: 'dx11', passed: 0, total: 0 },
+      { gfx_api: 'dx12', passed: 0, total: 0 },
+      { gfx_api: 'vulkan', passed: 0, total: 0 },
+    ])
   })
 })

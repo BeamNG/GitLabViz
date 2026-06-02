@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.3] - 2026-06-02
+- **Flake History: "Build health" cards below the heatmap.** The right panel is now split — the heatmap keeps the top two-thirds, and a row of per-suite status cards fills the bottom third. One card per suite present in the bundle (e.g. smoketest / continuous / nightly), each summing across all gfx configs:
+  - A big **days-without-failures** count for that suite. It counts whole days from the suite's last *broken* build to the bundle's `generated_at` (so it's stable for a published bundle, not a drifting wall-clock number); `0` when the latest build is itself broken. A build counts as broken when any test failed in it — `run.status` only distinguishes complete/interrupted, so failure is derived from the test results.
+  - A **per-gfx subtitle** (`dx11: 3/26, dx12: 21/26, vulkan: 21/26`) showing `passed/total` tests from each gfx config's most recent run of that suite.
+  - A **status colour** driven by the latest build: green when every gfx passed 100%, orange when some but not all gfx have failures, red when all of them do, grey when there's no data.
+- The cards are a fixed status dashboard — intentionally independent of the heatmap's suite / gfx / search / last-N filters.
+
 ## [0.13.2] - 2026-06-02
 - **Flake History: clicking a live artifact now also opens your local results viewer.** Previously a heatmap cell with downloadable artifacts only triggered the download; you then had to find and open the viewer yourself. Now, on the same click, GitLabViz also opens a local viewer file so the results are one step away. In the desktop (Electron) build this uses the OS default handler (`shell.openPath`); in the browser build it makes a best-effort `file://` open, which most browsers block — so this is primarily a desktop convenience. Expired / no-URL cells are unchanged: they still just open the pipeline (there's nothing freshly downloaded to view).
 - **New configuration button on the Flake History page.** A gear in the app bar opens a settings dialog for the flake screens (project ID/path, package name, refresh interval) — previously only editable through the first-run "not configured" form, which disappeared once a bundle loaded.
