@@ -21,6 +21,14 @@ export const defaultSettings = () => ({
       projectId: '',
       packageName: 'flake-history',
       refreshMinutes: 60,
+      // Game install ROOT (e.g. D:\BeamNG.drive). The local results viewer is
+      // derived as <root>/<viewerRelPath> and opened alongside an artifact
+      // download from the Flake History heatmap. '' = feature off.
+      gameInstallPath: '',
+      // Viewer file, relative to gameInstallPath. Joined to the root, replacing
+      // the whole default segment (e.g. 'graphic_viewer.html' opens
+      // <root>/graphic_viewer.html). Empty falls back to the default below.
+      viewerRelPath: 'game/test-viewer.html',
     },
 
     // ChatTools (Mattermost) assimilation

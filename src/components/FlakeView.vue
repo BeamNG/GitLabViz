@@ -27,6 +27,13 @@
         </v-btn>
       </template>
     </v-tooltip>
+    <v-tooltip text="Flake history settings" location="bottom">
+      <template #activator="{ props: tipProps }">
+        <v-btn icon v-bind="tipProps" @click="openConfigDialog">
+          <v-icon icon="mdi-cog" />
+        </v-btn>
+      </template>
+    </v-tooltip>
     <v-btn icon @click="reload" :loading="loading" title="Refresh now" class="mr-2">
       <v-icon icon="mdi-refresh" />
     </v-btn>
@@ -106,6 +113,15 @@
             min="0"
             density="compact"
             class="mt-3"
+          />
+          <v-text-field
+            v-model="form.gameInstallPath"
+            label="Game install folder (optional)"
+            placeholder="D:\BeamNG.drive"
+            density="compact"
+            class="mt-3"
+            hint="Path to your BeamNG install — clicking an artifact also opens game\test-viewer.html"
+            persistent-hint
           />
           <v-alert
             v-if="!hasGitlabConfigured"
@@ -264,6 +280,60 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <v-dialog v-model="configDialog" max-width="560">
+    <v-card>
+      <v-card-title>Flake history settings</v-card-title>
+      <v-card-text>
+        <v-text-field
+          v-model="form.projectId"
+          label="GitLab project ID or path"
+          placeholder="123  or  mygroup/myproj"
+          density="compact"
+          hint="Numeric ID or 'group/project' — same project that publishes the bundle"
+          persistent-hint
+        />
+        <v-text-field
+          v-model="form.packageName"
+          label="Package name"
+          placeholder="flake-history"
+          density="compact"
+          class="mt-3"
+        />
+        <v-text-field
+          v-model.number="form.refreshMinutes"
+          type="number"
+          label="Refresh interval (minutes; 0 = manual)"
+          min="0"
+          density="compact"
+          class="mt-3"
+        />
+        <v-text-field
+          v-model="form.gameInstallPath"
+          label="Game install folder (optional)"
+          placeholder="D:\BeamNG.drive"
+          density="compact"
+          class="mt-3"
+          hint="Path to your BeamNG install — clicking an artifact also opens the viewer file below"
+          persistent-hint
+        />
+        <v-text-field
+          v-model="form.viewerRelPath"
+          label="Viewer file (relative to install folder, optional)"
+          placeholder="game/test-viewer.html"
+          density="compact"
+          class="mt-3"
+          hint="Joined to the install folder on artifact click. Default: game/test-viewer.html"
+          persistent-hint
+        />
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn @click="configDialog = false">Cancel</v-btn>
+        <v-btn color="primary" @click="saveForm" :disabled="!form.projectId">Save</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script setup>
@@ -301,7 +371,23 @@ const form = ref({
   projectId: flakeSettings.value.projectId || '',
   packageName: flakeSettings.value.packageName || 'flake-history',
   refreshMinutes: flakeSettings.value.refreshMinutes ?? 60,
+  gameInstallPath: flakeSettings.value.gameInstallPath || '',
+  viewerRelPath: flakeSettings.value.viewerRelPath || '',
 })
+
+// Settings dialog (gear button in the app bar). Reseeds the shared form from
+// the live settings each open so it reflects edits made via the inline form.
+const configDialog = ref(false)
+const openConfigDialog = () => {
+  form.value = {
+    projectId: flakeSettings.value.projectId || '',
+    packageName: flakeSettings.value.packageName || 'flake-history',
+    refreshMinutes: flakeSettings.value.refreshMinutes ?? 60,
+    gameInstallPath: flakeSettings.value.gameInstallPath || '',
+    viewerRelPath: flakeSettings.value.viewerRelPath || '',
+  }
+  configDialog.value = true
+}
 
 const filterOptions = computed(() => ({
   suites: [...new Set((bundle.value?.runs || []).map(r => r.suite).filter(Boolean))].sort(),
@@ -377,12 +463,55 @@ const openPipeline = (r) => {
   if (r?.pipeline_url) window.open(r.pipeline_url, '_blank', 'noopener')
 }
 
+// Default viewer file, relative to the install root. Overridable per-user via
+// config.flakeHistory.viewerRelPath.
+// NOTE: keep the default in sync with the main-process handler in electron/main.cjs.
+const VIEWER_REL = 'game/test-viewer.html'
+
+// Build a file:// URL to the local test viewer from the game install ROOT and a
+// relative viewer path (defaults to VIEWER_REL). Pure + unit-tested: tolerates
+// backslashes and a trailing separator on the root, normalizes the relative
+// path (backslashes + leading separators), preserves a Windows drive letter
+// (D:), and URI-encodes the remaining segments. Returns '' when no root is set.
+const buildViewerFileUrl = (root, rel = VIEWER_REL) => {
+  const r = String(root || '').trim()
+  if (!r) return ''
+  const norm = r.replace(/\\/g, '/').replace(/\/+$/, '')
+  const relNorm = String(rel || VIEWER_REL).replace(/\\/g, '/').replace(/^\/+/, '')
+  const encoded = `${norm}/${relNorm}`
+    .split('/')
+    .map((seg, i) => (i === 0 && /^[A-Za-z]:$/.test(seg)) ? seg : encodeURIComponent(seg))
+    .join('/')
+  return `file:///${encoded}`
+}
+
+// Open the local results viewer for the configured game install. Best-effort:
+// real open via Electron's shell.openPath; in the browser we attempt a file://
+// URL (commonly blocked — that's fine). Never throws so it can't break the
+// artifact download it accompanies. No-op when gameInstallPath is unset.
+const openTestViewer = () => {
+  const root = (flakeSettings.value.gameInstallPath || '').trim()
+  if (!root) return
+  const rel = (flakeSettings.value.viewerRelPath || '').trim() || VIEWER_REL
+  try {
+    if (window.electronAPI?.openPath) { window.electronAPI.openPath(root, rel).catch(() => {}); return }
+    const url = buildViewerFileUrl(root, rel)
+    if (url) window.open(url, '_blank', 'noopener')
+  } catch { /* opening the viewer is best-effort; never break the download */ }
+}
+
 // Click priority: download the run's artifacts when the producer supplied a
-// direct URL AND we estimate they still exist. Once a run's artifacts have
-// expired (per-suite window) the URL would 404, so we fall back to opening the
-// pipeline — the old behavior, and where runs without any URL land too.
+// direct URL AND we estimate they still exist. On that download branch we also
+// open the local test viewer (if configured) so results are one click away.
+// Once a run's artifacts have expired (per-suite window) the URL would 404, so
+// we fall back to opening the pipeline — the old behavior, and where runs
+// without any URL land too; no viewer there since nothing was downloaded.
 const openArtifactOrPipeline = (r, expired = false) => {
-  if (r?.artifacts_url && !expired) { window.open(r.artifacts_url, '_blank', 'noopener'); return }
+  if (r?.artifacts_url && !expired) {
+    window.open(r.artifacts_url, '_blank', 'noopener')
+    openTestViewer()
+    return
+  }
   openPipeline(r)
 }
 
@@ -438,7 +567,10 @@ const saveForm = () => {
     projectId: form.value.projectId.trim(),
     packageName: (form.value.packageName || 'flake-history').trim(),
     refreshMinutes: Math.max(0, Number(form.value.refreshMinutes) || 0),
+    gameInstallPath: (form.value.gameInstallPath || '').trim(),
+    viewerRelPath: (form.value.viewerRelPath || '').trim(),
   }
+  configDialog.value = false
   reload()
 }
 
