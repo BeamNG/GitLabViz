@@ -331,3 +331,116 @@ export const selectHeatmapMatrix = (bundle, {
 
   return { runs: filteredRuns, tests, cells, interruptedRunIds, expiredRunIds }
 }
+
+// Preferred left-to-right card order; suites outside this list sort after it,
+// alphabetically. Keeps the common smoketest → continuous → nightly cadence
+// stable while still rendering whatever suites the bundle actually contains.
+const SUITE_CARD_ORDER = ['smoketest', 'continuous', 'nightly']
+
+/**
+ * "Days without incident" summary cards, one per suite present in the bundle.
+ *
+ * A build (run) is *broken* when any test failed in it (its run_id appears in a
+ * test's failing_run_ids) — run.status only distinguishes complete/interrupted,
+ * not pass/fail. Per card:
+ *   - gfx[]: for each gfx_api, the passed/total test counts of that suite+gfx's
+ *     MOST RECENT run (latest started_at). total = tests observed in that run.
+ *   - status: 'pass' (no gfx failing), 'fail' (all gfx with data failing),
+ *     'warn' (some but not all failing), 'none' (no test data at all).
+ *   - daysWithoutFailure: whole days from the suite's last broken build to
+ *     `bundle.generated_at` (stable per published bundle, not wall-clock); 0 if
+ *     the latest build is itself broken; full observed streak when the window
+ *     has no failures.
+ *
+ * Independent of the heatmap's facet/search filters by design — a fixed status
+ * dashboard. `now` is only a fallback when generated_at is unparseable.
+ */
+export const selectSuiteIncidentCards = (bundle, { now = Date.now() } = {}) => {
+  if (!bundle || !Array.isArray(bundle.runs) || !Array.isArray(bundle.tests)) return []
+
+  // run_id -> { passed, failed } across all tests/contexts.
+  const perRun = new Map()
+  const bump = (rid, key) => {
+    let e = perRun.get(rid)
+    if (!e) { e = { passed: 0, failed: 0 }; perRun.set(rid, e) }
+    e[key] += 1
+  }
+  for (const t of bundle.tests) {
+    for (const ctx of t.results_by_context || []) {
+      for (const rid of ctx.passing_run_ids || []) bump(rid, 'passed')
+      for (const rid of ctx.failing_run_ids || []) bump(rid, 'failed')
+    }
+  }
+
+  const DAY_MS = 86_400_000
+  const parsedGenerated = Date.parse(bundle.generated_at)
+  const refMs = Number.isFinite(parsedGenerated) ? parsedGenerated : now
+
+  // suite -> runs[]
+  const bySuite = new Map()
+  for (const r of bundle.runs) {
+    if (!r || !r.suite) continue
+    if (!bySuite.has(r.suite)) bySuite.set(r.suite, [])
+    bySuite.get(r.suite).push(r)
+  }
+
+  const cards = []
+  for (const [suite, runs] of bySuite) {
+    const sorted = runs.slice().sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''))
+
+    // Latest run per gfx_api (sorted ascending, so the last write wins).
+    const latestByGfx = new Map()
+    for (const r of sorted) latestByGfx.set(r.gfx_api, r)
+
+    const gfx = []
+    let gfxWithData = 0
+    let gfxFailing = 0
+    for (const [gfx_api, run] of latestByGfx) {
+      const c = perRun.get(run.run_id) || { passed: 0, failed: 0 }
+      const total = c.passed + c.failed
+      gfx.push({ gfx_api, passed: c.passed, total })
+      if (total > 0) {
+        gfxWithData += 1
+        if (c.passed < total) gfxFailing += 1
+      }
+    }
+    gfx.sort((a, b) => String(a.gfx_api).localeCompare(String(b.gfx_api)))
+
+    let status
+    if (gfxWithData === 0) status = 'none'
+    else if (gfxFailing === 0) status = 'pass'
+    else if (gfxFailing === gfxWithData) status = 'fail'
+    else status = 'warn'
+
+    // Most recent broken build's timestamp.
+    let lastFailMs = null
+    for (const r of sorted) {
+      const c = perRun.get(r.run_id)
+      if (c && c.failed > 0) {
+        const ms = Date.parse(r.started_at)
+        if (Number.isFinite(ms) && (lastFailMs === null || ms > lastFailMs)) lastFailMs = ms
+      }
+    }
+
+    let daysWithoutFailure
+    if (lastFailMs !== null) {
+      daysWithoutFailure = Math.max(0, Math.floor((refMs - lastFailMs) / DAY_MS))
+    } else {
+      const firstMs = sorted.length ? Date.parse(sorted[0].started_at) : NaN
+      daysWithoutFailure = Number.isFinite(firstMs) ? Math.max(0, Math.floor((refMs - firstMs) / DAY_MS)) : 0
+    }
+
+    cards.push({ suite, daysWithoutFailure, status, gfx })
+  }
+
+  cards.sort((a, b) => {
+    const ia = SUITE_CARD_ORDER.indexOf(a.suite)
+    const ib = SUITE_CARD_ORDER.indexOf(b.suite)
+    const ra = ia === -1 ? SUITE_CARD_ORDER.length : ia
+    const rb = ib === -1 ? SUITE_CARD_ORDER.length : ib
+    if (ra !== rb) return ra - rb
+    return a.suite.localeCompare(b.suite)
+  })
+
+  return cards
+}
