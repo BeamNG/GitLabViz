@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.13.2] - 2026-06-02
+- **Flake History: clicking a live artifact now also opens your local results viewer.** Previously a heatmap cell with downloadable artifacts only triggered the download; you then had to find and open the viewer yourself. Now, on the same click, GitLabViz also opens a local viewer file so the results are one step away. In the desktop (Electron) build this uses the OS default handler (`shell.openPath`); in the browser build it makes a best-effort `file://` open, which most browsers block — so this is primarily a desktop convenience. Expired / no-URL cells are unchanged: they still just open the pipeline (there's nothing freshly downloaded to view).
+- **New configuration button on the Flake History page.** A gear in the app bar opens a settings dialog for the flake screens (project ID/path, package name, refresh interval) — previously only editable through the first-run "not configured" form, which disappeared once a bundle loaded.
+- **Two new settings drive the viewer open:**
+  - **Game install folder** (`gameInstallPath`) — the root where the game is installed (e.g. `D:\BeamNG.drive`). Empty = the auto-open feature is off; download-only behaviour is unchanged.
+  - **Viewer file** (`viewerRelPath`, default `game/test-viewer.html`) — the viewer path *relative to* the install folder, joined onto the root. Override it to point elsewhere, e.g. `graphic_viewer.html` opens `<root>/graphic_viewer.html`. Empty falls back to the default.
+
+## [0.13.1] - 2026-05-30
+- **Heatmap cells link straight to a run's downloadable artifacts.** The bundle schema gains an optional `artifacts_url` on `runs[]`; when present, clicking a cell downloads that run's artifacts instead of only opening its pipeline. Producers that don't publish artifact URLs are unaffected — those cells keep opening the pipeline.
+- **Expiry-aware click behaviour.** Artifacts don't live forever, so the viewer estimates per-suite expiry windows and shades expired cells distinctly (same pass/fail hue, darker). A click on a live cell downloads; once a run's artifacts have expired the direct URL would 404, so it falls back to opening the pipeline — the prior behaviour, and where runs without any URL land too.
+- **Tests grouped across suites in the heatmap.** A test that runs under multiple suites is now shown as a single grouped row (its per-suite ids are preserved for cross-highlighting with the leaderboard) rather than fragmented across rows.
+
 ## [0.13.0] - 2026-05-26
 - **New Flake History view + kiosk mode + public bundle schema.** GitLabViz can now read a `flake-history-bundle.v1.json` published by any CI source and render two new screens for it:
   - A **desktop view** (sidebar → Flake) with a top-100 leaderboard, a per-test × per-run heatmap, suite + gfx facets, a last-N-runs slider, free-text search across test name / module / test_id (filters both panels in lockstep), and click-to-open-pipeline on every heatmap cell. The classification chip (`stable` / `intermittent` / `actively_flaky` / `broken`) is computed from the *facet-filtered* pass/fail counts so filtering to e.g. `suite=smoketest` shows how flaky the test is in that scope specifically, not the bundler's across-all-suites label. A new **Runs** column shows `pass/total` for the active facet so a small-denominator "intermittent" is visually distinguishable from a heavy one. An info dialog spells out the four thresholds; "Show all tests" flips the leaderboard between top-100-flaky and the unbounded list including stable rows.
