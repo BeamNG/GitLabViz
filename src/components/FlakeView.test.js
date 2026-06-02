@@ -136,9 +136,9 @@ describe('FlakeView', () => {
       flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
     }))
     expect(wrapper.vm.buildViewerFileUrl('D:\\BeamNG.drive\\'))
-      .toBe('file:///D:/BeamNG.drive/game/test_viewer.html')
+      .toBe('file:///D:/BeamNG.drive/game/test-viewer.html')
     expect(wrapper.vm.buildViewerFileUrl('D:/BeamNG.drive'))
-      .toBe('file:///D:/BeamNG.drive/game/test_viewer.html')
+      .toBe('file:///D:/BeamNG.drive/game/test-viewer.html')
     expect(wrapper.vm.buildViewerFileUrl('')).toBe('')
   })
 
@@ -152,13 +152,13 @@ describe('FlakeView', () => {
     // Live artifacts -> download AND viewer.
     wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/dl', pipeline_url: 'https://pipe' }, false)
     expect(open).toHaveBeenCalledWith('https://art/dl', '_blank', 'noopener')
-    expect(open).toHaveBeenCalledWith('file:///D:/BeamNG.drive/game/test_viewer.html', '_blank', 'noopener')
+    expect(open).toHaveBeenCalledWith('file:///D:/BeamNG.drive/game/test-viewer.html', '_blank', 'noopener')
 
     open.mockClear()
     // Expired -> pipeline only, NO viewer.
     wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/dl', pipeline_url: 'https://pipe' }, true)
     expect(open).toHaveBeenCalledWith('https://pipe', '_blank', 'noopener')
-    expect(open).not.toHaveBeenCalledWith('file:///D:/BeamNG.drive/game/test_viewer.html', '_blank', 'noopener')
+    expect(open).not.toHaveBeenCalledWith('file:///D:/BeamNG.drive/game/test-viewer.html', '_blank', 'noopener')
 
     open.mockRestore()
   })
@@ -176,7 +176,7 @@ describe('FlakeView', () => {
     expect(open).toHaveBeenCalledWith('https://art/dl', '_blank', 'noopener')
     expect(openPath).toHaveBeenCalledWith('D:\\BeamNG.drive')
     // Electron handles it -> no file:// fallback.
-    expect(open).not.toHaveBeenCalledWith('file:///D:/BeamNG.drive/game/test_viewer.html', '_blank', 'noopener')
+    expect(open).not.toHaveBeenCalledWith('file:///D:/BeamNG.drive/game/test-viewer.html', '_blank', 'noopener')
 
     open.mockRestore()
     delete window.electronAPI

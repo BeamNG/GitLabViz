@@ -120,7 +120,7 @@
             placeholder="D:\BeamNG.drive"
             density="compact"
             class="mt-3"
-            hint="Path to your BeamNG install — clicking an artifact also opens game\test_viewer.html"
+            hint="Path to your BeamNG install — clicking an artifact also opens game\test-viewer.html"
             persistent-hint
           />
           <v-alert
@@ -314,7 +314,7 @@
           placeholder="D:\BeamNG.drive"
           density="compact"
           class="mt-3"
-          hint="Path to your BeamNG install — clicking an artifact also opens game\test_viewer.html"
+          hint="Path to your BeamNG install — clicking an artifact also opens game\test-viewer.html"
           persistent-hint
         />
       </v-card-text>
@@ -453,7 +453,8 @@ const openPipeline = (r) => {
 }
 
 // Relative path of the local results viewer inside a game install.
-const VIEWER_REL = 'game/test_viewer.html'
+// NOTE: keep in sync with the main-process handler in electron/main.cjs.
+const VIEWER_REL = 'game/test-viewer.html'
 
 // Build a file:// URL to the local test viewer from the game install ROOT.
 // Pure + unit-tested: tolerates backslashes and a trailing separator, preserves

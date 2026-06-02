@@ -22,7 +22,7 @@ export const defaultSettings = () => ({
       packageName: 'flake-history',
       refreshMinutes: 60,
       // Game install ROOT (e.g. D:\BeamNG.drive). The local results viewer is
-      // derived as <root>/game/test_viewer.html and opened alongside an artifact
+      // derived as <root>/game/test-viewer.html and opened alongside an artifact
       // download from the Flake History heatmap. '' = feature off.
       gameInstallPath: '',
     },
