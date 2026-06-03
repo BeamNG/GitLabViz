@@ -27,6 +27,14 @@
         </v-btn>
       </template>
     </v-tooltip>
+    <v-tooltip :text="openViewerOnClick ? 'Open viewer on click: on' : 'Open viewer on click: off'" location="bottom">
+      <template #activator="{ props: tipProps }">
+        <v-btn icon v-bind="tipProps" @click="openViewerOnClick = !openViewerOnClick"
+               :color="openViewerOnClick ? 'primary' : undefined">
+          <v-icon :icon="openViewerOnClick ? 'mdi-monitor' : 'mdi-monitor-off'" />
+        </v-btn>
+      </template>
+    </v-tooltip>
     <v-tooltip text="Flake history settings" location="bottom">
       <template #activator="{ props: tipProps }">
         <v-btn icon v-bind="tipProps" @click="openConfigDialog">
@@ -120,7 +128,22 @@
             placeholder="D:\BeamNG.drive"
             density="compact"
             class="mt-3"
-            hint="Path to your BeamNG install — clicking an artifact also opens game\test-viewer.html"
+            hint="Path to your BeamNG install — clicking an artifact also opens the viewer"
+            persistent-hint
+          />
+          <v-switch
+            v-model="form.useCommandListener"
+            density="compact" hide-details color="primary"
+            label="Use command listener trigger"
+            class="mt-3"
+          />
+          <v-text-field
+            v-model="form.commandListenerCall"
+            label="Command listener call"
+            placeholder="command:v1/run_custom_command"
+            density="compact"
+            class="mt-2"
+            hint="Scheme URL fired to open the viewer when the toggle above is on"
             persistent-hint
           />
           <v-alert
@@ -231,6 +254,7 @@
                   class="flake-cell-td"
                   :title="cellTooltip(t, heatmap.runs[i], cell)"
                   @click.stop="openArtifactOrPipeline(heatmap.runs[i], heatmap.expiredRunIds.has(heatmap.runs[i].run_id))"
+                  @contextmenu.prevent.stop="openCellMenu($event, heatmap.runs[i], heatmap.expiredRunIds.has(heatmap.runs[i].run_id))"
                 >
                   <div
                     :class="['flake-cell', `flake-cell--${cell}`,
@@ -303,6 +327,23 @@
     </v-card>
   </v-dialog>
 
+  <v-menu
+    v-model="cellMenu.open"
+    :target="[cellMenu.x, cellMenu.y]"
+    location="bottom start"
+  >
+    <v-list density="compact">
+      <v-list-item :disabled="!cellMenuCanDownload" @click="onMenuDownload">
+        <template #prepend><v-icon icon="mdi-download" /></template>
+        <v-list-item-title>Download artifact</v-list-item-title>
+      </v-list-item>
+      <v-list-item :disabled="!cellMenuCanPipeline" @click="onMenuPipeline">
+        <template #prepend><v-icon icon="mdi-source-branch" /></template>
+        <v-list-item-title>Go to pipeline</v-list-item-title>
+      </v-list-item>
+    </v-list>
+  </v-menu>
+
   <v-dialog v-model="configDialog" max-width="560">
     <v-card>
       <v-card-title>Flake history settings</v-card-title>
@@ -348,6 +389,21 @@
           hint="Joined to the install folder on artifact click. Default: game/test-viewer.html"
           persistent-hint
         />
+        <v-switch
+          v-model="form.useCommandListener"
+          density="compact" hide-details color="primary"
+          label="Use command listener trigger"
+          class="mt-3"
+        />
+        <v-text-field
+          v-model="form.commandListenerCall"
+          label="Command listener call"
+          placeholder="command:v1/run_custom_command"
+          density="compact"
+          class="mt-2"
+          hint="Scheme URL fired to open the viewer when the toggle above is on"
+          persistent-hint
+        />
       </v-card-text>
       <v-card-actions>
         <v-spacer />
@@ -389,12 +445,23 @@ const searchQuery = ref('')
 const showAllTests = ref(false)
 const infoDialog = ref(false)
 
+// Ephemeral, per-session: gates whether a left-click also opens the viewer.
+// Deliberately NOT persisted — resets to ON on every mount so users are nudged
+// toward opening the viewer. The config (useCommandListener) decides HOW it opens.
+const openViewerOnClick = ref(true)
+
+// Right-click context menu state (cursor-anchored). run/expired identify the
+// cell the menu was opened over; open toggles the v-menu.
+const cellMenu = ref({ open: false, x: 0, y: 0, run: null, expired: false })
+
 const form = ref({
   projectId: flakeSettings.value.projectId || '',
   packageName: flakeSettings.value.packageName || 'flake-history',
   refreshMinutes: flakeSettings.value.refreshMinutes ?? 60,
   gameInstallPath: flakeSettings.value.gameInstallPath || '',
   viewerRelPath: flakeSettings.value.viewerRelPath || '',
+  useCommandListener: flakeSettings.value.useCommandListener ?? false,
+  commandListenerCall: flakeSettings.value.commandListenerCall || 'command:v1/run_custom_command',
 })
 
 // Settings dialog (gear button in the app bar). Reseeds the shared form from
@@ -407,6 +474,8 @@ const openConfigDialog = () => {
     refreshMinutes: flakeSettings.value.refreshMinutes ?? 60,
     gameInstallPath: flakeSettings.value.gameInstallPath || '',
     viewerRelPath: flakeSettings.value.viewerRelPath || '',
+    useCommandListener: flakeSettings.value.useCommandListener ?? false,
+    commandListenerCall: flakeSettings.value.commandListenerCall || 'command:v1/run_custom_command',
   }
   configDialog.value = true
 }
@@ -528,20 +597,56 @@ const openTestViewer = () => {
   } catch { /* opening the viewer is best-effort; never break the download */ }
 }
 
+const downloadArtifact = (r) => {
+  if (r?.artifacts_url) window.open(r.artifacts_url, '_blank', 'noopener')
+}
+
+// Fire the configured custom scheme command (verbatim, no per-build arg).
+// Electron routes via shell.openExternal; the browser falls back to an anchor
+// click (the conventional way to hand a custom-scheme URL to the OS handler).
+// Best-effort: never throws, so it can't break the download it accompanies.
+const triggerCommandListener = () => {
+  const cmd = (flakeSettings.value.commandListenerCall || '').trim()
+  if (!cmd) return
+  try {
+    if (window.electronAPI?.openExternal) { window.electronAPI.openExternal(cmd).catch(() => {}); return }
+    const a = document.createElement('a')
+    a.href = cmd
+    a.style.display = 'none'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  } catch { /* opening the viewer is best-effort */ }
+}
+
+// Open the results viewer using whichever mechanism the user configured:
+// the custom scheme command, or the local file via openPath/file://.
+const openViewer = () => {
+  if (flakeSettings.value.useCommandListener) triggerCommandListener()
+  else openTestViewer()
+}
+
 // Click priority: download the run's artifacts when the producer supplied a
-// direct URL AND we estimate they still exist. On that download branch we also
-// open the local test viewer (if configured) so results are one click away.
-// Once a run's artifacts have expired (per-suite window) the URL would 404, so
-// we fall back to opening the pipeline — the old behavior, and where runs
-// without any URL land too; no viewer there since nothing was downloaded.
+// direct URL AND we estimate they still exist. On that branch we also open the
+// viewer — but only when the per-session openViewerOnClick toggle is on.
+// Once a run's artifacts have expired (or no URL exists) we fall back to the
+// pipeline; no viewer there since nothing was downloaded.
 const openArtifactOrPipeline = (r, expired = false) => {
   if (r?.artifacts_url && !expired) {
-    window.open(r.artifacts_url, '_blank', 'noopener')
-    openTestViewer()
+    downloadArtifact(r)
+    if (openViewerOnClick.value) openViewer()
     return
   }
   openPipeline(r)
 }
+
+const openCellMenu = (e, r, expired = false) => {
+  cellMenu.value = { open: true, x: e?.clientX ?? 0, y: e?.clientY ?? 0, run: r, expired }
+}
+const cellMenuCanDownload = computed(() => !!cellMenu.value.run?.artifacts_url && !cellMenu.value.expired)
+const cellMenuCanPipeline = computed(() => !!cellMenu.value.run?.pipeline_url)
+const onMenuDownload = () => { downloadArtifact(cellMenu.value.run); cellMenu.value.open = false }
+const onMenuPipeline = () => { openPipeline(cellMenu.value.run); cellMenu.value.open = false }
 
 const isConfigured = () => Boolean(
   props.settings.config.gitlabApiBaseUrl && flakeSettings.value.projectId
@@ -597,6 +702,8 @@ const saveForm = () => {
     refreshMinutes: Math.max(0, Number(form.value.refreshMinutes) || 0),
     gameInstallPath: (form.value.gameInstallPath || '').trim(),
     viewerRelPath: (form.value.viewerRelPath || '').trim(),
+    useCommandListener: !!form.value.useCommandListener,
+    commandListenerCall: (form.value.commandListenerCall || '').trim() || 'command:v1/run_custom_command',
   }
   configDialog.value = false
   reload()

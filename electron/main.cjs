@@ -452,6 +452,18 @@ ipcMain.handle('open-path', async (_e, { path: root, rel }) => {
   }
 })
 
+// Open an arbitrary URL / custom scheme in the OS default handler. Used by the
+// Flake History page to fire a custom scheme URL when the user has opted into
+// that trigger instead of opening the viewer file directly.
+ipcMain.handle('open-external', async (_e, { url }) => {
+  try {
+    await shell.openExternal(String(url || ''))
+    return { success: true }
+  } catch (e) {
+    return { success: false, error: e.message }
+  }
+})
+
 // ----------------------
 // Settings on disk (with XOR obfuscation for secrets)
 // ----------------------
