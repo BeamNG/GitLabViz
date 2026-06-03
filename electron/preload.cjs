@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // `rel` is the viewer path relative to it (e.g. game/test-viewer.html); the
   // main process joins them before calling shell.openPath.
   openPath: (root, rel) => ipcRenderer.invoke('open-path', { path: root, rel }),
+  // Open an arbitrary URL / custom scheme in the OS handler.
+  openExternal: (url) => ipcRenderer.invoke('open-external', { url }),
   openDevTools: () => ipcRenderer.invoke('open-devtools'),
   settingsGet: () => ipcRenderer.invoke('settings-get'),
   settingsSet: (settings) => ipcRenderer.invoke('settings-set', { settings }),

@@ -48,6 +48,7 @@ const mountFlakeView = async (settings) => {
       'v-card-actions': true, 'v-text-field': true, 'v-alert': true,
       'v-data-table': true, 'v-chip': true,
       'v-toolbar': true, 'v-switch': true, 'v-tooltip': true, 'v-dialog': true,
+      'v-menu': true, 'v-list': true, 'v-list-item': true, 'v-list-item-title': true,
     } },
   })
   await flushPromises()
@@ -200,6 +201,73 @@ describe('FlakeView', () => {
     open.mockRestore()
   })
 
+  it('openViewerOnClick defaults ON and ignores settings', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    }))
+    expect(wrapper.vm.openViewerOnClick).toBe(true)
+  })
+
+  it('fires the command listener URL via electron openExternal when useCommandListener is on', async () => {
+    nextResult = sampleBundle
+    const openExternal = vi.fn(() => Promise.resolve({ success: true }))
+    const openPath = vi.fn(() => Promise.resolve({ success: true }))
+    window.electronAPI = { openExternal, openPath }
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0,
+        gameInstallPath: 'D:\\BeamNG.drive', useCommandListener: true, commandListenerCall: 'scheme:v1/custom_open' },
+    }))
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/dl' }, false)
+    expect(open).toHaveBeenCalledWith('https://art/dl', '_blank', 'noopener')
+    expect(openExternal).toHaveBeenCalledWith('scheme:v1/custom_open')
+    expect(openPath).not.toHaveBeenCalled()
+
+    open.mockRestore()
+    delete window.electronAPI
+  })
+
+  it('falls back to an anchor click for the command URL outside Electron', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0,
+        useCommandListener: true, commandListenerCall: 'scheme:v1/custom_open' },
+    }))
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+
+    wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/dl' }, false)
+    expect(open).toHaveBeenCalledWith('https://art/dl', '_blank', 'noopener')
+    expect(click).toHaveBeenCalledTimes(1)
+
+    click.mockRestore()
+    open.mockRestore()
+  })
+
+  it('does not open the viewer or command when openViewerOnClick is off', async () => {
+    nextResult = sampleBundle
+    const openExternal = vi.fn(() => Promise.resolve({ success: true }))
+    const openPath = vi.fn(() => Promise.resolve({ success: true }))
+    window.electronAPI = { openExternal, openPath }
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0,
+        gameInstallPath: 'D:\\BeamNG.drive', useCommandListener: true, commandListenerCall: 'scheme:v1/custom_open' },
+    }))
+    wrapper.vm.openViewerOnClick = false
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    wrapper.vm.openArtifactOrPipeline({ artifacts_url: 'https://art/dl' }, false)
+    expect(open).toHaveBeenCalledTimes(1)
+    expect(open).toHaveBeenCalledWith('https://art/dl', '_blank', 'noopener')
+    expect(openExternal).not.toHaveBeenCalled()
+    expect(openPath).not.toHaveBeenCalled()
+
+    open.mockRestore()
+    delete window.electronAPI
+  })
+
   it('survives a rejecting electronAPI.openPath without throwing', async () => {
     nextResult = sampleBundle
     const openPath = vi.fn(() => Promise.reject(new Error('nope')))
@@ -266,7 +334,73 @@ describe('FlakeView', () => {
       refreshMinutes: 15,
       gameInstallPath: 'D:\\BeamNG.drive',
       viewerRelPath: 'graphic_viewer.html',
+      useCommandListener: false,
+      commandListenerCall: 'command:v1/run_custom_command',
     })
     expect(wrapper.vm.configDialog).toBe(false)
+  })
+
+  it('config save persists the command listener toggle and call', async () => {
+    nextResult = sampleBundle
+    const settings = baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    })
+    const wrapper = await mountFlakeView(settings)
+    wrapper.vm.openConfigDialog()
+    wrapper.vm.form.useCommandListener = true
+    wrapper.vm.form.commandListenerCall = 'scheme:v1/custom_open'
+    wrapper.vm.saveForm()
+    await flushPromises()
+    expect(settings.config.flakeHistory.useCommandListener).toBe(true)
+    expect(settings.config.flakeHistory.commandListenerCall).toBe('scheme:v1/custom_open')
+  })
+
+  it('right-click menu downloads artifacts and opens the pipeline, disabling as appropriate', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    }))
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    // Live artifacts: both actions enabled.
+    wrapper.vm.openCellMenu({ clientX: 10, clientY: 20 }, { artifacts_url: 'https://art/dl', pipeline_url: 'https://pipe' }, false)
+    expect(wrapper.vm.cellMenu.open).toBe(true)
+    expect(wrapper.vm.cellMenu.x).toBe(10)
+    expect(wrapper.vm.cellMenuCanDownload).toBe(true)
+    expect(wrapper.vm.cellMenuCanPipeline).toBe(true)
+
+    wrapper.vm.onMenuDownload()
+    expect(open).toHaveBeenLastCalledWith('https://art/dl', '_blank', 'noopener')
+    expect(wrapper.vm.cellMenu.open).toBe(false)
+
+    wrapper.vm.openCellMenu({ clientX: 0, clientY: 0 }, { artifacts_url: 'https://art/dl', pipeline_url: 'https://pipe' }, false)
+    wrapper.vm.onMenuPipeline()
+    expect(open).toHaveBeenLastCalledWith('https://pipe', '_blank', 'noopener')
+    expect(wrapper.vm.cellMenu.open).toBe(false)
+
+    // Expired: download disabled, pipeline still enabled.
+    wrapper.vm.openCellMenu({ clientX: 0, clientY: 0 }, { artifacts_url: 'https://art/dl', pipeline_url: 'https://pipe' }, true)
+    expect(wrapper.vm.cellMenuCanDownload).toBe(false)
+    expect(wrapper.vm.cellMenuCanPipeline).toBe(true)
+
+    // No URLs at all: both disabled.
+    wrapper.vm.openCellMenu({ clientX: 0, clientY: 0 }, {}, false)
+    expect(wrapper.vm.cellMenuCanDownload).toBe(false)
+    expect(wrapper.vm.cellMenuCanPipeline).toBe(false)
+
+    open.mockRestore()
+  })
+
+  it('config save restores the obfuscated default when the command call is blanked', async () => {
+    nextResult = sampleBundle
+    const settings = baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    })
+    const wrapper = await mountFlakeView(settings)
+    wrapper.vm.openConfigDialog()
+    wrapper.vm.form.commandListenerCall = '   '
+    wrapper.vm.saveForm()
+    await flushPromises()
+    expect(settings.config.flakeHistory.commandListenerCall).toBe('command:v1/run_custom_command')
   })
 })

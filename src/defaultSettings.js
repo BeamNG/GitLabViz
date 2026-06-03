@@ -29,6 +29,13 @@ export const defaultSettings = () => ({
       // the whole default segment (e.g. 'graphic_viewer.html' opens
       // <root>/graphic_viewer.html). Empty falls back to the default below.
       viewerRelPath: 'game/test-viewer.html',
+      // When true, opening the viewer fires `commandListenerCall` (a custom
+      // scheme command) instead of opening the viewer file via openPath.
+      useCommandListener: false,
+      // Custom scheme URL fired when useCommandListener is on. The default is a
+      // neutral placeholder; deployments override it with their own scheme
+      // command in local settings.
+      commandListenerCall: 'command:v1/run_custom_command',
     },
 
     // ChatTools (Mattermost) assimilation
