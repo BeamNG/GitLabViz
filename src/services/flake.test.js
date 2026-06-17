@@ -231,6 +231,7 @@ describe('parseRevisionRange', () => {
     expect(parseRevisionRange('177518')).toBe(null)   // bare number -> name search
     expect(parseRevisionRange('...')).toBe(null)        // no digits
     expect(parseRevisionRange('test_handbrake[etk800]')).toBe(null)
+    expect(parseRevisionRange('r1...r2...r3')).toBe(null)  // malformed: more than one range marker
   })
 })
 
