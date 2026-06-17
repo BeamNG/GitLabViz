@@ -268,11 +268,14 @@ describe('revisionRange filtering in selectors', () => {
   })
 
   it('selectFlakeLeaderboard honours revisionRange', () => {
-    const all   = selectFlakeLeaderboard(sampleBundle, { limit: 50, excludeStable: false })
+    const all    = selectFlakeLeaderboard(sampleBundle, { limit: 50, excludeStable: false })
     const only500 = selectFlakeLeaderboard(sampleBundle, { limit: 50, excludeStable: false, revisionRange: { min: 175500, max: 175500 } })
     expect(only500.length).toBeGreaterThan(0)
     expect(only500.length).toBeLessThanOrEqual(all.length)
-    expect(only500.some(r => r.name === 'test_drift[scintilla]')).toBe(false)
+    // r175500 == only run 5cb34a1f; test_mission[city_chase] fails in it, so it
+    // survives the filter. A range matching no run empties the leaderboard.
+    expect(only500.some(r => r.name === 'test_mission[city_chase]')).toBe(true)
+    expect(selectFlakeLeaderboard(sampleBundle, { limit: 50, revisionRange: { min: 999999, max: 999999 } })).toEqual([])
   })
 })
 
