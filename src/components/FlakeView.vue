@@ -7,7 +7,7 @@
       v-if="bundle"
       v-model="searchQuery"
       density="compact" hide-details variant="outlined"
-      placeholder="Search tests..."
+      placeholder="Search tests… or r177518...r177600"
       prepend-inner-icon="mdi-magnify"
       clearable
       style="max-width: 280px"
@@ -227,6 +227,10 @@
           <span class="flake-legend-item"><i class="flake-cell flake-cell--not_run" />Not run</span>
           <span class="flake-legend-item"><i class="flake-cell flake-cell--fail flake-cell--interrupted" />Interrupted run</span>
         </div>
+        <div v-if="facet.revisionRange && heatmap.runs.length === 0" class="flake-cells-hint">
+          <v-icon icon="mdi-alert-circle-outline" size="14" class="mr-1" />
+          No runs match this revision range.
+        </div>
         <div class="flake-heatmap-scroll">
           <table class="flake-heatmap-table">
             <thead>
@@ -419,6 +423,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import {
   fetchLatestBundle, selectFlakeLeaderboard, selectHeatmapMatrix, selectSuiteIncidentCards,
+  parseRevisionRange,
   FlakeNotConfiguredError, FlakeBundleNotFoundError, UnsupportedSchemaVersionError,
   SUPPORTED_SCHEMA_VERSION,
 } from '../services/flake'
@@ -489,6 +494,7 @@ const filterOptions = computed(() => ({
 const facet = computed(() => ({
   suite: suiteFilter.value === '(all)' ? null : suiteFilter.value,
   gfxApi: gfxFilter.value === '(all)' ? null : gfxFilter.value,
+  revisionRange: parseRevisionRange(searchQuery.value),
 }))
 
 const leaderboardLimit = computed(() => showAllTests.value ? Infinity : 100)
@@ -496,6 +502,9 @@ const leaderboardLimit = computed(() => showAllTests.value ? Infinity : 100)
 const matchesSearch = (t) => {
   const q = (searchQuery.value || '').trim().toLowerCase()
   if (!q) return true
+  // A revision-range query is handled by the facet, not by name — otherwise it
+  // would never match a test name and blank every row.
+  if (parseRevisionRange(q)) return true
   return (
     (t.name   || '').toLowerCase().includes(q) ||
     (t.module || '').toLowerCase().includes(q) ||

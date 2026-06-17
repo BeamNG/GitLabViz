@@ -433,4 +433,25 @@ describe('FlakeView', () => {
     await flushPromises()
     expect(settings.config.flakeHistory.commandListenerCall).toBe('command:v1/run_custom_command')
   })
+
+  it('a revision range in the search box narrows runs without blanking rows; names still search', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    }))
+
+    // Revision range -> only r175518 runs survive as columns, rows still present.
+    wrapper.vm.searchQuery = 'r175518...r175518'
+    await flushPromises()
+    expect(wrapper.vm.heatmap.runs.map(r => r.run_id).sort()).toEqual(['38cb3117', 'a882cfbe', 'f5354954'])
+    expect(wrapper.vm.heatmap.runs.every(r => r.source_revision === '175518')).toBe(true)
+    expect(wrapper.vm.heatmap.tests.length).toBeGreaterThan(0)
+
+    // A plain word still filters rows by test name (all 4 runs remain as columns).
+    wrapper.vm.searchQuery = 'handbrake'
+    await flushPromises()
+    expect(wrapper.vm.heatmap.runs.length).toBe(4)
+    expect(wrapper.vm.heatmap.tests.length).toBeGreaterThan(0)
+    expect(wrapper.vm.heatmap.tests.every(t => t.name.includes('handbrake'))).toBe(true)
+  })
 })
