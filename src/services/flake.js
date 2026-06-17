@@ -156,7 +156,11 @@ export const parseRevisionRange = (query) => {
 // axis, so it is excluded whenever a range is active.
 const inRevisionRange = (run, range) => {
   if (!range) return true
-  const rev = Number(run.source_revision)
+  const raw = run.source_revision
+  // Exclude null / empty / non-numeric revisions: they can't be placed on the
+  // numeric axis. (Number(null) is 0, which is finite — guard it explicitly.)
+  if (raw == null || raw === '') return false
+  const rev = Number(raw)
   if (!Number.isFinite(rev)) return false
   if (range.min != null && rev < range.min) return false
   if (range.max != null && rev > range.max) return false

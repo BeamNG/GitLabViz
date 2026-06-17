@@ -265,6 +265,11 @@ describe('revisionRange filtering in selectors', () => {
     }
     const m = selectHeatmapMatrix(bundle, { lastNRuns: 10, now: Date.parse('2026-05-21T00:00:00Z'), revisionRange: { min: 100, max: 1000 } })
     expect(m.runs.map(r => r.run_id)).toEqual(['num'])
+
+    // Open lower bound must still drop null/non-numeric revisions (Number(null)===0
+    // would otherwise sneak the 'nul' run past a `max`-only range).
+    const openMax = selectHeatmapMatrix(bundle, { lastNRuns: 10, now: Date.parse('2026-05-21T00:00:00Z'), revisionRange: { min: null, max: 1000 } })
+    expect(openMax.runs.map(r => r.run_id)).toEqual(['num'])
   })
 
   it('selectFlakeLeaderboard honours revisionRange', () => {
