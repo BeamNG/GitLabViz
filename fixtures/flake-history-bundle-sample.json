@@ -204,10 +204,10 @@
           "quality": "highest",
           "custom_profile_hash": null,
           "passing_run_ids": ["38cb3117"],
-          "failing_run_ids": ["a882cfbe", "5cb34a1f"],
+          "failing_run_ids": ["a882cfbe"],
           "pass_count": 1,
-          "fail_count": 2,
-          "pass_rate": 0.3333,
+          "fail_count": 1,
+          "pass_rate": 0.5,
           "last_status": "fail",
           "last_run_id": "a882cfbe"
         },
@@ -226,8 +226,8 @@
       ],
       "overall": {
         "pass_count": 1,
-        "fail_count": 3,
-        "pass_rate": 0.25,
+        "fail_count": 2,
+        "pass_rate": 0.3333,
         "is_flaky": true,
         "flake_classification": "actively_flaky"
       }

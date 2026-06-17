@@ -235,6 +235,47 @@ describe('parseRevisionRange', () => {
   })
 })
 
+describe('revisionRange filtering in selectors', () => {
+  it('selectHeatmapMatrix keeps only runs inside the range (inclusive ends)', () => {
+    const only518 = selectHeatmapMatrix(sampleBundle, { lastNRuns: 10, revisionRange: { min: 175518, max: 175518 } })
+    expect(only518.runs.map(r => r.run_id).sort()).toEqual(['38cb3117', 'a882cfbe', 'f5354954'])
+
+    const upTo500 = selectHeatmapMatrix(sampleBundle, { lastNRuns: 10, revisionRange: { min: null, max: 175500 } })
+    expect(upTo500.runs.map(r => r.run_id)).toEqual(['5cb34a1f'])
+
+    const from518 = selectHeatmapMatrix(sampleBundle, { lastNRuns: 10, revisionRange: { min: 175518, max: null } })
+    expect(from518.runs.every(r => r.source_revision === '175518')).toBe(true)
+
+    const whole = selectHeatmapMatrix(sampleBundle, { lastNRuns: 10, revisionRange: { min: 175500, max: 175518 } })
+    expect(whole.runs.length).toBe(4)
+  })
+
+  it('excludes runs whose source_revision is null or non-numeric while a range is active', () => {
+    const bundle = {
+      schema_version: 1,
+      runs: [
+        { run_id: 'num',  suite: 's', gfx_api: 'v', status: 'complete', source_revision: '500', started_at: '2026-05-20T00:00:00Z' },
+        { run_id: 'nul',  suite: 's', gfx_api: 'v', status: 'complete', source_revision: null,  started_at: '2026-05-20T01:00:00Z' },
+        { run_id: 'word', suite: 's', gfx_api: 'v', status: 'complete', source_revision: 'abc', started_at: '2026-05-20T02:00:00Z' },
+      ],
+      tests: [{
+        test_id: 's::m.py::t', name: 't', module: 'm.py', suite: 's', overall: {},
+        results_by_context: [{ passing_run_ids: ['num', 'nul', 'word'], failing_run_ids: [] }],
+      }],
+    }
+    const m = selectHeatmapMatrix(bundle, { lastNRuns: 10, now: Date.parse('2026-05-21T00:00:00Z'), revisionRange: { min: 100, max: 1000 } })
+    expect(m.runs.map(r => r.run_id)).toEqual(['num'])
+  })
+
+  it('selectFlakeLeaderboard honours revisionRange', () => {
+    const all   = selectFlakeLeaderboard(sampleBundle, { limit: 50, excludeStable: false })
+    const only500 = selectFlakeLeaderboard(sampleBundle, { limit: 50, excludeStable: false, revisionRange: { min: 175500, max: 175500 } })
+    expect(only500.length).toBeGreaterThan(0)
+    expect(only500.length).toBeLessThanOrEqual(all.length)
+    expect(only500.some(r => r.name === 'test_drift[scintilla]')).toBe(false)
+  })
+})
+
 describe('selectHeatmapMatrix', () => {
   it('returns runs ordered ascending by started_at and tests with at least one observation', () => {
     const m = selectHeatmapMatrix(sampleBundle, { lastNRuns: 10 })

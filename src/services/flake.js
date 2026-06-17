@@ -151,10 +151,23 @@ export const parseRevisionRange = (query) => {
   return null
 }
 
-const matchesFacet = (run, { suite, gfxApi, quality } = {}) => (
+// True when run.source_revision (numeric) falls in [min, max], either end
+// nullable/open. A null or non-numeric revision can't be placed on the numeric
+// axis, so it is excluded whenever a range is active.
+const inRevisionRange = (run, range) => {
+  if (!range) return true
+  const rev = Number(run.source_revision)
+  if (!Number.isFinite(rev)) return false
+  if (range.min != null && rev < range.min) return false
+  if (range.max != null && rev > range.max) return false
+  return true
+}
+
+const matchesFacet = (run, { suite, gfxApi, quality, revisionRange } = {}) => (
   (!suite || run.suite === suite) &&
   (!gfxApi || run.gfx_api === gfxApi) &&
-  (!quality || run.quality === quality)
+  (!quality || run.quality === quality) &&
+  inRevisionRange(run, revisionRange)
 )
 
 /**
@@ -184,13 +197,14 @@ export const selectFlakeLeaderboard = (bundle, {
   suite = null,
   gfxApi = null,
   quality = null,
+  revisionRange = null,
   limit = 20,
   excludeStable = true,
 } = {}) => {
   if (!bundle || !Array.isArray(bundle.tests)) return []
 
   const runsById = new Map((bundle.runs || []).map(r => [r.run_id, r]))
-  const facet = { suite, gfxApi, quality }
+  const facet = { suite, gfxApi, quality, revisionRange }
 
   const rows = []
   for (const t of bundle.tests) {
@@ -292,13 +306,14 @@ export const selectHeatmapMatrix = (bundle, {
   suite = null,
   gfxApi = null,
   quality = null,
+  revisionRange = null,
   lastNRuns = 30,
   now = Date.now(),
   artifactRetentionHours = ARTIFACT_RETENTION_HOURS,
   defaultRetentionHours = DEFAULT_ARTIFACT_RETENTION_HOURS,
 } = {}) => {
   if (!bundle) return { runs: [], tests: [], cells: {}, interruptedRunIds: new Set(), expiredRunIds: new Set() }
-  const facet = { suite, gfxApi, quality }
+  const facet = { suite, gfxApi, quality, revisionRange }
   const filteredRuns = (bundle.runs || [])
     .filter(r => matchesFacet(r, facet))
     .sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''))
