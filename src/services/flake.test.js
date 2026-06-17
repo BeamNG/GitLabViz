@@ -223,6 +223,7 @@ describe('parseRevisionRange', () => {
     expect(parseRevisionRange('100...200')).toEqual({ min: 100, max: 200 })
     expect(parseRevisionRange('R100...R200')).toEqual({ min: 100, max: 200 })
     expect(parseRevisionRange('  r100  ...  r200 ')).toEqual({ min: 100, max: 200 })
+    expect(parseRevisionRange('r100…r200')).toEqual({ min: 100, max: 200 })  // unicode ellipsis
   })
 
   it('returns null for non-revision input so name search is unaffected', () => {

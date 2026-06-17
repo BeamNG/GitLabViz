@@ -138,11 +138,12 @@ export const getCachedBundle = async () => {
  * treats it as an ordinary test-name search). The '...' marker is required for
  * a range; the leading 'r' is optional on range endpoints but mandatory on a
  * bare single revision, so numeric name searches like "800" are not hijacked.
- * Case-insensitive; whitespace around '...' tolerated.
+ * Case-insensitive; whitespace around '...' tolerated. A Unicode ellipsis (…,
+ * U+2026) is accepted as an alternative to '...' for OS autocorrect compatibility.
  */
 export const parseRevisionRange = (query) => {
   const s = String(query || '').trim()
-  const m = s.match(/^r?(\d+)?\s*\.\.\.\s*r?(\d+)?$/i)
+  const m = s.match(/^r?(\d+)?\s*(?:\.\.\.|…)\s*r?(\d+)?$/i)
   if (m && (m[1] || m[2])) {
     return { min: m[1] ? Number(m[1]) : null, max: m[2] ? Number(m[2]) : null }
   }
