@@ -128,6 +128,29 @@ export const getCachedBundle = async () => {
 
 // ---- pure selectors (no I/O; trivially unit-testable) ---------------------
 
+/**
+ * Parse a revision-range expression typed into the search box.
+ *   "r123...r456" -> { min: 123, max: 456 }   (inclusive both ends)
+ *   "r123..."     -> { min: 123, max: null }
+ *   "...r456"     -> { min: null, max: 456 }
+ *   "r123"        -> { min: 123, max: 123 }    (exact single revision)
+ * Returns null when the string is not a revision expression (so the caller
+ * treats it as an ordinary test-name search). The '...' marker is required for
+ * a range; the leading 'r' is optional on range endpoints but mandatory on a
+ * bare single revision, so numeric name searches like "800" are not hijacked.
+ * Case-insensitive; whitespace around '...' tolerated.
+ */
+export const parseRevisionRange = (query) => {
+  const s = String(query || '').trim()
+  const m = s.match(/^r?(\d+)?\s*\.\.\.\s*r?(\d+)?$/i)
+  if (m && (m[1] || m[2])) {
+    return { min: m[1] ? Number(m[1]) : null, max: m[2] ? Number(m[2]) : null }
+  }
+  const one = s.match(/^r(\d+)$/i)
+  if (one) return { min: Number(one[1]), max: Number(one[1]) }
+  return null
+}
+
 const matchesFacet = (run, { suite, gfxApi, quality } = {}) => (
   (!suite || run.suite === suite) &&
   (!gfxApi || run.gfx_api === gfxApi) &&

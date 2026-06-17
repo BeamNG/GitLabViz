@@ -10,6 +10,7 @@ import {
   UnsupportedSchemaVersionError,
   SUPPORTED_SCHEMA_VERSION,
   DEFAULT_PACKAGE_NAME,
+  parseRevisionRange,
 } from './flake'
 
 import sampleBundle from '../../fixtures/flake-history-bundle-sample.json'
@@ -207,6 +208,29 @@ describe('classifyFromCounts', () => {
   it('returns actively_flaky below 0.5', () => {
     expect(classifyFromCounts(1, 2)).toBe('actively_flaky') // ~33%
     expect(classifyFromCounts(1, 9)).toBe('actively_flaky') // 10%
+  })
+})
+
+describe('parseRevisionRange', () => {
+  it('parses closed, open-ended and single revisions (inclusive, nullable ends)', () => {
+    expect(parseRevisionRange('r100...r200')).toEqual({ min: 100, max: 200 })
+    expect(parseRevisionRange('r100...')).toEqual({ min: 100, max: null })
+    expect(parseRevisionRange('...r200')).toEqual({ min: null, max: 200 })
+    expect(parseRevisionRange('r100')).toEqual({ min: 100, max: 100 })
+  })
+
+  it('tolerates a missing r on range endpoints, casing, and whitespace', () => {
+    expect(parseRevisionRange('100...200')).toEqual({ min: 100, max: 200 })
+    expect(parseRevisionRange('R100...R200')).toEqual({ min: 100, max: 200 })
+    expect(parseRevisionRange('  r100  ...  r200 ')).toEqual({ min: 100, max: 200 })
+  })
+
+  it('returns null for non-revision input so name search is unaffected', () => {
+    expect(parseRevisionRange('')).toBe(null)
+    expect(parseRevisionRange(null)).toBe(null)
+    expect(parseRevisionRange('177518')).toBe(null)   // bare number -> name search
+    expect(parseRevisionRange('...')).toBe(null)        // no digits
+    expect(parseRevisionRange('test_handbrake[etk800]')).toBe(null)
   })
 })
 
