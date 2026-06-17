@@ -237,7 +237,7 @@
                   class="flake-heatmap-run-col"
                   :title="runTooltip(r)"
                 >{{ formatTickLabel(r.started_at)
-                  }}<template v-if="formatPipelineLabel(r)"><br><span class="flake-run-pid">{{ formatPipelineLabel(r) }}</span></template></th>
+                  }}<span v-if="formatPipelineLabel(r)" class="flake-run-pid">{{ formatPipelineLabel(r) }}</span></th>
               </tr>
             </thead>
             <tbody>
@@ -861,6 +861,8 @@ onBeforeUnmount(() => { if (refreshTimer) clearInterval(refreshTimer) })
   border-bottom: 1px solid rgba(127, 127, 127, 0.18);
 }
 .flake-run-pid {
+  display: block;
+  font-size: 0.85em;
   opacity: 0.6;
   font-variant-numeric: tabular-nums;
 }
