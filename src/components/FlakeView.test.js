@@ -403,6 +403,24 @@ describe('FlakeView', () => {
     open.mockRestore()
   })
 
+  it('cellTooltip appends the revision / suite / gfx context line', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    }))
+    const t = { name: 'test_level[italy]' }
+    const full = wrapper.vm.cellTooltip(
+      t, { run_id: 'f5354954', source_revision: '175518', suite: 'nightly', gfx_api: 'dx12', status: 'complete' }, 'pass')
+    expect(full).toContain('test_level[italy]')
+    expect(full).toContain('run: f5354954')
+    expect(full.split('\n').pop()).toBe('r175518 · nightly · dx12')
+
+    // Missing fields fall back to '?', mirroring runTooltip.
+    const fallback = wrapper.vm.cellTooltip(
+      t, { run_id: 'x', source_revision: null, suite: null, gfx_api: null, status: 'complete' }, 'fail')
+    expect(fallback.split('\n').pop()).toBe('r? · ? · ?')
+  })
+
   it('config save restores the obfuscated default when the command call is blanked', async () => {
     nextResult = sampleBundle
     const settings = baseSettings({

@@ -557,7 +557,11 @@ const runTooltip = (r) => `${r.suite || '?'} • ${r.gfx_api || '?'} • ${r.run
 const cellTooltip = (t, r, cell) => {
   const expired = heatmap.value.expiredRunIds.has(r.run_id)
   const artifacts = expired ? 'artifacts expired' : (r.artifacts_url ? 'artifacts available' : 'artifacts unknown')
-  return `${t.name}\nrun: ${r.run_id}\n${cell} • ${artifacts}${r.status === 'interrupted' ? ' (run was interrupted)' : ''}`
+  // Context line: revision under test, suite flavour, gfx target — same
+  // '?'-fallback convention as runTooltip. The revision label is a bare
+  // r<rev> (this CI publishes SVN revisions).
+  const context = `r${r.source_revision || '?'} · ${r.suite || '?'} · ${r.gfx_api || '?'}`
+  return `${t.name}\nrun: ${r.run_id}\n${cell} • ${artifacts}${r.status === 'interrupted' ? ' (run was interrupted)' : ''}\n${context}`
 }
 
 const openPipeline = (r) => {
