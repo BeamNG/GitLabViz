@@ -71,6 +71,18 @@ describe('FlakeView', () => {
     expect(wrapper.vm.errorKind).toBe('not_configured')
   })
 
+  it('formatPipelineLabel renders #<pipeline_id>, or empty when absent', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    }))
+    expect(wrapper.vm.formatPipelineLabel({ pipeline_id: 12345 })).toBe('#12345')
+    expect(wrapper.vm.formatPipelineLabel({ pipeline_id: 0 })).toBe('#0')
+    expect(wrapper.vm.formatPipelineLabel({ pipeline_id: null })).toBe('')
+    expect(wrapper.vm.formatPipelineLabel({})).toBe('')
+    expect(wrapper.vm.formatPipelineLabel(null)).toBe('')
+  })
+
   it('loads the bundle on mount when configured and exposes leaderboard rows', async () => {
     nextResult = sampleBundle
     const wrapper = await mountFlakeView(baseSettings({

@@ -236,7 +236,8 @@
                   v-for="r in heatmap.runs" :key="r.run_id"
                   class="flake-heatmap-run-col"
                   :title="runTooltip(r)"
-                >{{ formatTickLabel(r.started_at) }}</th>
+                >{{ formatTickLabel(r.started_at)
+                  }}<template v-if="formatPipelineLabel(r)"><br><span class="flake-run-pid">{{ formatPipelineLabel(r) }}</span></template></th>
               </tr>
             </thead>
             <tbody>
@@ -549,6 +550,9 @@ const formatTickLabel = (iso) => {
   if (!iso) return ''
   return iso.slice(5, 10) // MM-DD
 }
+// "#12347" when the run carries a pipeline id, "" otherwise (schema allows null).
+// Shown as a dimmer second line under the date so columns of one pipeline line up.
+const formatPipelineLabel = (r) => (r?.pipeline_id != null ? `#${r.pipeline_id}` : '')
 const runTooltip = (r) => `${r.suite || '?'} • ${r.gfx_api || '?'} • ${r.runner_id || '?'} • ${r.started_at || ''} • status=${r.status}`
 const cellTooltip = (t, r, cell) => {
   const expired = heatmap.value.expiredRunIds.has(r.run_id)
@@ -855,6 +859,10 @@ onBeforeUnmount(() => { if (refreshTimer) clearInterval(refreshTimer) })
   transform: rotate(180deg);
   padding-bottom: 6px !important;
   border-bottom: 1px solid rgba(127, 127, 127, 0.18);
+}
+.flake-run-pid {
+  opacity: 0.6;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Cells: padded td + inner colored div = visually distinct tiles rather than
