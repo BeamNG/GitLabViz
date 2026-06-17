@@ -446,6 +446,8 @@ describe('FlakeView', () => {
     expect(wrapper.vm.heatmap.runs.map(r => r.run_id).sort()).toEqual(['38cb3117', 'a882cfbe', 'f5354954'])
     expect(wrapper.vm.heatmap.runs.every(r => r.source_revision === '175518')).toBe(true)
     expect(wrapper.vm.heatmap.tests.length).toBeGreaterThan(0)
+    // The same facet narrows the leaderboard, not just the heatmap.
+    expect(wrapper.vm.leaderboard.length).toBeGreaterThan(0)
 
     // A plain word still filters rows by test name (all 4 runs remain as columns).
     wrapper.vm.searchQuery = 'handbrake'
