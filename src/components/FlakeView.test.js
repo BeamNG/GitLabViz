@@ -456,4 +456,36 @@ describe('FlakeView', () => {
     expect(wrapper.vm.heatmap.tests.length).toBeGreaterThan(0)
     expect(wrapper.vm.heatmap.tests.every(t => t.name.includes('handbrake'))).toBe(true)
   })
+
+  it('falls back to stable tests (with a flag) when no flakes match', async () => {
+    // An all-stable bundle: two tests, both 100% pass, default toggle (flaky-only).
+    nextResult = {
+      schema_version: 1,
+      generated_at: '2026-05-21T15:00:00Z',
+      runs: [
+        { run_id: 'r1', suite: 'smoketest', gfx_api: 'dx11', status: 'complete', pipeline_id: 5, started_at: '2026-05-20T00:00:00Z' },
+      ],
+      tests: [
+        { test_id: 'smoketest::vehicle_test.py::test_a[x]', name: 'test_a[x]', module: 'vehicle_test.py', suite: 'smoketest',
+          overall: { flake_classification: 'stable' },
+          results_by_context: [{ gfx_api: 'dx11', passing_run_ids: ['r1'], failing_run_ids: [] }] },
+      ],
+    }
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    }))
+    expect(wrapper.vm.showAllTests).toBe(false)        // flaky-only default
+    expect(wrapper.vm.leaderboard.length).toBe(1)       // fell back to the stable test
+    expect(wrapper.vm.leaderboard[0].flake_classification).toBe('stable')
+    expect(wrapper.vm.stableFallback).toBe(true)
+  })
+
+  it('does not flag fallback when real flakes are present', async () => {
+    nextResult = sampleBundle  // has city_chase / drift / italy flakes
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    }))
+    expect(wrapper.vm.leaderboard.length).toBeGreaterThan(0)
+    expect(wrapper.vm.stableFallback).toBe(false)
+  })
 })

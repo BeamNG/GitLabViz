@@ -184,6 +184,9 @@
             Leaderboard
             <span class="text-caption text-medium-emphasis">({{ leaderboard.length }} {{ leaderboard.length === 1 ? 'test' : 'tests' }}, most flaky first)</span>
           </h3>
+          <span v-if="stableFallback" class="text-caption text-medium-emphasis">
+            — no flakes in window; showing all stable tests
+          </span>
         </header>
         <v-data-table
           :headers="leaderboardHeaders"
@@ -512,15 +515,21 @@ const matchesSearch = (t) => {
   )
 }
 
-const leaderboard = computed(() => {
-  if (!bundle.value) return []
-  const rows = selectFlakeLeaderboard(bundle.value, {
-    ...facet.value,
-    limit: leaderboardLimit.value,
-    excludeStable: !showAllTests.value,
-  })
-  return rows.filter(matchesSearch)
+const leaderboardResult = computed(() => {
+  if (!bundle.value) return { rows: [], stableFallback: false }
+  const base = { ...facet.value, limit: leaderboardLimit.value }
+  let rows = selectFlakeLeaderboard(bundle.value, { ...base, excludeStable: !showAllTests.value })
+  let stableFallback = false
+  // Healthy suite: nothing flaky to triage. Rather than a blank table, show the
+  // stable roster so the screen reads "all green" instead of "no data".
+  if (rows.length === 0 && !showAllTests.value) {
+    rows = selectFlakeLeaderboard(bundle.value, { ...base, excludeStable: false })
+    stableFallback = rows.length > 0
+  }
+  return { rows: rows.filter(matchesSearch), stableFallback }
 })
+const leaderboard = computed(() => leaderboardResult.value.rows)
+const stableFallback = computed(() => leaderboardResult.value.stableFallback)
 
 const heatmap = computed(() => {
   if (!bundle.value) return { runs: [], tests: [], cells: {}, interruptedRunIds: new Set(), expiredRunIds: new Set() }
