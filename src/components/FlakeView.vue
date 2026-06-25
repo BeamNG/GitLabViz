@@ -67,11 +67,11 @@
       class="ml-2"
     />
     <v-slider
-      v-model="lastNRuns"
+      v-model="lastNPipelines"
       :min="5" :max="100" :step="1"
       hide-details density="compact"
       style="max-width: 220px; min-width: 160px"
-      :label="`Last ${lastNRuns} runs`"
+      :label="`Last ${lastNPipelines} pipelines`"
       class="ml-4"
     />
     <v-spacer />
@@ -448,7 +448,7 @@ const errorMessage = ref('')
 
 const suiteFilter = ref('(all)')
 const gfxFilter = ref('(all)')
-const lastNRuns = ref(30)
+const lastNPipelines = ref(10)
 const selectedTestIds = ref([])
 const searchQuery = ref('')
 const showAllTests = ref(false)
@@ -533,7 +533,7 @@ const stableFallback = computed(() => leaderboardResult.value.stableFallback)
 
 const heatmap = computed(() => {
   if (!bundle.value) return { runs: [], tests: [], cells: {}, interruptedRunIds: new Set(), expiredRunIds: new Set() }
-  const raw = selectHeatmapMatrix(bundle.value, { ...facet.value, lastNRuns: lastNRuns.value })
+  const raw = selectHeatmapMatrix(bundle.value, { ...facet.value, lastNPipelines: lastNPipelines.value })
   return { ...raw, tests: raw.tests.filter(matchesSearch) }
 })
 

@@ -488,4 +488,14 @@ describe('FlakeView', () => {
     expect(wrapper.vm.leaderboard.length).toBeGreaterThan(0)
     expect(wrapper.vm.stableFallback).toBe(false)
   })
+
+  it('defaults the heatmap window to 10 pipelines and passes it through', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    }))
+    expect(wrapper.vm.lastNPipelines).toBe(10)
+    // Sample has 4 single-run pipelines -> all 4 fit inside the 10-pipeline window.
+    expect(wrapper.vm.heatmap.runs.length).toBe(4)
+  })
 })
