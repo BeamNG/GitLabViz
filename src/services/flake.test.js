@@ -238,16 +238,16 @@ describe('parseRevisionRange', () => {
 
 describe('revisionRange filtering in selectors', () => {
   it('selectHeatmapMatrix keeps only runs inside the range (inclusive ends)', () => {
-    const only518 = selectHeatmapMatrix(sampleBundle, { lastNRuns: 10, revisionRange: { min: 175518, max: 175518 } })
+    const only518 = selectHeatmapMatrix(sampleBundle, { lastNPipelines: 10, revisionRange: { min: 175518, max: 175518 } })
     expect(only518.runs.map(r => r.run_id).sort()).toEqual(['38cb3117', 'a882cfbe', 'f5354954'])
 
-    const upTo500 = selectHeatmapMatrix(sampleBundle, { lastNRuns: 10, revisionRange: { min: null, max: 175500 } })
+    const upTo500 = selectHeatmapMatrix(sampleBundle, { lastNPipelines: 10, revisionRange: { min: null, max: 175500 } })
     expect(upTo500.runs.map(r => r.run_id)).toEqual(['5cb34a1f'])
 
-    const from518 = selectHeatmapMatrix(sampleBundle, { lastNRuns: 10, revisionRange: { min: 175518, max: null } })
+    const from518 = selectHeatmapMatrix(sampleBundle, { lastNPipelines: 10, revisionRange: { min: 175518, max: null } })
     expect(from518.runs.every(r => r.source_revision === '175518')).toBe(true)
 
-    const whole = selectHeatmapMatrix(sampleBundle, { lastNRuns: 10, revisionRange: { min: 175500, max: 175518 } })
+    const whole = selectHeatmapMatrix(sampleBundle, { lastNPipelines: 10, revisionRange: { min: 175500, max: 175518 } })
     expect(whole.runs.length).toBe(4)
   })
 
@@ -264,12 +264,12 @@ describe('revisionRange filtering in selectors', () => {
         results_by_context: [{ passing_run_ids: ['num', 'nul', 'word'], failing_run_ids: [] }],
       }],
     }
-    const m = selectHeatmapMatrix(bundle, { lastNRuns: 10, now: Date.parse('2026-05-21T00:00:00Z'), revisionRange: { min: 100, max: 1000 } })
+    const m = selectHeatmapMatrix(bundle, { lastNPipelines: 10, now: Date.parse('2026-05-21T00:00:00Z'), revisionRange: { min: 100, max: 1000 } })
     expect(m.runs.map(r => r.run_id)).toEqual(['num'])
 
     // Open lower bound must still drop null/non-numeric revisions (Number(null)===0
     // would otherwise sneak the 'nul' run past a `max`-only range).
-    const openMax = selectHeatmapMatrix(bundle, { lastNRuns: 10, now: Date.parse('2026-05-21T00:00:00Z'), revisionRange: { min: null, max: 1000 } })
+    const openMax = selectHeatmapMatrix(bundle, { lastNPipelines: 10, now: Date.parse('2026-05-21T00:00:00Z'), revisionRange: { min: null, max: 1000 } })
     expect(openMax.runs.map(r => r.run_id)).toEqual(['num'])
   })
 
@@ -287,7 +287,7 @@ describe('revisionRange filtering in selectors', () => {
 
 describe('selectHeatmapMatrix', () => {
   it('returns runs ordered ascending by started_at and tests with at least one observation', () => {
-    const m = selectHeatmapMatrix(sampleBundle, { lastNRuns: 10 })
+    const m = selectHeatmapMatrix(sampleBundle, { lastNPipelines: 10 })
     expect(m.runs.length).toBe(4)
     const times = m.runs.map(r => r.started_at)
     expect([...times]).toEqual([...times].sort())
@@ -298,12 +298,12 @@ describe('selectHeatmapMatrix', () => {
   })
 
   it('flags interrupted runs', () => {
-    const m = selectHeatmapMatrix(sampleBundle, { lastNRuns: 10 })
+    const m = selectHeatmapMatrix(sampleBundle, { lastNPipelines: 10 })
     expect(m.interruptedRunIds.has('a882cfbe')).toBe(true)
   })
 
   it('cells default to not_run when a test was absent in that run', () => {
-    const m = selectHeatmapMatrix(sampleBundle, { lastNRuns: 10 })
+    const m = selectHeatmapMatrix(sampleBundle, { lastNPipelines: 10 })
     // visual_test.py::test_visual[main_menu] only ran in the vulkan smoketest
     // run 38cb3117 — so every other column for that test must read "not_run".
     // Rows are keyed by the suite-independent group key (module::name).
@@ -316,8 +316,8 @@ describe('selectHeatmapMatrix', () => {
     }
   })
 
-  it('lastNRuns trims the run window from the most recent end', () => {
-    const m = selectHeatmapMatrix(sampleBundle, { lastNRuns: 2 })
+  it('lastNPipelines trims the run window from the most recent end', () => {
+    const m = selectHeatmapMatrix(sampleBundle, { lastNPipelines: 2 })
     expect(m.runs.length).toBe(2)
     // The trimmed-out run hashes must not appear in any cell value other
     // than not_run; the row length must equal the trimmed run count.
@@ -347,7 +347,7 @@ describe('selectHeatmapMatrix', () => {
           overall: {}, results_by_context: [{ passing_run_ids: ['n1'], failing_run_ids: [] }] },
       ],
     }
-    const m = selectHeatmapMatrix(bundle, { lastNRuns: 10, now: Date.parse('2026-05-21T00:00:00Z') })
+    const m = selectHeatmapMatrix(bundle, { lastNPipelines: 10, now: Date.parse('2026-05-21T00:00:00Z') })
     expect(m.tests.length).toBe(1)
     const row = m.tests[0]
     expect(row.test_id).toBe('level_test.py::test_level[west_coast_usa]')
@@ -374,11 +374,62 @@ describe('selectHeatmapMatrix', () => {
           results_by_context: [{ passing_run_ids: ['smoke', 'night', 'mystery', 'undated'], failing_run_ids: [] }] },
       ],
     }
-    const m = selectHeatmapMatrix(bundle, { lastNRuns: 10, now })
+    const m = selectHeatmapMatrix(bundle, { lastNPipelines: 10, now })
     expect(m.expiredRunIds.has('smoke')).toBe(true)     // 72h old > 48h smoketest window
     expect(m.expiredRunIds.has('night')).toBe(false)    // 72h old < 336h nightly window
     expect(m.expiredRunIds.has('mystery')).toBe(true)   // unknown suite -> 24h default -> expired
     expect(m.expiredRunIds.has('undated')).toBe(true)   // no timestamp -> assume expired
+  })
+})
+
+describe('selectHeatmapMatrix pipeline ordering & windowing', () => {
+  // Two pipelines, each a full dx11/dx12/vulkan trio. Deliberately interleave
+  // started_at across pipelines so a started_at sort would split the trios.
+  const bundle = {
+    schema_version: 1,
+    runs: [
+      { run_id: 'p1-vulkan', suite: 'smoketest', gfx_api: 'vulkan', pipeline_id: 100, status: 'complete', started_at: '2026-05-20T08:02:00Z' },
+      { run_id: 'p2-dx11',   suite: 'smoketest', gfx_api: 'dx11',   pipeline_id: 101, status: 'complete', started_at: '2026-05-20T08:01:30Z' },
+      { run_id: 'p1-dx11',   suite: 'smoketest', gfx_api: 'dx11',   pipeline_id: 100, status: 'complete', started_at: '2026-05-20T08:00:00Z' },
+      { run_id: 'p1-dx12',   suite: 'smoketest', gfx_api: 'dx12',   pipeline_id: 100, status: 'complete', started_at: '2026-05-20T08:03:00Z' },
+      { run_id: 'p2-vulkan', suite: 'smoketest', gfx_api: 'vulkan', pipeline_id: 101, status: 'complete', started_at: '2026-05-20T08:05:00Z' },
+      { run_id: 'p2-dx12',   suite: 'smoketest', gfx_api: 'dx12',   pipeline_id: 101, status: 'complete', started_at: '2026-05-20T08:04:00Z' },
+    ],
+    tests: [{
+      test_id: 'smoketest::m.py::t', name: 't', module: 'm.py', suite: 'smoketest', overall: {},
+      results_by_context: [{ gfx_api: 'x', passing_run_ids: ['p1-vulkan','p2-dx11','p1-dx11','p1-dx12','p2-vulkan','p2-dx12'], failing_run_ids: [] }],
+    }],
+  }
+  const now = Date.parse('2026-05-20T10:00:00Z')
+
+  it('orders columns by pipeline asc then dx11->dx12->vulkan, trios contiguous', () => {
+    const m = selectHeatmapMatrix(bundle, { lastNPipelines: 10, now })
+    expect(m.runs.map(r => r.run_id)).toEqual([
+      'p1-dx11', 'p1-dx12', 'p1-vulkan',   // pipeline 100 trio, gfx-ordered
+      'p2-dx11', 'p2-dx12', 'p2-vulkan',   // pipeline 101 trio
+    ])
+  })
+
+  it('windows by the most recent N pipelines, never clipping a trio mid-group', () => {
+    const m = selectHeatmapMatrix(bundle, { lastNPipelines: 1, now })
+    expect(m.runs.map(r => r.run_id)).toEqual(['p2-dx11', 'p2-dx12', 'p2-vulkan'])
+  })
+
+  it('treats null pipeline_id runs as singleton groups sorted to the most-recent end', () => {
+    const withLocal = {
+      ...bundle,
+      runs: [
+        ...bundle.runs,
+        { run_id: 'local', suite: 'smoketest', gfx_api: 'dx11', pipeline_id: null, status: 'complete', started_at: '2026-05-20T09:00:00Z' },
+      ],
+      tests: [{
+        test_id: 'smoketest::m.py::t', name: 't', module: 'm.py', suite: 'smoketest', overall: {},
+        results_by_context: [{ gfx_api: 'x', passing_run_ids: ['local'], failing_run_ids: [] }],
+      }],
+    }
+    const m = selectHeatmapMatrix(withLocal, { lastNPipelines: 1, now })
+    // null-pipeline run is its own group, sorted after numbered pipelines.
+    expect(m.runs.map(r => r.run_id)).toEqual(['local'])
   })
 })
 

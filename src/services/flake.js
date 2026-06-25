@@ -281,6 +281,10 @@ export const selectFlakeLeaderboard = (bundle, {
  */
 const heatmapGroupKey = (t) => `${t.module || ''}::${t.name || ''}`
 
+// Fixed gfx column order within a pipeline so trios read dx11 → dx12 → vulkan.
+const GFX_ORDER = { dx11: 0, dx12: 1, vulkan: 2 }
+const gfxRank = (g) => (g in GFX_ORDER ? GFX_ORDER[g] : 99)
+
 /**
  * True when a run's CI artifacts have almost certainly expired, based on run
  * age vs its suite's retention window (retentionHours[suite], falling back to
@@ -312,17 +316,37 @@ export const selectHeatmapMatrix = (bundle, {
   gfxApi = null,
   quality = null,
   revisionRange = null,
-  lastNRuns = 30,
+  lastNPipelines = 30,
   now = Date.now(),
   artifactRetentionHours = ARTIFACT_RETENTION_HOURS,
   defaultRetentionHours = DEFAULT_ARTIFACT_RETENTION_HOURS,
 } = {}) => {
   if (!bundle) return { runs: [], tests: [], cells: {}, interruptedRunIds: new Set(), expiredRunIds: new Set() }
   const facet = { suite, gfxApi, quality, revisionRange }
-  const filteredRuns = (bundle.runs || [])
-    .filter(r => matchesFacet(r, facet))
-    .sort((a, b) => (a.started_at || '').localeCompare(b.started_at || ''))
-    .slice(-lastNRuns)
+
+  // Group runs by pipeline (null pipeline_id => its own singleton group, keyed
+  // by run_id so local/CI-less runs never merge). Order groups by pipeline
+  // number ascending (nulls last, by time), keep the most-recent N pipelines,
+  // then flatten with a fixed gfx order so each pipeline's trio is contiguous.
+  const matched = (bundle.runs || []).filter(r => matchesFacet(r, facet))
+  const pipelineGroups = new Map() // gkey -> { pid, repAt, runs: [] }
+  for (const r of matched) {
+    const gkey = r.pipeline_id != null ? `p${r.pipeline_id}` : `r${r.run_id}`
+    let g = pipelineGroups.get(gkey)
+    if (!g) { g = { pid: r.pipeline_id != null ? r.pipeline_id : null, repAt: r.started_at || '', runs: [] }; pipelineGroups.set(gkey, g) }
+    g.runs.push(r)
+    if (!g.repAt || (r.started_at && r.started_at < g.repAt)) g.repAt = r.started_at || g.repAt
+  }
+  const orderedGroups = [...pipelineGroups.values()].sort((a, b) => {
+    const ap = a.pid == null ? Infinity : a.pid
+    const bp = b.pid == null ? Infinity : b.pid
+    if (ap !== bp) return ap - bp
+    return (a.repAt || '').localeCompare(b.repAt || '')
+  }).slice(-lastNPipelines)
+  const filteredRuns = orderedGroups.flatMap(g => g.runs.slice().sort((a, b) => {
+    const rk = gfxRank(a.gfx_api) - gfxRank(b.gfx_api)
+    return rk !== 0 ? rk : (a.started_at || '').localeCompare(b.started_at || '')
+  }))
 
   const runIds = new Set(filteredRuns.map(r => r.run_id))
   const interruptedRunIds = new Set(filteredRuns
