@@ -240,8 +240,9 @@
               <tr>
                 <th class="flake-heatmap-test-col">Test</th>
                 <th
-                  v-for="r in heatmap.runs" :key="r.run_id"
+                  v-for="(r, i) in heatmap.runs" :key="r.run_id"
                   class="flake-heatmap-run-col"
+                  :class="{ 'flake-col--group-start': isGroupStartColumn(r, i) }"
                   :title="runTooltip(r)"
                 >{{ formatTickLabel(r.started_at)
                   }}<span v-if="formatPipelineLabel(r)" class="flake-run-pid">{{ formatPipelineLabel(r) }}</span></th>
@@ -260,6 +261,7 @@
                 <td
                   v-for="(cell, i) in heatmap.cells[t.test_id]" :key="i"
                   class="flake-cell-td"
+                  :class="{ 'flake-col--group-start': isGroupStartColumn(heatmap.runs[i], i) }"
                   :title="cellTooltip(t, heatmap.runs[i], cell)"
                   @click.stop="openArtifactOrPipeline(heatmap.runs[i], heatmap.expiredRunIds.has(heatmap.runs[i].run_id))"
                   @contextmenu.prevent.stop="openCellMenu($event, heatmap.runs[i], heatmap.expiredRunIds.has(heatmap.runs[i].run_id))"
@@ -532,7 +534,7 @@ const leaderboard = computed(() => leaderboardResult.value.rows)
 const stableFallback = computed(() => leaderboardResult.value.stableFallback)
 
 const heatmap = computed(() => {
-  if (!bundle.value) return { runs: [], tests: [], cells: {}, interruptedRunIds: new Set(), expiredRunIds: new Set() }
+  if (!bundle.value) return { runs: [], tests: [], cells: {}, interruptedRunIds: new Set(), expiredRunIds: new Set(), pipelineStartRunIds: new Set() }
   const raw = selectHeatmapMatrix(bundle.value, { ...facet.value, lastNPipelines: lastNPipelines.value })
   return { ...raw, tests: raw.tests.filter(matchesSearch) }
 })
@@ -571,6 +573,9 @@ const formatTickLabel = (iso) => {
 // "#12347" when the run carries a pipeline id, "" otherwise (schema allows null).
 // Shown as a dimmer second line under the date so columns of one pipeline line up.
 const formatPipelineLabel = (r) => (r?.pipeline_id != null ? `#${r.pipeline_id}` : '')
+// A column starts a new pipeline trio when its run leads a pipeline group — but
+// column 0 never gets a separator (it would hug the sticky test-name column).
+const isGroupStartColumn = (r, i) => i > 0 && heatmap.value.pipelineStartRunIds.has(r?.run_id)
 const runTooltip = (r) => `${r.suite || '?'} • ${r.gfx_api || '?'} • ${r.runner_id || '?'} • ${r.started_at || ''} • status=${r.status}`
 const cellTooltip = (t, r, cell) => {
   const expired = heatmap.value.expiredRunIds.has(r.run_id)
@@ -887,6 +892,11 @@ onBeforeUnmount(() => { if (refreshTimer) clearInterval(refreshTimer) })
   font-size: 0.85em;
   opacity: 0.6;
   font-variant-numeric: tabular-nums;
+}
+/* Separator before the first column of each pipeline trio. */
+.flake-heatmap-table th.flake-col--group-start,
+.flake-heatmap-table td.flake-col--group-start {
+  border-left: 2px solid rgba(127, 127, 127, 0.45);
 }
 
 /* Cells: padded td + inner colored div = visually distinct tiles rather than

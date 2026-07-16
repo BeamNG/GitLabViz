@@ -489,6 +489,22 @@ describe('FlakeView', () => {
     expect(wrapper.vm.stableFallback).toBe(false)
   })
 
+  it('flags group-start columns for a separator but never column 0', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    }))
+    const runs = wrapper.vm.heatmap.runs
+    const starts = wrapper.vm.heatmap.pipelineStartRunIds
+    expect(runs.length).toBeGreaterThan(1)
+    // Column 0 is never a separator, even when it begins a group.
+    expect(wrapper.vm.isGroupStartColumn(runs[0], 0)).toBe(false)
+    // Every later column matches its membership in the start set.
+    for (let i = 1; i < runs.length; i++) {
+      expect(wrapper.vm.isGroupStartColumn(runs[i], i)).toBe(starts.has(runs[i].run_id))
+    }
+  })
+
   it('defaults the heatmap window to 10 pipelines and passes it through', async () => {
     nextResult = sampleBundle
     const wrapper = await mountFlakeView(baseSettings({
