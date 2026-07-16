@@ -351,6 +351,14 @@
         <template #prepend><v-icon icon="mdi-source-branch" /></template>
         <v-list-item-title>Go to pipeline</v-list-item-title>
       </v-list-item>
+      <v-list-item :disabled="!cellMenuRevision || !commitBaseConfigured" @click="onMenuShowRevision">
+        <template #prepend><v-icon icon="mdi-source-commit" /></template>
+        <v-list-item-title>Show Revision Details</v-list-item-title>
+      </v-list-item>
+      <v-list-item :disabled="!cellMenuRevision" @click="onMenuCopyRevision">
+        <template #prepend><v-icon icon="mdi-content-copy" /></template>
+        <v-list-item-title>Copy Revision #</v-list-item-title>
+      </v-list-item>
     </v-list>
   </v-menu>
 
@@ -693,6 +701,51 @@ const cellMenuCanDownload = computed(() => !!cellMenu.value.run?.artifacts_url &
 const cellMenuCanPipeline = computed(() => !!cellMenu.value.run?.pipeline_url)
 const onMenuDownload = () => { downloadArtifact(cellMenu.value.run); cellMenu.value.open = false }
 const onMenuPipeline = () => { openPipeline(cellMenu.value.run); cellMenu.value.open = false }
+
+// Revision under the right-clicked cell, normalized to a trimmed string or null.
+const cellMenuRevision = computed(() => {
+  const raw = cellMenu.value.run?.source_revision
+  const s = (raw == null ? '' : String(raw)).trim()
+  return s || null
+})
+// The commit-view base is "configured" only when it is non-empty and free of
+// the <placeholder> tokens the default ships with — otherwise "Show Revision
+// Details" would open a broken URL.
+const commitBaseConfigured = computed(() => {
+  const base = (flakeSettings.value.commitViewBaseURL || '').trim()
+  return base.length > 0 && !base.includes('<')
+})
+const commitRevisionUrl = (rev) => {
+  const base = (flakeSettings.value.commitViewBaseURL || DEFAULT_COMMIT_VIEW_BASE_URL).trim()
+  return base.replace(/\/+$/, '') + '/' + encodeURIComponent(rev)
+}
+const onMenuShowRevision = () => {
+  const rev = cellMenuRevision.value
+  if (rev && commitBaseConfigured.value) window.open(commitRevisionUrl(rev), '_blank', 'noopener')
+  cellMenu.value.open = false
+}
+// Best-effort clipboard copy: modern API first, legacy textarea fallback for
+// non-secure contexts. Never throws.
+const copyPlainText = async (text) => {
+  try {
+    if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return }
+  } catch { /* fall through to legacy path */ }
+  try {
+    const ta = document.createElement('textarea')
+    ta.value = text
+    ta.style.position = 'fixed'
+    ta.style.opacity = '0'
+    document.body.appendChild(ta)
+    ta.select()
+    document.execCommand('copy')
+    ta.remove()
+  } catch { /* clipboard is best-effort */ }
+}
+const onMenuCopyRevision = () => {
+  const rev = cellMenuRevision.value
+  if (rev) copyPlainText(String(rev))
+  cellMenu.value.open = false
+}
 
 const isConfigured = () => Boolean(
   props.settings.config.gitlabApiBaseUrl && flakeSettings.value.projectId

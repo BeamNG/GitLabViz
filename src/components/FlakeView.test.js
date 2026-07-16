@@ -422,6 +422,63 @@ describe('FlakeView', () => {
     expect(fallback.split('\n').pop()).toBe('r? · ? · ?')
   })
 
+  it('Show Revision Details opens base+rev, honoring a configured base and single-slash join', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: {
+        projectId: '12', packageName: 'flake-history', refreshMinutes: 0,
+        commitViewBaseURL: 'https://git.example.com/g/p/-/commit',   // no trailing slash
+      },
+    }))
+    const open = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    wrapper.vm.openCellMenu({ clientX: 0, clientY: 0 }, { source_revision: '175518' }, false)
+    expect(wrapper.vm.cellMenuRevision).toBe('175518')
+    expect(wrapper.vm.commitBaseConfigured).toBe(true)
+    wrapper.vm.onMenuShowRevision()
+    expect(open).toHaveBeenLastCalledWith('https://git.example.com/g/p/-/commit/175518', '_blank', 'noopener')
+    expect(wrapper.vm.cellMenu.open).toBe(false)
+
+    open.mockRestore()
+  })
+
+  it('Show Revision Details is disabled while the base is the placeholder default', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+      // no commitViewBaseURL override -> setting absent -> treated as unconfigured
+    }))
+    wrapper.vm.openCellMenu({ clientX: 0, clientY: 0 }, { source_revision: '175518' }, false)
+    expect(wrapper.vm.cellMenuRevision).toBe('175518')
+    expect(wrapper.vm.commitBaseConfigured).toBe(false)
+  })
+
+  it('Copy Revision # writes the plain revision to the clipboard', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: { projectId: '12', packageName: 'flake-history', refreshMinutes: 0 },
+    }))
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true })
+
+    wrapper.vm.openCellMenu({ clientX: 0, clientY: 0 }, { source_revision: '175518' }, false)
+    wrapper.vm.onMenuCopyRevision()
+    expect(writeText).toHaveBeenCalledWith('175518')
+    expect(wrapper.vm.cellMenu.open).toBe(false)
+  })
+
+  it('revision menu items disable when the run has no source_revision', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: {
+        projectId: '12', packageName: 'flake-history', refreshMinutes: 0,
+        commitViewBaseURL: 'https://git.example.com/g/p/-/commit/',
+      },
+    }))
+    wrapper.vm.openCellMenu({ clientX: 0, clientY: 0 }, { source_revision: null }, false)
+    expect(wrapper.vm.cellMenuRevision).toBe(null)
+  })
+
   it('config save restores the obfuscated default when the command call is blanked', async () => {
     nextResult = sampleBundle
     const settings = baseSettings({
