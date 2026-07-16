@@ -402,17 +402,17 @@ describe('selectHeatmapMatrix pipeline ordering & windowing', () => {
   }
   const now = Date.parse('2026-05-20T10:00:00Z')
 
-  it('orders columns by pipeline asc then dx11->dx12->vulkan, trios contiguous', () => {
+  it('orders columns by pipeline asc then dx12->vulkan->dx11, trios contiguous', () => {
     const m = selectHeatmapMatrix(bundle, { lastNPipelines: 10, now })
     expect(m.runs.map(r => r.run_id)).toEqual([
-      'p1-dx11', 'p1-dx12', 'p1-vulkan',   // pipeline 100 trio, gfx-ordered
-      'p2-dx11', 'p2-dx12', 'p2-vulkan',   // pipeline 101 trio
+      'p1-dx12', 'p1-vulkan', 'p1-dx11',   // pipeline 100 trio, gfx-ordered
+      'p2-dx12', 'p2-vulkan', 'p2-dx11',   // pipeline 101 trio
     ])
   })
 
   it('windows by the most recent N pipelines, never clipping a trio mid-group', () => {
     const m = selectHeatmapMatrix(bundle, { lastNPipelines: 1, now })
-    expect(m.runs.map(r => r.run_id)).toEqual(['p2-dx11', 'p2-dx12', 'p2-vulkan'])
+    expect(m.runs.map(r => r.run_id)).toEqual(['p2-dx12', 'p2-vulkan', 'p2-dx11'])
   })
 
   it('treats null pipeline_id runs as singleton groups sorted to the most-recent end', () => {
@@ -430,6 +430,31 @@ describe('selectHeatmapMatrix pipeline ordering & windowing', () => {
     const m = selectHeatmapMatrix(withLocal, { lastNPipelines: 1, now })
     // null-pipeline run is its own group, sorted after numbered pipelines.
     expect(m.runs.map(r => r.run_id)).toEqual(['local'])
+  })
+
+  it('pipelineStartRunIds marks the first run of each pipeline group only', () => {
+    const m = selectHeatmapMatrix(bundle, { lastNPipelines: 10, now })
+    // First column of each trio (dx12 leads after the flip).
+    expect([...m.pipelineStartRunIds].sort()).toEqual(['p1-dx12', 'p2-dx12'])
+    // Non-leading columns are absent.
+    expect(m.pipelineStartRunIds.has('p1-vulkan')).toBe(false)
+    expect(m.pipelineStartRunIds.has('p2-dx11')).toBe(false)
+  })
+
+  it('pipelineStartRunIds includes null-pipeline singletons', () => {
+    const withLocal = {
+      ...bundle,
+      runs: [
+        ...bundle.runs,
+        { run_id: 'local', suite: 'smoketest', gfx_api: 'dx11', pipeline_id: null, status: 'complete', started_at: '2026-05-20T09:00:00Z' },
+      ],
+      tests: [{
+        test_id: 'smoketest::m.py::t', name: 't', module: 'm.py', suite: 'smoketest', overall: {},
+        results_by_context: [{ gfx_api: 'x', passing_run_ids: ['local'], failing_run_ids: [] }],
+      }],
+    }
+    const m = selectHeatmapMatrix(withLocal, { lastNPipelines: 1, now })
+    expect([...m.pipelineStartRunIds]).toEqual(['local'])
   })
 })
 

@@ -281,8 +281,9 @@ export const selectFlakeLeaderboard = (bundle, {
  */
 const heatmapGroupKey = (t) => `${t.module || ''}::${t.name || ''}`
 
-// Fixed gfx column order within a pipeline so trios read dx11 → dx12 → vulkan.
-const GFX_ORDER = { dx11: 0, dx12: 1, vulkan: 2 }
+// Fixed gfx column order within a pipeline so trios read dx12 → vulkan → dx11
+// (matches the Mattermost notifier lane order).
+const GFX_ORDER = { dx12: 0, vulkan: 1, dx11: 2 }
 const gfxRank = (g) => (g in GFX_ORDER ? GFX_ORDER[g] : 99)
 
 /**
@@ -321,7 +322,7 @@ export const selectHeatmapMatrix = (bundle, {
   artifactRetentionHours = ARTIFACT_RETENTION_HOURS,
   defaultRetentionHours = DEFAULT_ARTIFACT_RETENTION_HOURS,
 } = {}) => {
-  if (!bundle) return { runs: [], tests: [], cells: {}, interruptedRunIds: new Set(), expiredRunIds: new Set() }
+  if (!bundle) return { runs: [], tests: [], cells: {}, interruptedRunIds: new Set(), expiredRunIds: new Set(), pipelineStartRunIds: new Set() }
   const facet = { suite, gfxApi, quality, revisionRange }
 
   // Group runs by pipeline (null pipeline_id => its own singleton group, keyed
@@ -343,10 +344,17 @@ export const selectHeatmapMatrix = (bundle, {
     if (ap !== bp) return ap - bp
     return (a.repAt || '').localeCompare(b.repAt || '')
   }).slice(-lastNPipelines)
-  const filteredRuns = orderedGroups.flatMap(g => g.runs.slice().sort((a, b) => {
-    const rk = gfxRank(a.gfx_api) - gfxRank(b.gfx_api)
-    return rk !== 0 ? rk : (a.started_at || '').localeCompare(b.started_at || '')
-  }))
+  // The first run of each pipeline group (in final column order) begins a new
+  // trio; the view draws a separator before those columns.
+  const pipelineStartRunIds = new Set()
+  const filteredRuns = orderedGroups.flatMap(g => {
+    const sorted = g.runs.slice().sort((a, b) => {
+      const rk = gfxRank(a.gfx_api) - gfxRank(b.gfx_api)
+      return rk !== 0 ? rk : (a.started_at || '').localeCompare(b.started_at || '')
+    })
+    if (sorted.length) pipelineStartRunIds.add(sorted[0].run_id)
+    return sorted
+  })
 
   const runIds = new Set(filteredRuns.map(r => r.run_id))
   const interruptedRunIds = new Set(filteredRuns
@@ -396,7 +404,7 @@ export const selectHeatmapMatrix = (bundle, {
     cells[g.test_id] = g.row
   }
 
-  return { runs: filteredRuns, tests, cells, interruptedRunIds, expiredRunIds }
+  return { runs: filteredRuns, tests, cells, interruptedRunIds, expiredRunIds, pipelineStartRunIds }
 }
 
 // Preferred left-to-right card order; suites outside this list sort after it,
