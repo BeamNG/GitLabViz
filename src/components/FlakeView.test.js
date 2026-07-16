@@ -453,6 +453,19 @@ describe('FlakeView', () => {
     expect(wrapper.vm.commitBaseConfigured).toBe(false)
   })
 
+  it('Show Revision Details is disabled when the base still holds a <placeholder> token', async () => {
+    nextResult = sampleBundle
+    const wrapper = await mountFlakeView(baseSettings({
+      flakeHistory: {
+        projectId: '12', packageName: 'flake-history', refreshMinutes: 0,
+        commitViewBaseURL: 'https://<repository_provider>/<group>/<project>/-/commit/',
+      },
+    }))
+    wrapper.vm.openCellMenu({ clientX: 0, clientY: 0 }, { source_revision: '175518' }, false)
+    expect(wrapper.vm.cellMenuRevision).toBe('175518')   // revision parses fine
+    expect(wrapper.vm.commitBaseConfigured).toBe(false)  // but the <placeholder> base is not "configured"
+  })
+
   it('Copy Revision # writes the plain revision to the clipboard', async () => {
     nextResult = sampleBundle
     const wrapper = await mountFlakeView(baseSettings({
