@@ -474,6 +474,10 @@ const openViewerOnClick = ref(true)
 // cell the menu was opened over; open toggles the v-menu.
 const cellMenu = ref({ open: false, x: 0, y: 0, run: null, expired: false })
 
+// Fallback commit-view base when the setting is absent. Mirrors the default in
+// defaultSettings.js. Placeholder on purpose — no internal host in source.
+const DEFAULT_COMMIT_VIEW_BASE_URL = 'https://<repository_provider>/<group>/<project>/-/commit/'
+
 const form = ref({
   projectId: flakeSettings.value.projectId || '',
   packageName: flakeSettings.value.packageName || 'flake-history',
@@ -606,10 +610,6 @@ const openPipeline = (r) => {
 // config.flakeHistory.viewerRelPath.
 // NOTE: keep the default in sync with the main-process handler in electron/main.cjs.
 const VIEWER_REL = 'game/test-viewer.html'
-
-// Fallback commit-view base when the setting is absent. Mirrors the default in
-// defaultSettings.js. Placeholder on purpose — no internal host in source.
-const DEFAULT_COMMIT_VIEW_BASE_URL = 'https://<repository_provider>/<group>/<project>/-/commit/'
 
 // Build a file:// URL to the local test viewer from the game install ROOT and a
 // relative viewer path (defaults to VIEWER_REL). Pure + unit-tested: tolerates
