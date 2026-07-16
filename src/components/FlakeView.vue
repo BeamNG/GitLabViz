@@ -414,6 +414,15 @@
           hint="Scheme URL fired to open the viewer when the toggle above is on"
           persistent-hint
         />
+        <v-text-field
+          v-model="form.commitViewBaseURL"
+          label="Commit view base URL"
+          placeholder="https://<repository_provider>/<group>/<project>/-/commit/"
+          density="compact"
+          class="mt-3"
+          hint="Per-commit URL base; the revision id is appended. Right-click a cell → Show Revision Details."
+          persistent-hint
+        />
       </v-card-text>
       <v-card-actions>
         <v-spacer />
@@ -473,6 +482,7 @@ const form = ref({
   viewerRelPath: flakeSettings.value.viewerRelPath || '',
   useCommandListener: flakeSettings.value.useCommandListener ?? false,
   commandListenerCall: flakeSettings.value.commandListenerCall || 'command:v1/run_custom_command',
+  commitViewBaseURL: flakeSettings.value.commitViewBaseURL || DEFAULT_COMMIT_VIEW_BASE_URL,
 })
 
 // Settings dialog (gear button in the app bar). Reseeds the shared form from
@@ -487,6 +497,7 @@ const openConfigDialog = () => {
     viewerRelPath: flakeSettings.value.viewerRelPath || '',
     useCommandListener: flakeSettings.value.useCommandListener ?? false,
     commandListenerCall: flakeSettings.value.commandListenerCall || 'command:v1/run_custom_command',
+    commitViewBaseURL: flakeSettings.value.commitViewBaseURL || DEFAULT_COMMIT_VIEW_BASE_URL,
   }
   configDialog.value = true
 }
@@ -595,6 +606,10 @@ const openPipeline = (r) => {
 // config.flakeHistory.viewerRelPath.
 // NOTE: keep the default in sync with the main-process handler in electron/main.cjs.
 const VIEWER_REL = 'game/test-viewer.html'
+
+// Fallback commit-view base when the setting is absent. Mirrors the default in
+// defaultSettings.js. Placeholder on purpose — no internal host in source.
+const DEFAULT_COMMIT_VIEW_BASE_URL = 'https://<repository_provider>/<group>/<project>/-/commit/'
 
 // Build a file:// URL to the local test viewer from the game install ROOT and a
 // relative viewer path (defaults to VIEWER_REL). Pure + unit-tested: tolerates
@@ -735,6 +750,7 @@ const saveForm = () => {
     viewerRelPath: (form.value.viewerRelPath || '').trim(),
     useCommandListener: !!form.value.useCommandListener,
     commandListenerCall: (form.value.commandListenerCall || '').trim() || 'command:v1/run_custom_command',
+    commitViewBaseURL: (form.value.commitViewBaseURL || '').trim() || DEFAULT_COMMIT_VIEW_BASE_URL,
   }
   configDialog.value = false
   reload()

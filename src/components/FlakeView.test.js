@@ -348,6 +348,7 @@ describe('FlakeView', () => {
       viewerRelPath: 'graphic_viewer.html',
       useCommandListener: false,
       commandListenerCall: 'command:v1/run_custom_command',
+      commitViewBaseURL: 'https://<repository_provider>/<group>/<project>/-/commit/',
     })
     expect(wrapper.vm.configDialog).toBe(false)
   })

@@ -36,6 +36,12 @@ export const defaultSettings = () => ({
       // neutral placeholder; deployments override it with their own scheme
       // command in local settings.
       commandListenerCall: 'command:v1/run_custom_command',
+      // Base URL for viewing a single commit/revision on your VCS host. The
+      // run's revision id is appended (one slash inserted if the base lacks a
+      // trailing one). Placeholder by default so no internal host ships in
+      // source — set the real value in local settings. Shape follows
+      // GitLab/GitHub commit URLs.
+      commitViewBaseURL: 'https://<repository_provider>/<group>/<project>/-/commit/',
     },
 
     // ChatTools (Mattermost) assimilation
