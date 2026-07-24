@@ -180,11 +180,13 @@ const matchesFacet = (run, { suite, gfxApi, quality, revisionRange } = {}) => (
  * in sync with the bundler so the per-scope label the viewer computes here
  * agrees with the overall label the bundler computes server-side.
  */
-export const classifyFromCounts = (pass, fail) => {
+export const classifyFromCounts = (pass, fail, flaky = 0) => {
   const p = Number(pass) || 0
   const f = Number(fail) || 0
+  const fl = Number(flaky) || 0
   if (p <= 0 && f <= 0) return null
-  if (p <= 0) return 'broken'
+  // "broken" means never passed AND never recovered on the serial retry.
+  if (p <= 0) return fl > 0 ? 'actively_flaky' : 'broken'
   if (f === 0) return 'stable'
   const rate = p / (p + f)
   if (rate >= 0.95) return 'stable'
@@ -215,6 +217,7 @@ export const selectFlakeLeaderboard = (bundle, {
   for (const t of bundle.tests) {
     let pass = 0
     let fail = 0
+    let flaky = 0
     let lastFailureAt = ''
     let lastRunAt = ''
     let lastStatus = null
@@ -228,15 +231,17 @@ export const selectFlakeLeaderboard = (bundle, {
           lastStatus = 'pass'
         }
       }
+      const flakyIds = new Set(ctx.flaky_run_ids || [])
       for (const rid of ctx.failing_run_ids || []) {
         const run = runsById.get(rid)
         if (!run || !matchesFacet(run, facet)) continue
         fail += 1
+        if (flakyIds.has(rid)) flaky += 1
         const at = run.started_at || ''
         if (at > lastFailureAt) lastFailureAt = at
         if (at > lastRunAt) {
           lastRunAt = at
-          lastStatus = 'fail'
+          lastStatus = flakyIds.has(rid) ? 'flaky' : 'fail'
         }
       }
     }
@@ -245,7 +250,7 @@ export const selectFlakeLeaderboard = (bundle, {
     // Per-scope classification: when the user filters to e.g. suite=smoketest,
     // the row's label should reflect that scope's pass rate, not the bundler's
     // across-all-suites overall label.
-    const scopedClassification = classifyFromCounts(pass, fail)
+    const scopedClassification = classifyFromCounts(pass, fail, flaky)
     if (excludeStable && scopedClassification === 'stable') continue
     rows.push({
       test_id: t.test_id,
@@ -387,17 +392,24 @@ export const selectHeatmapMatrix = (bundle, {
         g.row[runIdToIdx.get(rid)] = 'pass'
         g.touched = true
       }
-      // Failing after passing: a fail in any member wins for that column.
+      // Column precedence: a hard fail in any member wins outright; a
+      // recovered failure only upgrades pass/not_run to 'flaky'.
+      const flakyIds = new Set(ctx.flaky_run_ids || [])
       for (const rid of ctx.failing_run_ids || []) {
         if (!runIds.has(rid)) continue
-        g.row[runIdToIdx.get(rid)] = 'fail'
+        const idx = runIdToIdx.get(rid)
+        if (flakyIds.has(rid)) {
+          if (g.row[idx] !== 'fail') g.row[idx] = 'flaky'
+        } else {
+          g.row[idx] = 'fail'
+        }
         g.touched = true
       }
     }
   }
 
   const tests = []
-  const cells = {} // group_key -> Array<'pass'|'fail'|'not_run'>
+  const cells = {} // group_key -> Array<'pass'|'flaky'|'fail'|'not_run'>
   for (const g of groups.values()) {
     if (!g.touched) continue
     tests.push({ test_id: g.test_id, name: g.name, module: g.module, member_ids: g.member_ids })
@@ -415,9 +427,10 @@ const SUITE_CARD_ORDER = ['smoketest', 'continuous', 'nightly']
 /**
  * "Days without incident" summary cards, one per suite present in the bundle.
  *
- * A build (run) is *broken* when any test failed in it (its run_id appears in a
- * test's failing_run_ids) — run.status only distinguishes complete/interrupted,
- * not pass/fail. Per card:
+ * A build (run) is *broken* when any test failed in it and did not recover on
+ * the serial retry (its run_id appears in a test's failing_run_ids but not its
+ * flaky_run_ids) — run.status only distinguishes complete/interrupted, not
+ * pass/fail. Per card:
  *   - gfx[]: for each gfx_api, the passed/total test counts of that suite+gfx's
  *     MOST RECENT run (latest started_at). total = tests observed in that run.
  *   - status: 'pass' (no gfx failing), 'fail' (all gfx with data failing),
@@ -442,8 +455,13 @@ export const selectSuiteIncidentCards = (bundle, { now = Date.now() } = {}) => {
   }
   for (const t of bundle.tests) {
     for (const ctx of t.results_by_context || []) {
+      const flakyIds = new Set(ctx.flaky_run_ids || [])
       for (const rid of ctx.passing_run_ids || []) bump(rid, 'passed')
-      for (const rid of ctx.failing_run_ids || []) bump(rid, 'failed')
+      // A failure that passed on the serial retry did not break the build --
+      // the suite itself exited green.
+      for (const rid of ctx.failing_run_ids || []) {
+        bump(rid, flakyIds.has(rid) ? 'passed' : 'failed')
+      }
     }
   }
 

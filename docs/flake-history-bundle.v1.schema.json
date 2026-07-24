@@ -113,10 +113,16 @@
           "items": { "type": "string" },
           "description": "run_ids in which this test failed, in this context."
         },
+        "flaky_run_ids": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Subset of failing_run_ids whose failure passed on the end-of-run serial retry. The suite counted these as passed; flake history keeps them as failures so the signal survives, and consumers use this list to render them as flaky rather than broken."
+        },
+        "flaky_count": { "type": "integer", "minimum": 0, "description": "len(flaky_run_ids)." },
         "pass_count": { "type": "integer", "minimum": 0 },
         "fail_count": { "type": "integer", "minimum": 0 },
         "pass_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
-        "last_status": { "type": ["string", "null"], "enum": ["pass", "fail", null] },
+        "last_status": { "type": ["string", "null"], "enum": ["pass", "fail", "flaky", null] },
         "last_run_id": { "type": ["string", "null"] }
       }
     },

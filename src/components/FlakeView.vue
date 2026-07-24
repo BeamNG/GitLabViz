@@ -227,6 +227,8 @@
           <span class="flake-legend-item"><i class="flake-cell flake-cell--pass flake-cell--expired" />Pass · expired</span>
           <span class="flake-legend-item"><i class="flake-cell flake-cell--fail" />Fail · artifacts live</span>
           <span class="flake-legend-item"><i class="flake-cell flake-cell--fail flake-cell--expired" />Fail · expired</span>
+          <span class="flake-legend-item"><i class="flake-cell flake-cell--flaky" />Flaky · artifacts live</span>
+          <span class="flake-legend-item"><i class="flake-cell flake-cell--flaky flake-cell--expired" />Flaky · expired</span>
           <span class="flake-legend-item"><i class="flake-cell flake-cell--not_run" />Not run</span>
           <span class="flake-legend-item"><i class="flake-cell flake-cell--fail flake-cell--interrupted" />Interrupted run</span>
         </div>
@@ -990,6 +992,8 @@ onBeforeUnmount(() => { if (refreshTimer) clearInterval(refreshTimer) })
    pipeline's downloadable artifacts are gone. */
 .flake-cell--pass.flake-cell--expired { background: #1b5e20; }
 .flake-cell--fail.flake-cell--expired { background: #7f1d1d; }
+.flake-cell--flaky   { background: #ff9800; }
+.flake-cell--flaky.flake-cell--expired { background: #7a3e00; }
 .flake-cell--interrupted {
   box-shadow: inset 0 0 0 2px #f44336;
   background: rgba(244, 67, 54, 0.12);

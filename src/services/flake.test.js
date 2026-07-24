@@ -598,3 +598,101 @@ describe('selectSuiteIncidentCards', () => {
     ])
   })
 })
+
+describe('flaky (passed-on-serial-retry) handling', () => {
+  // One test, two runs in the same pipeline: run 1 recovered on the retry,
+  // run 2 failed hard. Built inline so the shared sample fixture's assertions
+  // stay untouched.
+  const bundleWith = (flakyIds, failingIds) => ({
+    schema_version: 1,
+    generated_at: '2026-07-10T00:00:00Z',
+    runs: [
+      { run_id: 'r1', suite: 'continuous', gfx_api: 'dx12', pipeline_id: 900, started_at: '2026-07-09T00:00:00Z', status: 'complete' },
+      { run_id: 'r2', suite: 'continuous', gfx_api: 'dx12', pipeline_id: 901, started_at: '2026-07-09T12:00:00Z', status: 'complete' },
+    ],
+    tests: [{
+      test_id: 'continuous::level_test.py::test_level[italy]',
+      suite: 'continuous',
+      name: 'test_level[italy]',
+      module: 'level_test.py',
+      results_by_context: [{
+        gfx_api: 'dx12',
+        passing_run_ids: [],
+        failing_run_ids: failingIds,
+        flaky_run_ids: flakyIds,
+      }],
+    }],
+  })
+
+  it('classifies a fully recovered test as flaky, not broken', () => {
+    expect(classifyFromCounts(0, 5, 5)).toBe('actively_flaky')
+    expect(classifyFromCounts(0, 5, 0)).toBe('broken')
+  })
+
+  it('leaves the existing thresholds alone when no flaky count is given', () => {
+    expect(classifyFromCounts(10, 0)).toBe('stable')
+    expect(classifyFromCounts(0, 5)).toBe('broken')
+    expect(classifyFromCounts(6, 4)).toBe('intermittent')
+    expect(classifyFromCounts(2, 8)).toBe('actively_flaky')
+    expect(classifyFromCounts(0, 0)).toBeNull()
+  })
+
+  it('labels a recovered-only test as flaky on the leaderboard', () => {
+    const rows = selectFlakeLeaderboard(bundleWith(['r1', 'r2'], ['r1', 'r2']), { limit: 10 })
+    expect(rows).toHaveLength(1)
+    expect(rows[0].flake_classification).toBe('actively_flaky')
+    expect(rows[0].last_status).toBe('flaky')
+  })
+
+  it('still labels a hard failure broken', () => {
+    const rows = selectFlakeLeaderboard(bundleWith([], ['r1', 'r2']), { limit: 10 })
+    expect(rows[0].flake_classification).toBe('broken')
+    expect(rows[0].last_status).toBe('fail')
+  })
+
+  it('renders a recovered run as a flaky cell and a hard failure as fail', () => {
+    const m = selectHeatmapMatrix(bundleWith(['r1'], ['r1', 'r2']), { lastNPipelines: 10 })
+    const row = m.cells['level_test.py::test_level[italy]']
+    expect(row[0]).toBe('flaky')
+    expect(row[1]).toBe('fail')
+  })
+
+  it('lets a hard failure win the column over a recovered one', () => {
+    // Two members of the same heatmap row disagree about run r1: one recovered,
+    // one failed hard. Red must win.
+    const b = bundleWith(['r1'], ['r1'])
+    b.tests.push({
+      test_id: 'nightly::level_test.py::test_level[italy]',
+      suite: 'nightly',
+      name: 'test_level[italy]',
+      module: 'level_test.py',
+      results_by_context: [{ gfx_api: 'dx12', passing_run_ids: [], failing_run_ids: ['r1'], flaky_run_ids: [] }],
+    })
+    const m = selectHeatmapMatrix(b, { lastNPipelines: 10 })
+    expect(m.cells['level_test.py::test_level[italy]'][0]).toBe('fail')
+  })
+
+  it('does not count a recovered run as a broken build', () => {
+    // Both runs share suite+gfx_api, and the incident card only looks at the
+    // latest run per gfx_api -- so both must carry the recovered outcome, or
+    // the untouched one shadows it.
+    const cards = selectSuiteIncidentCards(bundleWith(['r1', 'r2'], ['r1', 'r2']), { now: Date.parse('2026-07-10T00:00:00Z') })
+    expect(cards).toHaveLength(1)
+    expect(cards[0].status).toBe('pass')
+    expect(cards[0].gfx[0]).toEqual({ gfx_api: 'dx12', passed: 1, total: 1 })
+    expect(cards[0].daysWithoutFailure).toBeGreaterThan(0)
+  })
+
+  it('still counts a hard failure as a broken build', () => {
+    const cards = selectSuiteIncidentCards(bundleWith([], ['r1', 'r2']), { now: Date.parse('2026-07-10T00:00:00Z') })
+    expect(cards[0].status).toBe('fail')
+    expect(cards[0].daysWithoutFailure).toBe(0)
+  })
+
+  it('treats a bundle published before this field as having no flaky runs', () => {
+    const b = bundleWith([], ['r1', 'r2'])
+    delete b.tests[0].results_by_context[0].flaky_run_ids
+    expect(selectFlakeLeaderboard(b, { limit: 10 })[0].flake_classification).toBe('broken')
+    expect(selectSuiteIncidentCards(b, { now: Date.parse('2026-07-10T00:00:00Z') })[0].status).toBe('fail')
+  })
+})
