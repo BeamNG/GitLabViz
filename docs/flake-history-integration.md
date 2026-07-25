@@ -85,7 +85,9 @@ Within `results_by_context[]`:
 | Field | Type | Notes |
 |---|---|---|
 | `passing_run_ids`, `failing_run_ids` | string[] | References into `runs[].run_id`. The viewer joins on these to render heatmap cells. |
+| `flaky_run_ids` | string[] | Subset of `failing_run_ids` whose failure passed on the end-of-run serial retry. The evidence stays in `failing_run_ids` — this list only marks which of those recovered. |
 | `pass_count`, `fail_count`, `pass_rate` | numbers | Derived; the viewer trusts the producer's values rather than recomputing. |
+| `flaky_count` | number | `len(flaky_run_ids)`. |
 | `last_status`, `last_run_id` | enum, string | The most recent outcome in this context. |
 
 ### `flake_classification` enum
@@ -96,8 +98,8 @@ The viewer treats this as an opaque label and uses it only for grouping/colour. 
 |---|---|
 | `stable` | No failures, or `pass_rate ≥ 0.95`. |
 | `intermittent` | `0.5 ≤ pass_rate < 0.95`. |
-| `actively_flaky` | `0 < pass_rate < 0.5`. |
-| `broken` | No passes recorded (`pass_rate == 0` and `fail_count > 0`). |
+| `actively_flaky` | `0 < pass_rate < 0.5`, or `pass_count == 0` with at least one recovery (`flaky_count > 0`) — pass_rate reads 0% in that case. |
+| `broken` | `pass_count == 0`, `fail_count > 0`, and no recovery (`flaky_count == 0`): never passed and never recovered. |
 
 ## Producer side — publishing a compatible bundle
 

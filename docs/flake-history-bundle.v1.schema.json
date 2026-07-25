@@ -135,6 +135,7 @@
         "pass_count": { "type": "integer", "minimum": 0 },
         "fail_count": { "type": "integer", "minimum": 0 },
         "pass_rate": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "flaky_count": { "type": "integer", "minimum": 0, "description": "Sum of flaky_count across results_by_context[]." },
         "is_flaky": { "type": "boolean" },
         "flake_classification": {
           "type": "string",

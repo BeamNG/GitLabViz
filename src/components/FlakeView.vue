@@ -321,11 +321,11 @@
         </div>
         <div class="flake-class-row">
           <v-chip color="error" size="small" variant="tonal">actively_flaky</v-chip>
-          <span>Pass rate <strong>&lt; 50%</strong>, still passing sometimes.</span>
+          <span>Pass rate <strong>&lt; 50%</strong>, or every failure recovered on the serial retry (pass rate can still read 0%).</span>
         </div>
         <div class="flake-class-row">
           <v-chip color="error" size="small" variant="tonal">broken</v-chip>
-          <span>Zero passes observed across the window.</span>
+          <span>Never passed, and no failure recovered on the serial retry.</span>
         </div>
         <v-alert density="compact" variant="tonal" type="info" class="mt-5">
           Thresholds live in <code>bundle_flake_history.py</code> (<code>_flake_classification</code>) and
