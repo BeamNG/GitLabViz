@@ -42,6 +42,22 @@
       "description": "One entry per distinct test-suite run. Test cells reference these by run_id.",
       "items": { "$ref": "#/$defs/Run" }
     },
+    "gates": {
+      "type": "array",
+      "description": "One row per validation gate per pipeline, newest window only. Absent in every bundle published before gate history existed, which consumers read as no gate cards.",
+      "items": {
+        "type": "object",
+        "required": ["gate", "pipeline_id", "status", "finished_at", "failed_count"],
+        "properties": {
+          "gate": { "type": "string" },
+          "pipeline_id": { "type": "integer" },
+          "job_id": { "type": ["integer", "null"] },
+          "status": { "type": "string", "enum": ["passed", "failed"] },
+          "finished_at": { "type": "string" },
+          "failed_count": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
     "tests": {
       "type": "array",
       "description": "One entry per distinct test, with per-context cell aggregates.",
